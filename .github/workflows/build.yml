@@ -107,6 +107,9 @@ jobs:
           GITLAB_RELEASE=${{ github.event.inputs.gitlab_release }}
           mkdir -p build
           curl -sL "https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_RELEASE}/omnibus-gitlab-${GITLAB_RELEASE}.tar.gz" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_RELEASE}/docker"
+          
+          # Copy needed /RELEASE
+          cp ./RELEASE ./build/
 
       - name: List contents of build directory
         run: |
