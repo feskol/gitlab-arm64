@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       gitlab_release:
-        description: "GitLab Release (e.g., 17.6.1-ce.0 or 17.6.1-ee.0)"
+        description: "GitLab Release (e.g., 17.6.1+ce.0 or 17.6.1+ee.0)"
         required: true
       docker_push_tags:
         description: "Additional Docker tags (comma-separated, e.g., 'beta,stable')"
         required: false
       exclude_global_tags:
-        description: "Exclude broader tags like 'major.minor', 'major', 'ce', and 'latest'"
+        description: "Exclude broader tags like 'major.minor' (e.g. 17.6), 'major' (e.g. 17), 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
 
@@ -41,21 +41,32 @@ jobs:
         run: |
           GITLAB_RELEASE="${{ github.event.inputs.gitlab_release }}"
           
+          # Replace "+" with "-" in the release
+          NORMALIZED_RELEASE=$(echo "$GITLAB_RELEASE" | sed 's/+/-/g')
+          
           # Extract suffix (-ce or -ee)
-          SUFFIX=$(echo "$GITLAB_RELEASE" | sed -E 's/.*(-ce|-ee).*/\1/')
+          SUFFIX=$(echo "$NORMALIZED_RELEASE" | sed -E 's/.*(-ce|-ee).*/\1/')
           
           # Strip version-specific parts to generate base tags
           BASE_TAG=$(echo "$GITLAB_RELEASE" | sed -E "s/(\.0)?${SUFFIX}.0$//")
           TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
           TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
           TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
+          
+          # Define "latest" tag only if suffix is "ce"
+          LATEST_TAG=""
+          if [ "$SUFFIX" == "-ce" ]; then
+            LATEST_TAG="latest"
+          fi
+          
+          # Define tags for new releases (only if "exclude_global_tags" is false)
+          DEFAULT_NEW_TAGS=""
+          if [ "${{ github.event.inputs.exclude_global_tags }}" == "false" ]; then
+            DEFAULT_NEW_TAGS="$TAG_MAJOR_MINOR$SUFFIX $TAG_MAJOR$SUFFIX ${SUFFIX#-}"
+          fi
 
           # Default tags
-          if [ "${{ github.event.inputs.exclude_global_tags }}" == "false" ]; then
-            DEFAULT_TAGS="$TAG_MAJOR_MINOR_PATCH$SUFFIX $TAG_MAJOR_MINOR$SUFFIX $TAG_MAJOR$SUFFIX ${SUFFIX#-} latest"
-          else
-            DEFAULT_TAGS="$TAG_MAJOR_MINOR_PATCH$SUFFIX"
-          fi
+          DEFAULT_TAGS="$NORMALIZED_RELEASE $TAG_MAJOR_MINOR_PATCH$SUFFIX $DEFAULT_NEW_TAGS $LATEST_TAG"
 
           # Append user-provided tags if any
           if [ -n "${{ github.event.inputs.docker_push_tags }}" ]; then
@@ -64,7 +75,11 @@ jobs:
             ADDITIONAL_TAGS=""
           fi
 
+          # Combine all tags, ensuring no extra spaces
           ALL_TAGS="$DEFAULT_TAGS $ADDITIONAL_TAGS"
+
+          # Remove any extra spaces in the final tag list
+          ALL_TAGS=$(echo $ALL_TAGS | xargs)
 
           echo "ALL_TAGS=$ALL_TAGS" >> $GITHUB_ENV
           echo "Parsed tags: $ALL_TAGS"
@@ -81,9 +96,7 @@ jobs:
           context: build/docker
           # Only builds on the main branch will trigger the push, and forked repositories are excluded
           push: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }}
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gitlab:${{ github.event.inputs.gitlab_release }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gitlab:${{ env.ALL_TAGS }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gitlab:${{ env.ALL_TAGS }}
           platforms: linux/arm64
           # Disable provenance generation to resolve issue #82
           provenance: false
