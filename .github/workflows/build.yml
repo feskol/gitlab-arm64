@@ -90,21 +90,27 @@ jobs:
         id: generate-tags
         run: |
           DOCKERHUB_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
+          # Remove the trailing comma at the end
+          DOCKERHUB_TAGS=${DOCKERHUB_TAGS%,}
           echo "DOCKERHUB_TAGS=${DOCKERHUB_TAGS}" >> $GITHUB_ENV
-          echo "Docker Hub tags: $DOCKERHUB_TAGS"
 
       - name: Generate ARM64 tags
         id: generate-arm64-tags
         run: |
           DOCKERHUB_PUSH_TAGS=$(echo ${{ env.DOCKERHUB_TAGS }} | tr ',' '\n' | xargs -I {} echo "{}-arm64" | tr '\n' ',')
+          # Remove the trailing comma at the end
+          DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS%,}
           echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> $GITHUB_ENV
-          echo "Docker Hub ARM64 tags: $DOCKERHUB_PUSH_TAGS"
 
       - name: Download GitLab Build Files
         run: |
           GITLAB_RELEASE=${{ github.event.inputs.gitlab_release }}
           mkdir -p build
           curl -sL "https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_RELEASE}/omnibus-gitlab-${GITLAB_RELEASE}.tar.gz" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_RELEASE}/docker"
+
+      - name: List contents of build directory
+        run: |
+          ls -R build
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
