@@ -1,0 +1,61 @@
+name: Sync Docker Hub GitLab Versions
+
+on:
+  schedule:
+    - cron: '30 4 * * *'
+
+jobs:
+  check-new-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get recent Tags from Docker Hub
+        id: fetch-tags
+        run: |
+          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '.results[].name' > dockerhub_tags.txt
+
+      - name: Find latest tag
+        id: find-latest-tag
+        run: |
+          sort -V dockerhub_tags.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\+ce\.0$' | tail -n 1 > latest_tag.txt
+          LATEST_TAG=$(cat latest_tag.txt)
+          echo "::set-output name=latest_tag::$LATEST_TAG"
+
+      - name: Check if tag already exists
+        id: check-existing
+        run: |
+          git fetch origin main
+          if grep -q "${{ steps.find-latest-tag.outputs.latest_tag }}" .github/workflows/build.yml; then
+            echo "Tag ${{ steps.find-latest-tag.outputs.latest_tag }} already exists."
+            echo "::set-output name=update_required::false"
+          else
+            echo "New Tag found: ${{ steps.find-latest-tag.outputs.latest_tag }}"
+            echo "::set-output name=update_required::true"
+          fi
+
+      - name: Update build.yml
+        if: steps.check-existing.outputs.update_required == 'true'
+        run: |
+          sed -i "s/GitLab-Release: [^\"]*/GitLab-Release: ${{ steps.find-latest-tag.outputs.latest_tag }}/" .github/workflows/build.yml
+
+      - name: Commit und Push Changes
+        if: steps.check-existing.outputs.update_required == 'true'
+        run: |
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "actions@github.com"
+          git commit -am "Update build.yml for ${{ steps.find-latest-tag.outputs.latest_tag }}"
+          git push
+
+      - name: Trigger build.yml
+        if: steps.check-existing.outputs.update_required == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "build.yml",
+              ref: "main",
+              inputs: {
+                gitlab_release: "${{ steps.find-latest-tag.outputs.latest_tag }}"
+              }
+            })
