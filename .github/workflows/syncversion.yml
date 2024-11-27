@@ -1,0 +1,89 @@
+name: Sync Docker Hub GitLab Versions
+
+on:
+  workflow_dispatch:
+#  schedule:
+#    - cron: '30 4 * * *'
+
+jobs:
+  check-new-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get recent Tags from Docker Hub for ce and ee
+        id: fetch-tags
+        run: |
+          # Fetch both ce and ee tags
+          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '.results[].name' > dockerhub_tags_ce.txt
+          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '.results[].name' > dockerhub_tags_ee.txt
+          
+          # Combine both ce and ee tags
+          cat dockerhub_tags_ce.txt dockerhub_tags_ee.txt > dockerhub_tags.txt
+
+      - name: Find latest ce and ee tags
+        id: find-latest-tags
+        run: |
+          # Find latest ce tag
+          sort -V dockerhub_tags_ce.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$' | tail -n 1 > latest_ce_tag.txt
+          LATEST_CE_TAG=$(cat latest_ce_tag.txt)
+          echo "::set-output name=latest_ce_tag::$LATEST_CE_TAG"
+
+          # Find latest ee tag
+          sort -V dockerhub_tags_ee.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$' | tail -n 1 > latest_ee_tag.txt
+          LATEST_EE_TAG=$(cat latest_ee_tag.txt)
+          echo "::set-output name=latest_ee_tag::$LATEST_EE_TAG"
+
+      - name: Check if ce tag exists on Docker Hub
+        id: check-existing-ce
+        run: |
+          TAG="${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "Tag $TAG exists on Docker Hub (ce)."
+            echo "::set-output name=update_required_ce::true"
+          else
+            echo "Tag $TAG does not exist on Docker Hub (ce)."
+            echo "::set-output name=update_required_ce::false"
+          fi
+
+      - name: Check if ee tag exists on Docker Hub
+        id: check-existing-ee
+        run: |
+          TAG="${{ steps.find-latest-tags.outputs.latest_ee_tag }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "Tag $TAG exists on Docker Hub (ee)."
+            echo "::set-output name=update_required_ee::true"
+          else
+            echo "Tag $TAG does not exist on Docker Hub (ee)."
+            echo "::set-output name=update_required_ee::false"
+          fi
+
+      - name: Trigger build.yml for ce release
+        if: steps.check-existing-ce.outputs.update_required_ce == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "build.yml",
+              ref: "main",
+              inputs: {
+                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
+              }
+            })
+
+      - name: Trigger build.yml for ee release
+        if: steps.check-existing-ee.outputs.update_required_ee == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "build.yml",
+              ref: "main",
+              inputs: {
+                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ee_tag }}"
+              }
+            })
