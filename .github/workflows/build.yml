@@ -42,7 +42,7 @@ jobs:
           GITLAB_RELEASE="${{ github.event.inputs.gitlab_release }}"
           
           # Extract suffix (-ce or -ee)
-          SUFFIX=$(echo "$GITLAB_RELEASE" | grep -oE '-(ce|ee)')
+          SUFFIX=$(echo "$GITLAB_RELEASE" | sed -E 's/.*(-ce|-ee).*/\1/')
           
           # Strip version-specific parts to generate base tags
           BASE_TAG=$(echo "$GITLAB_RELEASE" | sed -E "s/(\.0)?${SUFFIX}.0$//")
