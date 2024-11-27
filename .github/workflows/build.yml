@@ -80,9 +80,15 @@ jobs:
 
           # Remove any extra spaces in the final tag list
           ALL_TAGS=$(echo $ALL_TAGS | xargs)
+          
+          # Prepend docker.io/feskol/gitlab to each tag and join them with commas
+          DOCKERHUB_TAGS=$(echo $ALL_TAGS | tr ' ' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
 
-          echo "ALL_TAGS=$ALL_TAGS" >> $GITHUB_ENV
-          echo "Parsed tags: $ALL_TAGS"
+          # Remove the trailing comma at the end
+          DOCKERHUB_TAGS=${DOCKERHUB_TAGS%,}
+          
+          echo "DOCKERHUB_TAGS=$DOCKERHUB_TAGS" >> $GITHUB_ENV
+          echo "Docker Hub tags: $DOCKERHUB_TAGS"
 
       - name: Download GitLab Build Files
         run: |
@@ -96,7 +102,7 @@ jobs:
           context: build/docker
           # Only builds on the main branch will trigger the push, and forked repositories are excluded
           push: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }}
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gitlab:${{ env.ALL_TAGS }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gitlab:${{ env.DOCKERHUB_TAGS }}
           platforms: linux/arm64
           # Disable provenance generation to resolve issue #82
           provenance: false
