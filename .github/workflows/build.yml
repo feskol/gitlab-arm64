@@ -35,37 +35,51 @@ jobs:
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Parse Tags
-        id: parse-tags
+      - name: Define ENV variables
+        id: define-variables
         run: |
           GITLAB_RELEASE="${{ github.event.inputs.gitlab_release }}"
           
           # Replace "+" with "-" in the release
           NORMALIZED_RELEASE=$(echo "$GITLAB_RELEASE" | sed 's/+/-/g')
           
+          # Define Release-Version
+          echo "GITLAB_RELEASE_VERSION=$NORMALIZED_RELEASE" >> $GITHUB_ENV
+          
           # Extract suffix (-ce or -ee)
-          SUFFIX=$(echo "$NORMALIZED_RELEASE" | sed -E 's/.*(-ce|-ee).*/\1/')
+          SUFFIX=$(echo "$NORMALIZED_RELEASE" | sed -E 's/.*-(ce|ee).*/\1/')
+          echo "GITLAB_EDITION=$SUFFIX" >> $GITHUB_ENV
+
+      - name: Parse Tags
+        id: parse-tags
+        run: |
+          # Replace "+" with "-" in the release
+          NORMALIZED_RELEASE="${{ env.GITLAB_RELEASE_VERSION }}"
+          
+          # Extract suffix (ce or ee)
+          SUFFIX="${{ env.GITLAB_EDITION }}"
           
           # Strip version-specific parts to generate base tags
-          BASE_TAG=$(echo "$NORMALIZED_RELEASE" | sed -E "s/(\.0)?${SUFFIX}.0$//")
+          BASE_TAG=$(echo "$NORMALIZED_RELEASE" | sed -E "s/(\.0)?-${SUFFIX}.0$//")
           TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
           TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
           TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
-          # Define "latest" tag only if suffix is "ce"
-          LATEST_TAG=""
-          if [ "$SUFFIX" == "-ce" ]; then
-            LATEST_TAG="latest"
-          fi
-          
           # Define tags for new releases (only if "exclude_global_tags" is false)
           DEFAULT_NEW_TAGS=""
           if [ "${{ github.event.inputs.exclude_global_tags }}" == "false" ]; then
-            DEFAULT_NEW_TAGS="$TAG_MAJOR_MINOR$SUFFIX $TAG_MAJOR$SUFFIX ${SUFFIX#-}"
+            
+            # Define "latest" tag only if suffix is "ce"
+            LATEST_TAG=""
+            if [ "$SUFFIX" == "ce" ]; then
+              LATEST_TAG="latest"
+            fi
+
+            DEFAULT_NEW_TAGS="$TAG_MAJOR_MINOR-$SUFFIX $TAG_MAJOR-$SUFFIX $SUFFIX $LATEST_TAG"
           fi
 
           # Default tags
-          DEFAULT_TAGS="$NORMALIZED_RELEASE $TAG_MAJOR_MINOR_PATCH$SUFFIX $DEFAULT_NEW_TAGS $LATEST_TAG"
+          DEFAULT_TAGS="$NORMALIZED_RELEASE $TAG_MAJOR_MINOR_PATCH-$SUFFIX $DEFAULT_NEW_TAGS"
 
           # Append user-provided tags if any
           if [ -n "${{ github.event.inputs.docker_push_tags }}" ]; then
@@ -108,7 +122,7 @@ jobs:
           mkdir -p build
           curl -sL "https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_RELEASE}/omnibus-gitlab-${GITLAB_RELEASE}.tar.gz" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_RELEASE}/docker"
           
-          # Copy needed /RELEASE
+          # Copy needed /RELEASE file
           cp ./RELEASE ./build/
 
       - name: List contents of build directory
@@ -127,6 +141,8 @@ jobs:
           provenance: false
           build-args: |
             TARGETARCH=arm64
+            RELEASE_PACKAGE=gitlab-${{ env.GITLAB_EDITION }}
+            RELEASE_VERSION=${{ env.GITLAB_RELEASE_VERSION }}
 
       - name: Clean Up
         run: |
