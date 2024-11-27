@@ -115,7 +115,7 @@ jobs:
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
         with:
-          context: build/docker
+          context: build
           # Only builds on the main branch will trigger the push, and forked repositories are excluded
           push: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }}
           tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
