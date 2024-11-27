@@ -77,11 +77,11 @@ jobs:
           # Combine all tags, ensuring no extra spaces
           ALL_TAGS="$DEFAULT_TAGS $ADDITIONAL_TAGS"
 
-          # Remove any extra spaces and add comma
-          ALL_TAGS=$(echo $ALL_TAGS | tr ' ' '\n' | xargs | tr '\n' ',')
+          # Remove any extra spaces in the final tag list
+          ALL_TAGS=$(echo $ALL_TAGS | xargs)
           
-          # Remove the trailing comma at the end
-          ALL_TAGS=${ALL_TAGS%,}
+          # Replace spaces with comma
+          ALL_TAGS=$(echo "$ALL_TAGS" | tr ' ' ',')
 
           echo "ALL_TAGS=$ALL_TAGS" >> $GITHUB_ENV
           echo "Parsed tags: $ALL_TAGS"
@@ -89,7 +89,7 @@ jobs:
       - name: Generate Docker tags
         id: generate-tags
         run: |
-          DOCKERHUB_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')          
+          DOCKERHUB_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
           echo "DOCKERHUB_TAGS=${DOCKERHUB_TAGS}" >> $GITHUB_ENV
           echo "Docker Hub tags: $DOCKERHUB_TAGS"
 
