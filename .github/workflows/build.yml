@@ -121,13 +121,20 @@ jobs:
           GITLAB_RELEASE=${{ github.event.inputs.gitlab_release }}
           mkdir -p build
           curl -sL "https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_RELEASE}/omnibus-gitlab-${GITLAB_RELEASE}.tar.gz" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_RELEASE}/docker"
-          
-          # Copy needed /RELEASE file
-          cp ./RELEASE ./build/
 
       - name: List contents of build directory
         run: |
           ls -R build
+
+      - name: Create needed /RELEASE file
+        run: |
+          RELEASE_PACKAGE=gitlab-${{ env.GITLAB_EDITION }}
+          RELEASE_VERSION=${{ env.GITLAB_RELEASE_VERSION }}
+          
+          echo "DOWNLOAD_URL_amd64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_amd64.deb/download.deb" > build/RELEASE
+          echo "DOWNLOAD_URL_arm64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_arm64.deb/download.deb" >> build/RELEASE
+          
+          cat build/RELEASE
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
@@ -141,8 +148,7 @@ jobs:
           provenance: false
           build-args: |
             TARGETARCH=arm64
-            RELEASE_PACKAGE=gitlab-${{ env.GITLAB_EDITION }}
-            RELEASE_VERSION=${{ env.GITLAB_RELEASE_VERSION }}
+            
 
       - name: Clean Up
         run: |
