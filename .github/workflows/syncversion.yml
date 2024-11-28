@@ -98,8 +98,9 @@ jobs:
                 fi
               done
           
-              new_ce_versions+=("$tag_name")
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+          
+              echo "Adding new CE Version: $tag_name"
             fi
           done
           
@@ -126,6 +127,8 @@ jobs:
           
               # Append to the JSON array
               new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+
+              echo "Adding new EE Version: $tag_name"
             fi
           done
 
