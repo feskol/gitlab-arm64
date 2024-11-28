@@ -60,7 +60,7 @@ jobs:
           SUFFIX="${{ env.GITLAB_EDITION }}"
           
           # Strip version-specific parts to generate base tags
-          BASE_TAG=$(echo "$GITLAB_RELEASE" | sed -E "s/(\.0)?-${SUFFIX}.0$//")
+          BASE_TAG=$(echo "$GITLAB_RELEASE" | sed -E "s/-${SUFFIX}.0$//")
           TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
           TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
           TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
