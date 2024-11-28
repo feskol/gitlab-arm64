@@ -1,4 +1,4 @@
-# GitLab Docker Image for ARM64
+# GitLab (CE/EE) Docker Image for ARM64
 
 [![build-badge][github-actions-badge]][github-actions]
 [![Docker Pulls][dockerhub-badge-pulls]][dockerhub]
@@ -20,6 +20,8 @@
 
 ## Overview
 
+This repository provides **GitLab Docker images for ARM64 architecture**.
+
 GitLab does not officially support ARM64.
 As a result, GitLab does not provide official Docker images for ARM64. While there are some GitHub repositories that
 attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
@@ -34,7 +36,41 @@ Docker image for the latest release.
 > For example, if the latest version is 17.6.1 and a patch is released for 17.5.10, the action will not create a Docker
 > image tag for 17.5.10.
 
+## Features
+
+- **Automated Updates**:  
+  A GitHub Action checks the latest releases of the official GitLab Docker images and triggers a build when a new version is available.  
+  This ensures the repository always provides up-to-date images for ARM64.
+
+- **Fully Automatic**:  
+  No manual intervention is required. The entire process, from release checking to image building, is automated.
+
+- **Compatibility**:  
+  These images are specifically designed for ARM64 architecture, making GitLab accessible to users on ARM-based platforms.
+
+## Requirements
+
+To use the Docker images built by this repository, you need:
+- **ARM64 Architecture** (e.g., Raspberry Pi 4/5, ARM64 servers)
+- **Docker** installed on your system
+
 ## Usage
+
+You can pull the Docker images from docker.io registry once they are published.  
+
+```bash
+# latest GitLab Community Edition (CE)
+docker pull feskol/gitlab:latest
+docker pull feskol/gitlab:ce          # "ce" is same as "latest"
+
+# latest GitLab Enterprise Edition (EE)
+docker pull feskol/gitlab:ee
+
+# Specific version --- replace "-ce" to "-ee" for Enterprise Edition
+docker pull feskol/gitlab:17-ce
+docker pull feskol/gitlab:17.6-ce
+docker pull feskol/gitlab:17.6.1-ce
+```
 
 You can use this Docker image just like the official Docker image provided by GitLab.
 
@@ -114,14 +150,13 @@ services:
 docker compose up -d
 ````
 
-## Dev-notes
+## Links
 
-As you can probably infer from the limited number of files in this repository, my goal is to use as few custom files as
-possible, relying mainly on the provided files from GitLab to generate the ARM64 Dockerfiles.
+Here are the links necessary for this repository to function properly:
+- [GitLab Omnibus Docker Files](https://gitlab.com/gitlab-org/omnibus-gitlab/-/tree/master/docker)
+- [GitLab CE Versions](https://packages.gitlab.com/gitlab/gitlab-ce)
+- [GitLab EE Versions](https://packages.gitlab.com/gitlab/gitlab-ee)
+- [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
+- [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
-When the build job is started, it downloads the original GitLab Docker files for the specified version and then builds
-the ARM64 Docker image.
-
-> GitLab Docker files: https://gitlab.com/gitlab-org/omnibus-gitlab/-/tree/master/docker
->
-> GitLab Versions: https://packages.gitlab.com/gitlab/gitlab-ce | https://packages.gitlab.com/gitlab/gitlab-ee
+*Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
