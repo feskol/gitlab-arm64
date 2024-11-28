@@ -95,8 +95,6 @@ jobs:
         id: generate-tags
         run: |
           DOCKERHUB_PUSH_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
-          # Remove the trailing comma at the end
-          DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS%,}
           echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> $GITHUB_ENV
 
       - name: Download GitLab Build Files
@@ -111,7 +109,7 @@ jobs:
         run: |
           ls -R build
 
-      - name: Create needed /RELEASE file
+      - name: Create /RELEASE file
         run: |
           RELEASE_PACKAGE=gitlab-${{ env.GITLAB_EDITION }}
           RELEASE_VERSION=${{ github.event.inputs.gitlab_release }}
