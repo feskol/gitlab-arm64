@@ -111,6 +111,12 @@ jobs:
           
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
           
+              # Check for jq errors
+              if [ $? -ne 0 ]; then
+                echo "Error with jq operation."
+                exit 1
+              fi
+          
               echo "Adding new CE Version: $tag_name"
             fi
           done
@@ -148,6 +154,12 @@ jobs:
           
               # Append to the JSON array
               new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+
+              # Check for jq errors
+              if [ $? -ne 0 ]; then
+                echo "Error with jq operation."
+                exit 1
+              fi
 
               echo "Adding new EE Version: $tag_name"
             fi
