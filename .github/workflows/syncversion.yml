@@ -13,6 +13,9 @@ jobs:
   check-new-release:
     runs-on: ubuntu-latest
     steps:
+      - name: Enable debugging
+        run: echo "##[debug] Debugging enabled"
+
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
