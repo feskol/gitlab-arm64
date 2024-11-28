@@ -6,6 +6,7 @@
 [![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ee]][dockerhub]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub]
+[![PayPal ME](https://img.shields.io/badge/Support-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
 [github-actions]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
 [github-actions-badge]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
@@ -16,7 +17,6 @@
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
-[![PayPal ME](https://img.shields.io/badge/Support-PayPal_Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
 ## Overview
 
@@ -173,3 +173,13 @@ Here are the links necessary for this repository to function properly:
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
 *Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
+
+## Support Me
+
+If you find this project helpful and would like to support my work:
+
+- 🌟 **Star the repository** to show your appreciation.
+- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💬 **Spread the word** by sharing this project with others.
+
+Thank you for your support! Every contribution helps me continue creating awesome software.
