@@ -2,6 +2,11 @@ name: Build and Push Docker Image
 
 on:
   workflow_dispatch:
+    paths-ignore:
+      - README*.md
+      - .editorconfig
+      - .gitignore
+      - .github/workflows/syncversion.yml
     inputs:
       gitlab_release:
         description: "GitLab Release Docker-Tag (e.g., 17.6.1-ce.0 or 17.6.1-ee.0)"
