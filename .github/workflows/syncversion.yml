@@ -1,4 +1,4 @@
-name: Sync GitLab Versions # From official Docker-Gitlab gitlab/gitlab-ce | gitlab/gitlab-ee
+name: GitLab Release Checker
 # Ensure Proper Permissions for the Workflow Token
 permissions:
   contents: write
@@ -6,93 +6,216 @@ permissions:
 
 on:
   schedule:
-    - cron: '30 4,16 * * *'
+    - cron: '0 2,14 * * *'
+  workflow_dispatch:
+
 
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Get recent Tags from Docker Hub for ce and ee
+      - name: Get GitLab CE/EE Docker tags with last modified date
         id: fetch-tags
         run: |
-          # Fetch both ce and ee tags
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '.results[].name' > dockerhub_tags_ce.txt
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '.results[].name' > dockerhub_tags_ee.txt
+          # Fetch own tags
+          OWN_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name')
           
-          # Combine both ce and ee tags
-          cat dockerhub_tags_ce.txt dockerhub_tags_ee.txt > dockerhub_tags.txt
+          # Fetch both ce and ee tags (tag name and last updated date)
+          TAGS_CE=$(curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '.results[] | {name: .name, last_updated: .last_updated}')
+          TAGS_EE=$(curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '.results[] | {name: .name, last_updated: .last_updated}')
+          
+          echo "OWN_TAGS=$OWN_TAGS" >> $GITHUB_OUTPUT
+          
+          echo "TAGS_CE=$TAGS_CE" >> $GITHUB_OUTPUT
+          echo "TAGS_EE=$TAGS_EE" >> $GITHUB_OUTPUT
 
-      - name: Find latest ce and ee tags
-        id: find-latest-tags
+      - name: Get latest major version
+        id: major-version
         run: |
-          # Find latest ce tag
-          sort -V dockerhub_tags_ce.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$' | tail -n 1 > latest_ce_tag.txt
-          LATEST_CE_TAG=$(cat latest_ce_tag.txt)
-          echo "latest_ce_tag=$LATEST_CE_TAG" >> $GITHUB_OUTPUT
+          # Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
+          echo "${{ steps.fetch-tags.output.TAGS_CE }}" | jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' | sort -V | tail -n 1 > latest_ce_tag.txt
+          echo "${{ steps.fetch-tags.output.TAGS_EE }}" | jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' | sort -V | tail -n 1 > latest_ee_tag.txt
+          
+          # Read the highest version tag
+          LATEST_MAJOR_CE=$(cat latest_ce_tag.txt | sed -E "s/-ce.0$//" | cut -d. -f1)
+          LATEST_MAJOR_EE=$(cat latest_ee_tag.txt | sed -E "s/-ee.0$//" | cut -d. -f1)
+          
+          echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> $GITHUB_OUTPUT
+          echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> $GITHUB_OUTPUT
 
-          # Find latest ee tag
-          sort -V dockerhub_tags_ee.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$' | tail -n 1 > latest_ee_tag.txt
-          LATEST_EE_TAG=$(cat latest_ee_tag.txt)
-          echo "latest_ee_tag=$LATEST_EE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Check if ce tag exists on Docker Hub
-        id: check-existing-ce
+      - name: Get latest last_update
+        id: latest-last-update
         run: |
-          TAG="${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "Tag $TAG exists on Docker Hub (ce)."
-            echo "update_required_ce=false" >> $GITHUB_OUTPUT
-          else
-            echo "Tag $TAG does not exist on Docker Hub (ce)."
-            echo "update_required_ce=true" >> $GITHUB_OUTPUT
+          # Get the most recent 'last_updated' for valid release tags
+          LATEST_CE_LAST_UPDATE=$(echo "${{ steps.fetch-tags.output.TAGS_CE }}" | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
+          LATEST_EE_LAST_UPDATE=$(echo "${{ steps.fetch-tags.output.TAGS_EE }}" | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
+
+          echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> $GITHUB_OUTPUT
+          echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> $GITHUB_OUTPUT
+
+      - name: Compare last modified dates
+        id: find-update-tags
+        run: |
+          # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
+          saved_ce_last_modified_date=$(cat .github/last_modified_ce_date.txt || echo "")
+          saved_ee_last_modified_date=$(cat .github/last_modified_ee_date.txt || echo "")
+          
+          echo "Last saved modified date for gitlab-ce: $saved_ce_last_modified_date"
+          echo "Last saved modified date for gitlab-ee: $saved_ee_last_modified_date"
+          
+          # If this is the first run, we don't have a saved date, so save the current one
+          if [ -z "$saved_ce_last_modified_date" ]; then
+            saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
+            echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
+            echo "$saved_ce_last_modified_date" > .github/last_modified_ce_date.txt
           fi
-
-      - name: Check if ee tag exists on Docker Hub
-        id: check-existing-ee
-        run: |
-          TAG="${{ steps.find-latest-tags.outputs.latest_ee_tag }}"
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "Tag $TAG exists on Docker Hub (ee)."
-            echo "update_required_ee=false" >> $GITHUB_OUTPUT
-          else
-            echo "Tag $TAG does not exist on Docker Hub (ee)."
-            echo "update_required_ee=true" >> $GITHUB_OUTPUT
+          
+          if [ -z "$saved_ee_last_modified_date" ]; then
+            saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
+            echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
+            echo "$saved_ee_last_modified_date" > .github/last_modified_ee_date.txt
           fi
+          
+          # Prepare the list of new releases for gitlab-ce
+          new_ce_versions=()
+          for tag_data in ${{ steps.fetch-tags.outputs.TAGS_CE }}; do
+            tag_name=$(echo "$tag_data" | jq -r '.name')
+            tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
+          
+            # Process only valid release tags for gitlab-ce and compare dates
+            if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
+          
+              major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
+              matching_tags=$(echo "${{ steps.fetch-tags.outputs.OWN_TAGS }}" | grep -E "^${major_minor_tag}.*-ce\.0$")
+          
+              is_newer=false
+              for tag in $matching_tags; do
+                # Compare the patch version using sort -V (natural sort of versions)
+                if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
+                  # The tag version is older than a newer tag
+                  is_newer=true
+                fi
+              done
+          
+              new_ce_versions+=("$tag_name")
+              new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+            fi
+          done
+          
+          # Prepare the list of new releases for gitlab-ee
+          new_ee_versions=()
+          for tag_data in ${{ steps.fetch-tags.outputs.TAGS_EE }}; do
+            tag_name=$(echo "$tag_data" | jq -r '.name')
+            tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
+          
+            # Process only valid release tags for gitlab-ee and compare dates
+            if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
+          
+              major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
+              matching_tags=$(echo "${{ steps.fetch-tags.outputs.OWN_TAGS }}" | grep -E "^${major_minor_tag}.*-ee\.0$")
+          
+              is_newer=false
+              for tag in $matching_tags; do
+                # Compare the patch version using sort -V (natural sort of versions)
+                if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
+                  # The tag version is older than a newer tag
+                  is_newer=true
+                fi
+              done
+          
+              # Append to the JSON array
+              new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+            fi
+          done
 
-      - name: Trigger build.yml for ce release
-        if: steps.check-existing-ce.outputs.update_required_ce == 'true'
+          # Save the new last modified date for future runs for gitlab-ce and gitlab-ee
+          echo "${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}" > .github/last_modified_ce_date.txt
+          echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/last_modified_ee_date.txt
+          
+          # Set output for new versions
+          echo "NEW_CE_VERSIONS=${new_ce_versions}" >> $GITHUB_OUTPUT
+          echo "NEW_EE_VERSIONS=${new_ee_versions}" >> $GITHUB_OUTPUT
+          
+
+      - name: Trigger build.yml for new CE versions
+        if: steps.find-update-tags.outputs.NEW_CE_VERSIONS != ''
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: "build.yml",
-              ref: "main",
-              inputs: {
-                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}",
-                include_latest_tags: true,
-                include_major_tag: true,
-                include_major_minor_tag: true
+            const newCeVersions = JSON.parse('${{ steps.find-update-tags.outputs.NEW_CE_VERSIONS }}');
+            const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
+            
+            // Trigger workflows for new GitLab CE versions
+            newCeVersions.forEach(version => {
+              if (version) {
+                console.log(`Triggering build for GitLab CE version: ${version}`);
+            
+                const majorVersion = version.tag.split('-')[0].split('.')[0];
+            
+                let includeLatestTags = false;
+                is_newest_patch=false;
+            
+                if(version.is_newest_patch) {
+                  is_newest_patch=true;
+            
+                  if (majorVersion === highestCeMajorVersion) {
+                    includeLatestTags = true;
+                  }
+                }
+            
+                github.rest.actions.createWorkflowDispatch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: "build.yml",
+                  ref: "main",
+                  inputs: {
+                    gitlab_release: version,
+                    include_latest_tags: includeLatestTags,
+                    include_major_tag: is_newest_patch,
+                    include_major_minor_tag: is_newest_patch
+                  }
+                });
               }
-            })
+            });
+
 
       - name: Trigger build.yml for ee release
         if: steps.check-existing-ee.outputs.update_required_ee == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: "build.yml",
-              ref: "main",
-              inputs: {
-                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ee_tag }}",
-                include_latest_tags: true,
-                include_major_tag: true,
-                include_major_minor_tag: true
+            const newEeVersions = JSON.parse('${{ steps.find-update-tags.outputs.NEW_EE_VERSIONS }}');
+            const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
+            
+            // Trigger workflows for new GitLab EE versions
+            newCeVersions.forEach(version => {
+              if (version.tag) {
+                console.log(`Triggering build for GitLab EE version: ${version}`);
+            
+                const majorVersion = version.tag.split('-')[0].split('.')[0];
+            
+                let includeLatestTags = false;
+                is_newest_patch=false;
+            
+                if(version.is_newest_patch) {
+                  is_newest_patch=true;
+            
+                  if (majorVersion === highestCeMajorVersion) {
+                    includeLatestTags = true;
+                  }
+                }
+            
+                github.rest.actions.createWorkflowDispatch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: "build.yml",
+                  ref: "main",
+                  inputs: {
+                    gitlab_release: version,
+                    include_latest_tags: includeLatestTags,
+                    include_major_tag: is_newest_patch,
+                    include_major_minor_tag: is_newest_patch
+                  }
+                });
               }
-            })
+            });
