@@ -6,7 +6,7 @@ permissions:
 
 on:
   schedule:
-    - cron: '30 4 * * *'
+    - cron: '30 4,16 * * *'
 
 jobs:
   check-new-release:
