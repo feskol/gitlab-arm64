@@ -1,4 +1,4 @@
-name: Sync Docker Hub GitLab Versions
+name: Sync GitLab Versions # From official Docker-Gitlab gitlab/gitlab-ce | gitlab/gitlab-ee
 # Ensure Proper Permissions for the Workflow Token
 permissions:
   contents: write
