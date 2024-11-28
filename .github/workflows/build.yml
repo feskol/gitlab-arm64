@@ -62,7 +62,7 @@ jobs:
           TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
           # Add default tag
-          DEFAULT_TAGS="$GITLAB_RELEASE"
+          DEFAULT_TAGS="$GITLAB_RELEASE $TAG_MAJOR_MINOR_PATCH-$SUFFIX"
           
           # include latest tags
           if [ "${{ github.event.inputs.include_latest_tags }}" == "true" ]; then
