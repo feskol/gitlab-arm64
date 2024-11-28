@@ -101,7 +101,7 @@ jobs:
               echo "---------REACHED major_minor_tag"
               echo "$major_minor_tag"
           
-              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\.0\$\")))" own_tags.json)
+              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\\.0\$\")))" own_tags.json)
           
               echo "---------REACHED matching_tags"
               
@@ -143,7 +143,7 @@ jobs:
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\.0\$\")))" own_tags.json)
+              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\\.0\$\")))" own_tags.json)
     
           
               # Check if `matching_tags` is empty
