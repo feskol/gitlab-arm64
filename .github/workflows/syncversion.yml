@@ -146,15 +146,15 @@ jobs:
           
           # set check variables
           if [ -s "new_ce_versions.json" ]; then
-            echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_ENV
+            echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
-            echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_ENV
+            echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
           fi
           
           if [ -s "new_ee_versions.json" ]; then
-            echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_ENV
+            echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
-            echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_ENV
+            echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
           fi
           
 
@@ -248,6 +248,7 @@ jobs:
             echo "files_exist=true" >> $GITHUB_OUTPUT
           else
             echo "files_exist=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Commit and Push changes
         if: |
