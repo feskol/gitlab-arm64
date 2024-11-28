@@ -21,8 +21,8 @@ jobs:
       - name: Get GitLab Docker tags with last modified date
         id: fetch-tags
         run: |
-          # Fetch own tags
-          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '[.results[].name]' > own_tags.json
+          # Fetch own tags (only full image with "ce.0" suffix)
+          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" > own_tags.txt
           
           # Fetch both ce and ee tags (tag name and last updated date)
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
@@ -91,7 +91,7 @@ jobs:
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
-              matching_tags=$(jq -r ". | map(select(test("^${major_minor_tag}\\.[0-9]+-ce\\.0$")))" own_tags.json)
+              matching_tags=$(grep -E "^${major_minor_tag//./\\.}.*-ce\.0$" own_tags.txt)
               
               # Check if `matching_tags` is empty
               if [[ -z "$matching_tags" ]]; then
@@ -127,7 +127,7 @@ jobs:
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-              matching_tags=$(jq -r ". | map(select(test("^${major_minor_tag}\\.[0-9]+-ee\\.0$")))" own_tags.json)
+              matching_tags=$(grep -E "^${major_minor_tag//./\\.}.*-ce\.0$" own_tags.txt)
     
           
               # Check if `matching_tags` is empty
