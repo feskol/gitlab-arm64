@@ -22,7 +22,7 @@ jobs:
         id: fetch-tags
         run: |
           # Fetch own tags
-          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name' > own_tags.txt
+          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '[.results[].name]' > own_tags.json
           
           # Fetch both ce and ee tags (tag name and last updated date)
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
@@ -101,7 +101,7 @@ jobs:
               echo "---------REACHED major_minor_tag"
               echo "$major_minor_tag"
           
-              matching_tags=$(grep -E "^${major_minor_tag}.*-ce\.0$" own_tags.txt)
+              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\.0\$\")))" own_tags.json)
           
               echo "---------REACHED matching_tags"
               
@@ -143,7 +143,7 @@ jobs:
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-              matching_tags=$(grep -E "^${major_minor_tag}.*-ee\.0$" own_tags.txt)
+              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\.0\$\")))" own_tags.json)
     
           
               # Check if `matching_tags` is empty
