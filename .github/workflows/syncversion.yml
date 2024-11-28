@@ -241,21 +241,23 @@ jobs:
               }
             });
 
+      - name: Check if files exist
+        id: check-files
+        run: |
+          if [[ -f .github/last_modified_ce_date.txt || -f .github/last_modified_ee_date.txt ]]; then
+            echo "files_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "files_exist=false" >> $GITHUB_OUTPUT
+
       - name: Commit and Push changes
         if: |
-          !(
-            fileExists('.github/last_modified_ce_date.txt') || 
-            fileExists('.github/last_modified_ee_date.txt')
-          ) || (
+          steps.check-files.outputs.files_exist == 'false' || 
+          (
             steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' ||
             steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
           )
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add .github/last_modified_ce_date.txt
-          git add .github/last_modified_ee_date.txt
-          
-          git commit -m "Update last modified CE date"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update last modified CE/EE date"
+          branch: 'main'
+          file_pattern: .github/last_modified_ce_date.txt, .github/last_modified_ee_date.txt
