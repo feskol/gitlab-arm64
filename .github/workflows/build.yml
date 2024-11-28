@@ -70,7 +70,7 @@ jobs:
           
           # include latest tags
           if [ "${{ github.event.inputs.include_latest_tags }}" == "true" ]; then
-            DEFAULT_TAGS="$DEFAULT_TAGS $SUFFIX $LATEST_TAG"
+            DEFAULT_TAGS="$DEFAULT_TAGS $SUFFIX"
           
             if [ "$SUFFIX" == "ce" ]; then
               DEFAULT_TAGS="$DEFAULT_TAGS latest"
