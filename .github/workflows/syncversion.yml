@@ -242,7 +242,6 @@ jobs:
             });
 
       - name: Commit and Push changes
-        if: steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
