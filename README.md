@@ -8,20 +8,13 @@
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub]
 
 [github-actions]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
-
 [github-actions-badge]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
-
 [dockerhub]: https://hub.docker.com/r/feskol/gitlab/tags
-
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
-
 [dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?logo=docker
-
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?logo=docker
-
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
-
-[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
 ## Overview
 
