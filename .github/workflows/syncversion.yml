@@ -25,12 +25,12 @@ jobs:
           # Find latest ce tag
           sort -V dockerhub_tags_ce.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$' | tail -n 1 > latest_ce_tag.txt
           LATEST_CE_TAG=$(cat latest_ce_tag.txt)
-          echo "::set-output name=latest_ce_tag::$LATEST_CE_TAG"
+          echo "latest_ce_tag=$LATEST_CE_TAG" >> $GITHUB_OUTPUT
 
           # Find latest ee tag
           sort -V dockerhub_tags_ee.txt | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$' | tail -n 1 > latest_ee_tag.txt
           LATEST_EE_TAG=$(cat latest_ee_tag.txt)
-          echo "::set-output name=latest_ee_tag::$LATEST_EE_TAG"
+          echo "latest_ee_tag=$LATEST_EE_TAG" >> $GITHUB_OUTPUT
 
       - name: Check if ce tag exists on Docker Hub
         id: check-existing-ce
