@@ -64,6 +64,10 @@ jobs:
           echo "Last saved modified date for gitlab-ce: $saved_ce_last_modified_date"
           echo "Last saved modified date for gitlab-ee: $saved_ee_last_modified_date"
           
+          # debug
+          pwd
+          ls -R .
+          
           # If this is the first run, we don't have a saved date, so save the current one
           if [ -z "$saved_ce_last_modified_date" ]; then
             saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
