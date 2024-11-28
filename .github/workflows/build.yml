@@ -6,9 +6,6 @@ on:
       gitlab_release:
         description: "GitLab Release Docker-Tag (e.g. 17.6.1-ee.0)"
         required: true
-      docker_push_tags:
-        description: "Additional Docker tags (comma-separated, e.g. 'beta,stable')"
-        required: false
       include_latest_tags:
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
@@ -86,15 +83,8 @@ jobs:
             DEFAULT_TAGS="$DEFAULT_TAGS $TAG_MAJOR_MINOR-$SUFFIX"
           fi
 
-          # Append user-provided tags if any
-          if [ -n "${{ github.event.inputs.docker_push_tags }}" ]; then
-            ADDITIONAL_TAGS="${{ github.event.inputs.docker_push_tags }}"
-          else
-            ADDITIONAL_TAGS=""
-          fi
-
           # Combine all tags, ensuring no extra spaces
-          ALL_TAGS="$DEFAULT_TAGS $ADDITIONAL_TAGS"
+          ALL_TAGS="$DEFAULT_TAGS"
           
           # Replace spaces with comma
           ALL_TAGS=$(echo "$ALL_TAGS" | tr ' ' ',')
