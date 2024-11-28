@@ -37,16 +37,22 @@ jobs:
           
           echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> $GITHUB_OUTPUT
           echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> $GITHUB_OUTPUT
+          
+          echo "CE latest major: $LATEST_MAJOR_CE"
+          echo "EE latest major: $LATEST_MAJOR_EE"
 
       - name: Get latest last_update
         id: latest-last-update
         run: |
           # Get the most recent 'last_updated' for valid release tags
-          LATEST_CE_LAST_UPDATE=$(cat gitlab_tags_ce.json | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
-          LATEST_EE_LAST_UPDATE=$(cat gitlab_tags_ee.json | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
+          LATEST_CE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' gitlab_tags_ce.json | sort -r | head -n 1)
+          LATEST_EE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .last_updated' gitlab_tags_ee.json | sort -r | head -n 1)
 
           echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> $GITHUB_OUTPUT
           echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> $GITHUB_OUTPUT
+          
+          echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
+          echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"
 
       - name: Compare last modified dates
         id: find-update-tags
