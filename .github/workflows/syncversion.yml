@@ -307,6 +307,11 @@ jobs:
             echo "files_exist=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Check CE last_modified_ce_date.txt contents
+        run: cat .github/last_modified_ce_date.txt
+      - name: Check EE last_modified_ee_date.txt contents
+        run: cat .github/last_modified_ee_date.txt
+
       - name: Commit and Push changes
         if: |
           steps.check-files.outputs.files_exist == 'false' || 
@@ -314,8 +319,12 @@ jobs:
             steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' ||
             steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
           )
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "[BOT] Update last modified CE/EE date"
-          branch: 'main'
-          file_pattern: .github/last_modified_ce_date.txt, .github/last_modified_ee_date.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .github/last_modified_ce_date.txt
+          git add .github/last_modified_ee_date.txt
+
+          git commit -m "Update last modified CE date"
+          git push
