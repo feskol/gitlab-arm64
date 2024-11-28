@@ -28,7 +28,7 @@ jobs:
         id: major-version
         run: |
           # Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
-          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1  > latest_ce_tag.txt
+          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1  > latest_ce_tag.txt
           jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ee.json | sort -V | tail -n 1 > latest_ee_tag.txt
           
           # Read the highest version tag
