@@ -1,4 +1,8 @@
 name: Sync Docker Hub GitLab Versions
+# Ensure Proper Permissions for the Workflow Token
+permissions:
+  contents: write
+  workflows: write
 
 on:
   workflow_dispatch:
