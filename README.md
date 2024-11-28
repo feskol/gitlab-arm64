@@ -182,4 +182,4 @@ If you find this project helpful and would like to support my work:
 - 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 - 💬 **Spread the word** by sharing this project with others.
 
-Thank you for your support! Every contribution helps me continue creating awesome software.
+Thank you for your support!
