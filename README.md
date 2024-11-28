@@ -11,17 +11,17 @@
 [github-actions-badge]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
 [dockerhub]: https://hub.docker.com/r/feskol/gitlab/tags
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
-[dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce-arm64?logo=docker
-[dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee-arm64?logo=docker
-[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce-arm64?label=gitlab-ce&logo=docker
-[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee-arm64?label=gitlab-ce&logo=docker
+[dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?logo=docker
+[dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?logo=docker
+[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ce&logo=docker
 
 ## Usage
 
 ```bash
 services:
   gitlab:
-    image: feskol/gitlab:ce-arm64 # change the tag to your needs
+    image: feskol/gitlab:ce # change the tag to your needs
     container_name: gitlab
     restart: unless-stopped
     hostname: 'gitlab.example.com'
