@@ -72,7 +72,8 @@ jobs:
               workflow_id: "build.yml",
               ref: "main",
               inputs: {
-                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
+                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}",
+                exclude_global_tags: false
               }
             })
 
@@ -87,6 +88,7 @@ jobs:
               workflow_id: "build.yml",
               ref: "main",
               inputs: {
-                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ee_tag }}"
+                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ee_tag }}",
+                exclude_global_tags: false
               }
             })

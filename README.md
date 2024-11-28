@@ -107,3 +107,16 @@ docker compose up -d
 > Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
 > Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) for step-by-step guidance
 > on update paths.
+> 
+>
+## Developer
+
+As you can probably infer from the limited number of files in this repository, my goal is to use as few custom files as
+possible, relying mainly on the provided files from GitLab to generate the ARM64 Dockerfiles.
+
+When the build job is started, it downloads the original GitLab Docker files for the specified version and then builds
+the ARM64 Docker image.
+
+> GitLab Docker files: https://gitlab.com/gitlab-org/omnibus-gitlab/-/tree/master/docker
+>
+> GitLab Versions: https://packages.gitlab.com/gitlab/gitlab-ce | https://packages.gitlab.com/gitlab/gitlab-ee
