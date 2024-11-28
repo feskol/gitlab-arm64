@@ -114,16 +114,21 @@ jobs:
               if [[ -z "$matching_tags" ]]; then
                 is_newer=true
               else
-                is_newer=false
+                is_newer=true
           
                 # Check if the tag is the newest
                 for tag in $matching_tags; do
                   # Compare the patch version using sort -V (natural sort of versions)
                   if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
                     # The tag version is older than a newer tag
-                    is_newer=true
+                    is_newer=false
                   fi
                 done
+          
+                # Check if the tag already exists and is the same version
+                if [[ " $matching_tags " =~ " $tag_name " ]]; then
+                  is_newer=false
+                fi
               fi
           
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
@@ -151,16 +156,21 @@ jobs:
               if [[ -z "$matching_tags" ]]; then
                 is_newer=true
               else
-                is_newer=false
+                is_newer=true
           
                 # Check if the tag is the newest
                 for tag in $matching_tags; do
                   # Compare the patch version using sort -V (natural sort of versions)
                   if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
                     # The tag version is older than a newer tag
-                    is_newer=true
+                    is_newer=false
                   fi
                 done
+          
+                # Check if the tag already exists and is the same version
+                if [[ " $matching_tags " =~ " $tag_name " ]]; then
+                  is_newer=false
+                fi
               fi
           
               # Append to the JSON array
