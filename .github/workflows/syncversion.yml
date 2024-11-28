@@ -13,9 +13,6 @@ jobs:
   check-new-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Enable debugging
-        run: echo "##[debug] Debugging enabled"
-
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
@@ -112,15 +109,19 @@ jobs:
                 done
               fi
           
+              ### DEBUG ###
+              echo "before_new_ce_versions: $new_ce_versions"
+              echo "tag_name: $tag_name"
+              echo "is_newer: $is_newer"
+              ### END DEBUG ###
+          
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
           
-              # Check for jq errors
-              if [ $? -ne 0 ]; then
-                echo "Error with jq operation."
-                exit 1
-              fi
-          
               echo "Adding new CE Version: $tag_name"
+          
+              ### DEBUG ###
+              echo "after_new_ce_versions: $new_ce_versions"
+              ### END DEBUG ###
             fi
           done
           
