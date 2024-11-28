@@ -66,8 +66,8 @@ jobs:
         id: latest-last-update
         run: |
           # Get the most recent 'last_updated' for valid release tags
-          LATEST_CE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' gitlab_tags_ce.json | sort -r | head -n 1)
-          LATEST_EE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .last_updated' gitlab_tags_ee.json | sort -r | head -n 1)
+          LATEST_CE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' gitlab_tags_ce.json | sort -V | tail -n 1)
+          LATEST_EE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .last_updated' gitlab_tags_ee.json | sort -V | tail -n 1)
 
           echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> $GITHUB_OUTPUT
           echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> $GITHUB_OUTPUT
