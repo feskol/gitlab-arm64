@@ -93,14 +93,21 @@ jobs:
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
               matching_tags=$(cat own_tags.json | grep -E "^${major_minor_tag}.*-ce\.0$")
           
-              is_newer=false
-              for tag in $matching_tags; do
-                # Compare the patch version using sort -V (natural sort of versions)
-                if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
-                  # The tag version is older than a newer tag
-                  is_newer=true
-                fi
-              done
+              # Check if `matching_tags` is empty
+              if [[ -z "$matching_tags" ]]; then
+                is_newer=true
+              else
+                is_newer=false
+          
+                # Check if the tag is the newest
+                for tag in $matching_tags; do
+                  # Compare the patch version using sort -V (natural sort of versions)
+                  if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
+                    # The tag version is older than a newer tag
+                    is_newer=true
+                  fi
+                done
+              fi
           
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
           
@@ -121,15 +128,23 @@ jobs:
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
               matching_tags=$(cat own_tags.json | grep -E "^${major_minor_tag}.*-ee\.0$")
+    
           
-              is_newer=false
-              for tag in $matching_tags; do
-                # Compare the patch version using sort -V (natural sort of versions)
-                if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
-                  # The tag version is older than a newer tag
-                  is_newer=true
-                fi
-              done
+              # Check if `matching_tags` is empty
+              if [[ -z "$matching_tags" ]]; then
+                is_newer=true
+              else
+                is_newer=false
+          
+                # Check if the tag is the newest
+                for tag in $matching_tags; do
+                  # Compare the patch version using sort -V (natural sort of versions)
+                  if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
+                    # The tag version is older than a newer tag
+                    is_newer=true
+                  fi
+                done
+              fi
           
               # Append to the JSON array
               new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
@@ -148,14 +163,15 @@ jobs:
           echo "${new_ce_versions}" > new_ce_versions.json
           echo "${new_ee_versions}" > new_ee_versions.json
           
-          # set check variables
-          if [ -s "new_ce_versions.json" ]; then
+          # if empty "" or contains an empty array "[]"
+          if [[ ! -s "new_ce_versions.json" || $(jq 'length == 0' new_ce_versions.json) == "true" ]]; then
             echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
             echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
           fi
           
-          if [ -s "new_ee_versions.json" ]; then
+           # if empty "" or contains an empty array "[]"
+          if [[ ! -s "new_ee_versions.json" || $(jq 'length == 0' new_ee_versions.json) == "true" ]]; then
             echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
             echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
