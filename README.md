@@ -106,14 +106,27 @@ services:
 
 You can view [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
 
-Here’s what you need to know about the tags:
+The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning system:
 
-- The `latest` tag corresponds to the newest CE edition available.
-- The `ce` tag also represents the newest CE edition available.
-- The `ee` tag corresponds to the newest EE edition available.
+1. **`latest`**:  
+   Points to the newest Community Edition (CE) release available.
 
-> [!NOTE]
-> `latest` tag is identical to the `ce` tag.
+2. **`ce`**:  
+   Represents the newest Community Edition (CE) release available.
+
+3. **`ee`**:  
+   Represents the newest Enterprise Edition (EE) release available.
+
+4. **Version-specific tags**:  
+   Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
+   For example, if the newest version is `17.6.1-ce.0`,
+   the following Docker image tags are created pointing to that version:
+    - `17.6.1-ce.0` (original version)
+    - `17.6.1-ce` (version without the `.0` suffix)
+    - `17.6-ce` (major and minor version)
+    - `17-ce` (major version only)
+
+These tags allow you to use a specific version or track broader releases based on your requirements.
 
 ---
 
@@ -123,8 +136,8 @@ To update GitLab, remove the current Docker container, pull the newer image vers
 
 > [!WARNING]  
 > Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
-> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) for step-by-step guidance
-> on update paths.
+> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/?distro=docker) for 
+> step-by-step guidance on update paths.
 
 ```bash
 # Stop the docker container
@@ -135,13 +148,13 @@ docker compose down
 # Old image tag:
 services:
   gitlab:
-    image: feskol/gitlab:17.6.0 # you need to update your tag here
+    image: feskol/gitlab:17.6.0-ce # you need to update your tag here
 ...
 
 # New image tag
 services:
   gitlab:
-    image: feskol/gitlab:17.6.1 # updated patch
+    image: feskol/gitlab:17.6.1-ce # updated patch
 ...
 ```
 
