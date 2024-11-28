@@ -85,25 +85,13 @@ jobs:
           new_ce_versions="[]"
           for tag_data in $(jq -c '.[]' gitlab_tags_ce.json); do
             tag_name=$(echo "$tag_data" | jq -r '.name')
-          
-            echo "---------REACHED tag_name"
-            
             tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
-          
-            echo "---------REACHED tag_last_updated"
-          
           
             # Process only valid release tags for gitlab-ce and compare dates
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
-            
-              echo "---------REACHED major_minor_tag"
-              echo "$major_minor_tag"
-          
-              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\\.0\$\")))" own_tags.json)
-          
-              echo "---------REACHED matching_tags"
+              matching_tags=$(jq -r ". | map(select(test("^${major_minor_tag}\\.[0-9]+-ce\\.0$")))" own_tags.json)
               
               # Check if `matching_tags` is empty
               if [[ -z "$matching_tags" ]]; then
@@ -121,11 +109,7 @@ jobs:
                 done
               fi
           
-              echo "---------REACHED is_newer function"
-          
               new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
-          
-              echo "---------REACHED adding to new_ce_versions"
           
               echo "Adding new CE Version: $tag_name"
             fi
@@ -143,7 +127,7 @@ jobs:
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
           
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-              matching_tags=$(jq -r ". | map(select(test(\"^${major_minor_tag}.*-ce\\.0\$\")))" own_tags.json)
+              matching_tags=$(jq -r ". | map(select(test("^${major_minor_tag}\\.[0-9]+-ee\\.0$")))" own_tags.json)
     
           
               # Check if `matching_tags` is empty
