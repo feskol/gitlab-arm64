@@ -9,11 +9,15 @@ on:
     - cron: '0 2,14 * * *'
   workflow_dispatch:
 
-
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          ref: main
+
       - name: Get GitLab Docker tags with last modified date
         id: fetch-tags
         run: |
@@ -240,3 +244,15 @@ jobs:
                 });
               }
             });
+
+      - name: Commit and Push changes
+        if: steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add .github/last_modified_ce_date.txt
+          git add .github/last_modified_ee_date.txt
+          
+          git commit -m "Update last modified CE date"
+          git push
