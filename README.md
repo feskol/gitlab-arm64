@@ -105,5 +105,5 @@ docker compose up -d
 
 > [!WARNING]  
 > Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
-> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) or step-by-step guidance
-> on supported update paths.
+> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) for step-by-step guidance
+> on update paths.
