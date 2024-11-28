@@ -301,7 +301,7 @@ jobs:
       - name: Check if files exist
         id: check-files
         run: |
-          if [[ -f .github/last_modified_ce_date.txt || -f .github/last_modified_ee_date.txt ]]; then
+          if [[ -f .github/last_modified_ce_date.txt && -f .github/last_modified_ee_date.txt ]]; then
             echo "files_exist=true" >> $GITHUB_OUTPUT
           else
             echo "files_exist=false" >> $GITHUB_OUTPUT
