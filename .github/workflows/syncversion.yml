@@ -215,8 +215,8 @@ jobs:
             
             // Trigger workflows for new GitLab CE versions
             newCeVersions.forEach(version => {
-              if (version) {
-                console.log(`Triggering build for GitLab CE version: ${version}`);
+              if (version.tag) {
+                console.log(`Triggering build for GitLab CE version: ${version.tag}`);
             
                 const majorVersion = version.tag.match(/^(\d+)/)[1];
                 const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
@@ -240,7 +240,7 @@ jobs:
                   workflow_id: "build.yml",
                   ref: "main",
                   inputs: {
-                    gitlab_release: version,
+                    gitlab_release: version.tag,
                     include_latest_tags: includeLatestTags,
                     include_major_tag: is_newest_patch,
                     include_major_minor_tag: is_newest_patch
@@ -263,9 +263,9 @@ jobs:
             const highestEeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
             
             // Trigger workflows for new GitLab EE versions
-            newCeVersions.forEach(version => {
+            newEeVersions.forEach(version => {
               if (version.tag) {
-                console.log(`Triggering build for GitLab EE version: ${version}`);
+                console.log(`Triggering build for GitLab EE version: ${version.tag}`);
             
                 const majorVersion = version.tag.match(/^(\d+)/)[1];
                 const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
@@ -289,7 +289,7 @@ jobs:
                   workflow_id: "build.yml",
                   ref: "main",
                   inputs: {
-                    gitlab_release: version,
+                    gitlab_release: version.tag,
                     include_latest_tags: includeLatestTags,
                     include_major_tag: is_newest_patch,
                     include_major_minor_tag: is_newest_patch
