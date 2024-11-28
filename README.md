@@ -79,6 +79,11 @@ Here’s what you need to know about the tags:
 
 To update GitLab, remove the current Docker container, pull the newer image version, and restart the container.
 
+> [!WARNING]  
+> Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
+> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) for step-by-step guidance
+> on update paths.
+
 ```bash
 # Stop the docker container
 docker compose down
@@ -103,12 +108,6 @@ services:
 docker compose up -d
 ````
 
-> [!WARNING]  
-> Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
-> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/) for step-by-step guidance
-> on update paths.
-> 
->
 ## Developer
 
 As you can probably infer from the limited number of files in this repository, my goal is to use as few custom files as
