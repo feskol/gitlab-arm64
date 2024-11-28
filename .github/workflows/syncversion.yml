@@ -82,7 +82,7 @@ jobs:
           fi
           
           # Prepare the list of new releases for gitlab-ce
-          new_ce_versions=()
+          new_ce_versions="[]"
           for tag_data in $(jq -c '.[]' gitlab_tags_ce.json); do
             tag_name=$(echo "$tag_data" | jq -r '.name')
             tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
@@ -108,8 +108,10 @@ jobs:
             fi
           done
           
+          echo "New CE versions json: $new_ce_versions"
+          
           # Prepare the list of new releases for gitlab-ee
-          new_ee_versions=()
+          new_ee_versions="[]"
           for tag_data in $(jq -c '.[]' gitlab_tags_ee.json); do
             tag_name=$(echo "$tag_data" | jq -r '.name')
             tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
@@ -135,6 +137,8 @@ jobs:
               echo "Adding new EE Version: $tag_name"
             fi
           done
+          
+          echo "New EE versions json: $new_ee_versions"
 
           # Save the new last modified date for future runs for gitlab-ce and gitlab-ee
           echo "${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}" > .github/last_modified_ce_date.txt
