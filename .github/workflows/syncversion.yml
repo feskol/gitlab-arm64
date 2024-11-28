@@ -60,8 +60,6 @@ jobs:
 
       - name: Debug and Trigger build.yml for ce release
         if: steps.check-existing-ce.outputs.update_required_ce == 'true'
-        run: |
-          echo "Triggering build.yml with tag: ${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
         uses: actions/github-script@v6
         with:
           script: |
