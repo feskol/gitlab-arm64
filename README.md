@@ -16,6 +16,8 @@
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
+[![PayPal ME](https://img.shields.io/badge/Support-PayPal_Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/lyatorYT)
+
 ## Overview
 
 GitLab does not officially support ARM64.
@@ -23,7 +25,7 @@ As a result, GitLab does not provide official Docker images for ARM64. While the
 attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
 security patch requires an immediate update.
 
-To solve this problem, I created a GitHub Action that checks for new releases twice a day and automatically builds a 
+To solve this problem, I created a GitHub Action that checks for new releases twice a day and automatically builds a
 Docker image for the latest release.
 
 > [!IMPORTANT]  
@@ -62,6 +64,8 @@ services:
     shm_size: '256m'
 ```
 
+---
+
 ### Tags
 
 You can view [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
@@ -74,6 +78,8 @@ Here’s what you need to know about the tags:
 
 > [!NOTE]
 > `latest` tag is identical to the `ce` tag.
+
+---
 
 ### Update
 
@@ -108,7 +114,7 @@ services:
 docker compose up -d
 ````
 
-## Developer
+## Dev-notes
 
 As you can probably infer from the limited number of files in this repository, my goal is to use as few custom files as
 possible, relying mainly on the provided files from GitLab to generate the ARM64 Dockerfiles.
