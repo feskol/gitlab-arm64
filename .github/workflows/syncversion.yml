@@ -39,10 +39,10 @@ jobs:
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
           if [ "$RESPONSE" -eq 200 ]; then
             echo "Tag $TAG exists on Docker Hub (ce)."
-            echo "::set-output name=update_required_ce::true"
+            echo "update_required_ce=true" >> $GITHUB_OUTPUT
           else
             echo "Tag $TAG does not exist on Docker Hub (ce)."
-            echo "::set-output name=update_required_ce::false"
+            echo "update_required_ce=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Check if ee tag exists on Docker Hub
@@ -52,10 +52,10 @@ jobs:
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/feskol/gitlab/tags/${TAG}")
           if [ "$RESPONSE" -eq 200 ]; then
             echo "Tag $TAG exists on Docker Hub (ee)."
-            echo "::set-output name=update_required_ee::true"
+            echo "update_required_ee=true" >> $GITHUB_OUTPUT
           else
             echo "Tag $TAG does not exist on Docker Hub (ee)."
-            echo "::set-output name=update_required_ee::false"
+            echo "update_required_ee=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Trigger build.yml for ce release
