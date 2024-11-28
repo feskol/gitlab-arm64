@@ -99,6 +99,7 @@ jobs:
               major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
             
               echo "---------REACHED major_minor_tag"
+              echo "$major_minor_tag"
           
               matching_tags=$(cat own_tags.json | grep -E "^${major_minor_tag}.*-ce\.0$")
           
