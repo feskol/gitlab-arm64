@@ -206,7 +206,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newCeVersions = JSON.parse('$(cat new_ce_versions.json)');
+            const newCeVersions = JSON.parse('${{ cat new_ce_versions.json }}');
             const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
             const highestCeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
             
@@ -252,7 +252,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newEeVersions = JSON.parse('$(cat new_ee_versions.json)');
+            const newEeVersions = JSON.parse('${{ cat new_ee_versions.json }}');
             const highestEeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
             const highestEeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
             
