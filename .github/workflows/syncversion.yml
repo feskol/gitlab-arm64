@@ -73,7 +73,9 @@ jobs:
               ref: "main",
               inputs: {
                 gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}",
-                exclude_global_tags: false
+                include_latest_tags: true,
+                include_major_tag: true,
+                include_major_minor_tag: true
               }
             })
 
@@ -89,6 +91,8 @@ jobs:
               ref: "main",
               inputs: {
                 gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ee_tag }}",
-                exclude_global_tags: false
+                include_latest_tags: true,
+                include_major_tag: true,
+                include_major_minor_tag: true
               }
             })

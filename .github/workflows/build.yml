@@ -4,15 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       gitlab_release:
-        description: "GitLab Release Docker-Tag (e.g., 17.6.1-ce.0 or 17.6.1-ee.0)"
+        description: "GitLab Release Docker-Tag (e.g. 17.6.1-ee.0)"
         required: true
       docker_push_tags:
-        description: "Additional Docker tags (comma-separated, e.g., 'beta,stable')"
+        description: "Additional Docker tags (comma-separated, e.g. 'beta,stable')"
         required: false
-      exclude_global_tags:
-        description: "Exclude broader tags like 'major.minor' (e.g. 17.6), 'major' (e.g. 17), 'edition' (e.g. ce), and 'latest'"
+      include_latest_tags:
+        description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
-        default: true
+        default: false
+      include_major_tag:
+        description: "Update 'major' tag (e.g. 17)"
+        required: false
+        default: false
+      include_major_minor_tag:
+        description: "Update 'major.minor' tag (e.g. 17.6)"
+        required: false
+        default: false
 
 jobs:
   build-and-push:
@@ -56,21 +64,27 @@ jobs:
           TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
           TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
-          # Define tags for new releases (only if "exclude_global_tags" is false)
-          DEFAULT_NEW_TAGS=""
-          if [ "${{ github.event.inputs.exclude_global_tags }}" == "false" ]; then
-            
-            # Define "latest" tag only if suffix is "ce"
-            LATEST_TAG=""
+          # Add default tag
+          DEFAULT_TAGS="$GITLAB_RELEASE"
+          
+          # include latest tags
+          if [ "${{ github.event.inputs.include_latest_tags }}" == "true" ]; then
+            DEFAULT_TAGS="$DEFAULT_TAGS $SUFFIX $LATEST_TAG"
+          
             if [ "$SUFFIX" == "ce" ]; then
-              LATEST_TAG="latest"
+              DEFAULT_TAGS="$DEFAULT_TAGS latest"
             fi
-
-            DEFAULT_NEW_TAGS="$TAG_MAJOR_MINOR-$SUFFIX $TAG_MAJOR-$SUFFIX $SUFFIX $LATEST_TAG"
           fi
-
-          # Default tags
-          DEFAULT_TAGS="$GITLAB_RELEASE $TAG_MAJOR_MINOR_PATCH-$SUFFIX $DEFAULT_NEW_TAGS"
+          
+          # include major tag
+          if [ "${{ github.event.inputs.include_major_tag }}" == "true" ]; then
+            DEFAULT_TAGS="$DEFAULT_TAGS $TAG_MAJOR-$SUFFIX"
+          fi
+          
+          # include major.minor tag
+          if [ "${{ github.event.inputs.include_major_minor_tag }}" == "true" ]; then
+            DEFAULT_TAGS="$DEFAULT_TAGS $TAG_MAJOR_MINOR-$SUFFIX"
+          fi
 
           # Append user-provided tags if any
           if [ -n "${{ github.event.inputs.docker_push_tags }}" ]; then
@@ -81,9 +95,6 @@ jobs:
 
           # Combine all tags, ensuring no extra spaces
           ALL_TAGS="$DEFAULT_TAGS $ADDITIONAL_TAGS"
-
-          # Remove any extra spaces in the final tag list
-          ALL_TAGS=$(echo $ALL_TAGS | xargs)
           
           # Replace spaces with comma
           ALL_TAGS=$(echo "$ALL_TAGS" | tr ' ' ',')
