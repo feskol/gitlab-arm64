@@ -58,6 +58,24 @@ jobs:
             echo "update_required_ee=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Debug and Trigger build.yml for ce release
+        if: steps.check-existing-ce.outputs.update_required_ce == 'true'
+        run: |
+          echo "Triggering build.yml with tag: ${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const response = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "build.yml",  # Ensure this is correct
+              ref: "main",
+              inputs: {
+                gitlab_release: "${{ steps.find-latest-tags.outputs.latest_ce_tag }}"
+              }
+            });
+            console.log("Triggered build.yml with gitlab_release: " + "${{ steps.find-latest-tags.outputs.latest_ce_tag }}");
+
       - name: Trigger build.yml for ce release
         if: steps.check-existing-ce.outputs.update_required_ce == 'true'
         uses: actions/github-script@v6
