@@ -16,7 +16,7 @@
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
-[![PayPal ME](https://img.shields.io/badge/Support-PayPal_Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/lyatorYT)
+[![PayPal ME](https://img.shields.io/badge/Support-PayPal_Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
 ## Overview
 
