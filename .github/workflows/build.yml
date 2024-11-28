@@ -103,15 +103,7 @@ jobs:
       - name: Generate Docker tags
         id: generate-tags
         run: |
-          DOCKERHUB_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
-          # Remove the trailing comma at the end
-          DOCKERHUB_TAGS=${DOCKERHUB_TAGS%,}
-          echo "DOCKERHUB_TAGS=${DOCKERHUB_TAGS}" >> $GITHUB_ENV
-
-      - name: Generate ARM64 tags
-        id: generate-arm64-tags
-        run: |
-          DOCKERHUB_PUSH_TAGS=$(echo ${{ env.DOCKERHUB_TAGS }} | tr ',' '\n' | xargs -I {} echo "{}-arm64" | tr '\n' ',')
+          DOCKERHUB_PUSH_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
           # Remove the trailing comma at the end
           DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS%,}
           echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> $GITHUB_ENV
