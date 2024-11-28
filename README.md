@@ -182,4 +182,6 @@ If you find this project helpful and would like to support my work:
 
 Thank you for your support!
 
+---
+
 *Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
