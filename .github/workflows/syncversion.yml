@@ -18,18 +18,18 @@ jobs:
         id: fetch-tags
         run: |
           # Fetch own tags
-          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name' > own_tags.txt
+          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name' > own_tags.json
           
           # Fetch both ce and ee tags (tag name and last updated date)
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '.results[] | {name: .name, last_updated: .last_updated}' > gitlab_tags_ce.txt
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '.results[] | {name: .name, last_updated: .last_updated}' > gitlab_tags_ee.txt
+          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
+          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ee.json
 
       - name: Get latest major version
         id: major-version
         run: |
           # Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
-          cat gitlab_tags_ce.txt | jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' | sort -V | tail -n 1 > latest_ce_tag.txt
-          cat gitlab_tags_ee.txt | jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' | sort -V | tail -n 1 > latest_ee_tag.txt
+          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1  > latest_ce_tag.txt
+          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ee.json | sort -V | tail -n 1 > latest_ee_tag.txt
           
           # Read the highest version tag
           LATEST_MAJOR_CE=$(cat latest_ce_tag.txt | sed -E "s/-ce.0$//" | cut -d. -f1)
@@ -42,8 +42,8 @@ jobs:
         id: latest-last-update
         run: |
           # Get the most recent 'last_updated' for valid release tags
-          LATEST_CE_LAST_UPDATE=$(cat gitlab_tags_ce.txt | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
-          LATEST_EE_LAST_UPDATE=$(cat gitlab_tags_ee.txt | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
+          LATEST_CE_LAST_UPDATE=$(cat gitlab_tags_ce.json | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
+          LATEST_EE_LAST_UPDATE=$(cat gitlab_tags_ee.json | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' | sort -r | head -n 1)
 
           echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> $GITHUB_OUTPUT
           echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> $GITHUB_OUTPUT
@@ -73,7 +73,7 @@ jobs:
           
           # Prepare the list of new releases for gitlab-ce
           new_ce_versions=()
-          for tag_data in $(cat gitlab_tags_ce.txt); do
+          for tag_data in $(cat gitlab_tags_ce.json); do
             tag_name=$(echo "$tag_data" | jq -r '.name')
             tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
           
@@ -99,7 +99,7 @@ jobs:
           
           # Prepare the list of new releases for gitlab-ee
           new_ee_versions=()
-          for tag_data in $(cat gitlab_tags_ee.txt); do
+          for tag_data in $(cat gitlab_tags_ee.json); do
             tag_name=$(echo "$tag_data" | jq -r '.name')
             tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
           
@@ -128,17 +128,17 @@ jobs:
           echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/last_modified_ee_date.txt
           
           # Set output for new versions
-          echo "${new_ce_versions}" > new_ce_versions.txt
-          echo "${new_ee_versions}" > new_ee_versions.txt
+          echo "${new_ce_versions}" > new_ce_versions.json
+          echo "${new_ee_versions}" > new_ee_versions.json
           
           # set check variables
-          if [ -s "new_ce_versions.txt" ]; then
+          if [ -s "new_ce_versions.json" ]; then
             echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_ENV
           else
             echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_ENV
           fi
           
-          if [ -s "new_ee_versions.txt" ]; then
+          if [ -s "new_ee_versions.json" ]; then
             echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_ENV
           else
             echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_ENV
@@ -150,7 +150,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newCeVersions = JSON.parse('$(cat new_ce_versions.txt)');
+            const newCeVersions = JSON.parse('$(cat new_ce_versions.json)');
             const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
             
             // Trigger workflows for new GitLab CE versions
@@ -192,7 +192,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newEeVersions = JSON.parse('$(cat new_ee_versions.txt)');
+            const newEeVersions = JSON.parse('$(cat new_ee_versions.json)');
             const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
             
             // Trigger workflows for new GitLab EE versions
