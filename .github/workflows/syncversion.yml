@@ -35,15 +35,32 @@ jobs:
           jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1  > latest_ce_tag.txt
           jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ee.json | sort -V | tail -n 1 > latest_ee_tag.txt
           
+          # Strip version-specific parts to generate base tags
+          BASE_TAG_CE=$(cat latest_ce_tag.txt | sed -E "s/-ce.0$//")
+          BASE_TAG_EE=$(cat latest_ee_tag.txt | sed -E "s/-ee.0$//")
+          
           # Read the highest version tag
-          LATEST_MAJOR_CE=$(cat latest_ce_tag.txt | sed -E "s/-ce.0$//" | cut -d. -f1)
-          LATEST_MAJOR_EE=$(cat latest_ee_tag.txt | sed -E "s/-ee.0$//" | cut -d. -f1)
+          LATEST_MAJOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1)
+          LATEST_MAJOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1)
           
           echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> $GITHUB_OUTPUT
           echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> $GITHUB_OUTPUT
           
+          # Output major
           echo "CE latest major: $LATEST_MAJOR_CE"
           echo "EE latest major: $LATEST_MAJOR_EE"
+          
+          # Read the highest major.minor
+          LATEST_MAJOR_MINOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1-2)
+          LATEST_MAJOR_MINOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1-2)
+          
+          echo "LATEST_MAJOR_MINOR_CE=$LATEST_MAJOR_MINOR_CE" >> $GITHUB_OUTPUT
+          echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> $GITHUB_OUTPUT
+          
+          # Output major.minor
+          echo "CE latest major.minor: $LATEST_MAJOR_MINOR_CE"
+          echo "EE latest major.minor: $LATEST_MAJOR_MINOR_EE"
+
 
       - name: Get latest last_update
         id: latest-last-update
@@ -191,22 +208,26 @@ jobs:
           script: |
             const newCeVersions = JSON.parse('$(cat new_ce_versions.json)');
             const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
+            const highestCeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
             
             // Trigger workflows for new GitLab CE versions
             newCeVersions.forEach(version => {
               if (version) {
                 console.log(`Triggering build for GitLab CE version: ${version}`);
             
-                const majorVersion = version.tag.split('-')[0].split('.')[0];
+                const majorVersion = version.tag.match(/^(\d+)/)[1];
+                const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
             
                 let includeLatestTags = false;
                 is_newest_patch=false;
             
-                if(version.is_newest_patch) {
+                if (version.is_newest_patch) {
                   is_newest_patch=true;
             
-                  if (majorVersion === highestCeMajorVersion) {
-                    includeLatestTags = true;
+                  if (majorMinorVersion === highestCeMajorMinorVersion) {
+                    if (majorVersion === highestCeMajorVersion) {
+                      includeLatestTags = true;
+                    }
                   }
                 }
             
@@ -232,23 +253,27 @@ jobs:
         with:
           script: |
             const newEeVersions = JSON.parse('$(cat new_ee_versions.json)');
-            const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
+            const highestEeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
+            const highestEeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
             
             // Trigger workflows for new GitLab EE versions
             newCeVersions.forEach(version => {
               if (version.tag) {
                 console.log(`Triggering build for GitLab EE version: ${version}`);
             
-                const majorVersion = version.tag.split('-')[0].split('.')[0];
+                const majorVersion = version.tag.match(/^(\d+)/)[1];
+                const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
             
                 let includeLatestTags = false;
                 is_newest_patch=false;
             
-                if(version.is_newest_patch) {
+                if (version.is_newest_patch) {
                   is_newest_patch=true;
             
-                  if (majorVersion === highestCeMajorVersion) {
-                    includeLatestTags = true;
+                  if (majorMinorVersion === highestEeMajorMinorVersion) {
+                    if (majorVersion === highestEeMajorVersion) {
+                      includeLatestTags = true;
+                    }
                   }
                 }
             
