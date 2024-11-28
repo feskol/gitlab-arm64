@@ -4,17 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       gitlab_release:
+        type: string
         description: "GitLab Release Docker-Tag (e.g. 17.6.1-ee.0)"
         required: true
       include_latest_tags:
+        type: boolean
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
       include_major_tag:
+        type: boolean
         description: "Update 'major' tag (e.g. 17)"
         required: false
         default: false
       include_major_minor_tag:
+        type: boolean
         description: "Update 'major.minor' tag (e.g. 17.6)"
         required: false
         default: false
