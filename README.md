@@ -172,8 +172,6 @@ Here are the links necessary for this repository to function properly:
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
-*Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
-
 ## Support Me
 
 If you find this project helpful and would like to support my work:
@@ -183,3 +181,5 @@ If you find this project helpful and would like to support my work:
 - 💬 **Spread the word** by sharing this project with others.
 
 Thank you for your support!
+
+*Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
