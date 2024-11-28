@@ -183,18 +183,18 @@ jobs:
           echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/last_modified_ee_date.txt
           
           # Set output for new versions
-          echo "${new_ce_versions}" > new_ce_versions.json
-          echo "${new_ee_versions}" > new_ee_versions.json
+          echo "NEW_CE_VERSIONS=$new_ce_versions" >> $GITHUB_OUTPUT
+          echo "NEW_EE_VERSIONS=$new_ee_versions" >> $GITHUB_OUTPUT
           
-          # if empty "" or contains an empty array "[]"
-          if [[ ! -s "new_ce_versions.json" || $(jq 'length == 0' new_ce_versions.json) == "true" ]]; then
+          # if empty ""
+          if [[ $(echo "$new_ce_versions" | jq 'length == 0') == "true" ]]; then
             echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
             echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
           fi
           
-           # if empty "" or contains an empty array "[]"
-          if [[ ! -s "new_ee_versions.json" || $(jq 'length == 0' new_ee_versions.json) == "true" ]]; then
+           # if empty
+          if [[ $(echo "$new_ee_versions" | jq 'length == 0') == "true" ]]; then
             echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
           else
             echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
@@ -206,7 +206,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newCeVersions = JSON.parse('${{ cat new_ce_versions.json }}');
+            const newCeVersions = JSON.parse('${{ steps.find-update-tags.output.NEW_CE_VERSIONS }}');
             const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
             const highestCeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
             
@@ -252,7 +252,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const newEeVersions = JSON.parse('${{ cat new_ee_versions.json }}');
+            const newEeVersions = JSON.parse('${{ steps.find-update-tags.output.NEW_EE_VERSIONS }}');
             const highestEeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
             const highestEeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
             
