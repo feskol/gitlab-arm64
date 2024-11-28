@@ -5,9 +5,8 @@ permissions:
   actions: write
 
 on:
-  workflow_dispatch:
-#  schedule:
-#    - cron: '30 4 * * *'
+  schedule:
+    - cron: '30 4 * * *'
 
 jobs:
   check-new-release:
