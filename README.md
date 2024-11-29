@@ -6,7 +6,7 @@
 [![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ee]][dockerhub]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub]
-[![PayPal ME](https://img.shields.io/badge/Support-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+[![PayPal ME](https://img.shields.io/badge/Support_me_with-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
 [github-actions]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
 [github-actions-badge]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
@@ -175,7 +175,7 @@ Here are the links necessary for this repository to function properly:
 If you find this project helpful and would like to support my work:
 
 - 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 - 💬 **Spread the word** by sharing this project with others.
 
 Thank you for your support!
