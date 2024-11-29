@@ -79,8 +79,8 @@ jobs:
         id: find-update-tags
         run: |
           # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
-          saved_ce_last_modified_date=$(cat .github/last_modified_ce_date.txt || echo "")
-          saved_ee_last_modified_date=$(cat .github/last_modified_ee_date.txt || echo "")
+          saved_ce_last_modified_date=$(cat .github/generated-files/last_modified_ce_date.txt || echo "")
+          saved_ee_last_modified_date=$(cat .github/generated-files/last_modified_ee_date.txt || echo "")
           
           echo "Last saved modified date for gitlab-ce: $saved_ce_last_modified_date"
           echo "Last saved modified date for gitlab-ee: $saved_ee_last_modified_date"
@@ -89,13 +89,13 @@ jobs:
           if [ -z "$saved_ce_last_modified_date" ]; then
             saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
             echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
-            echo "$saved_ce_last_modified_date" > .github/last_modified_ce_date.txt
+            echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
           fi
           
           if [ -z "$saved_ee_last_modified_date" ]; then
             saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
             echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
-            echo "$saved_ee_last_modified_date" > .github/last_modified_ee_date.txt
+            echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
           fi
           
           # Prepare the list of new releases for gitlab-ce
@@ -182,8 +182,8 @@ jobs:
           echo "New EE versions json: $new_ee_versions"
 
           # Save the new last modified date for future runs for gitlab-ce and gitlab-ee
-          echo "${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}" > .github/last_modified_ce_date.txt
-          echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/last_modified_ee_date.txt
+          echo "${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}" > .github/generated-files/last_modified_ce_date.txt
+          echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/generated-files/last_modified_ee_date.txt
           
           # Set output for new versions
           echo "${new_ce_versions}" > new_ce_versions.json
@@ -314,16 +314,16 @@ jobs:
       - name: Check if files exist
         id: check-files
         run: |
-          if [[ -f .github/last_modified_ce_date.txt && -f .github/last_modified_ee_date.txt ]]; then
+          if [[ -f .github/generated-files/last_modified_ce_date.txt && -f .github/generated-files/last_modified_ee_date.txt ]]; then
             echo "files_exist=true" >> $GITHUB_OUTPUT
           else
             echo "files_exist=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Check CE last_modified_ce_date.txt contents
-        run: cat .github/last_modified_ce_date.txt
+        run: cat .github/generated-files/last_modified_ce_date.txt
       - name: Check EE last_modified_ee_date.txt contents
-        run: cat .github/last_modified_ee_date.txt
+        run: cat .github/generated-files/last_modified_ee_date.txt
 
       - name: Commit and Push changes
         if: |
@@ -336,8 +336,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add .github/last_modified_ce_date.txt
-          git add .github/last_modified_ee_date.txt
+          git add .github/generated-files/last_modified_ce_date.txt
+          git add .github/generated-files/last_modified_ee_date.txt
 
           git commit -m "[BOT] Update last modified date"
           git push
