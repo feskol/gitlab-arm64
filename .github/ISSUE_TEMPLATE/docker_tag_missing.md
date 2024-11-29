@@ -9,9 +9,7 @@ assignees: ''
 
 ### Missing GitLab Version Report
 
-#### Description
-
-Please fill in the table below to report a missing GitLab version.
+#### Context
 
 | Title/Description                | Value                     |
 |----------------------------------|---------------------------|
@@ -19,17 +17,6 @@ Please fill in the table below to report a missing GitLab version.
 | **Is desired**                   | :heavy_check_mark: or :x: |
 | **Docker-Tag**                   | (e.g., `17.0.2-ce`)       |
 | **Corresponding GitLab-Version** | (e.g., `17.0.2-ce.0`)     |
-
----
-
-### Example Input
-
-| Title/Description                | Value              |
-|----------------------------------|--------------------|
-| **Is missing**                   | :heavy_check_mark: |
-| **Is desired**                   | :x:                |
-| **Docker-Tag**                   | 17.0.2-ce          |
-| **Corresponding GitLab-Version** | 17.0.2-ce.0        |
 
 ---
 
