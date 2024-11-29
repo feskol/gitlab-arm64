@@ -131,7 +131,7 @@ The following tags are available for the Docker images, providing flexibility an
 These tags allow you to use a specific version or track broader releases based on your requirements.
 
 > [!TIP]
-> If you notice any missing tags, please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?template=docker_tag_missing.md).
+> If you notice any missing tags, please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?labels=Missing+Docker+Tag&template=docker_tag_missing.md&title=%5BMissing+Docker+Tag%5D+X.Y-%28ce%7Cee%29).
 ---
 
 ### Update
