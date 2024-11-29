@@ -28,6 +28,8 @@ jobs:
           
           # Loop through all pages
           while [[ -n "$url" ]]; do
+            echo "Fetching tags from: $url"
+          
             # Fetch data from the current URL
             response=$(curl -s "$url")
             
@@ -36,15 +38,18 @@ jobs:
             
             # Get the next page URL (or empty if no next page)
             url=$(echo "$response" | jq -r '.next // empty')
-          
-            echo "Fetching next URL: $url"
           done
           
-          echo "Done with fetching 'feskol/gitlab' tags"
+          echo "Done fetching 'feskol/gitlab' tags"
           
           # Fetch both ce and ee tags (tag name and last updated date)
+          echo "Start fetching latest 'gitlab/gitlab-ce' tags"
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
+          echo "Done fetching 'gitlab/gitlab-ce' tags"
+          
+          echo "Start fetching latest 'gitlab/gitlab-ee' tags"
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ee.json
+          echo "Done fetching 'gitlab/gitlab-ee' tags"
 
       - name: Get latest MAJOR.MINOR version
         id: major-version
