@@ -339,5 +339,5 @@ jobs:
           git add .github/last_modified_ce_date.txt
           git add .github/last_modified_ee_date.txt
 
-          git commit -m "Update last modified CE date"
+          git commit -m "[BOT] Update last modified date"
           git push
