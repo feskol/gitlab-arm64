@@ -76,7 +76,7 @@ For installation guidance, refer to the official Docker documentation:
 
 - https://docs.gitlab.com/ee/install/docker/installation.html
 
-Here’s an example setup of mine:
+Here’s an example setup using `docker-compose.yaml`:
 
 ```bash
 services:
