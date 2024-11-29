@@ -104,6 +104,9 @@ services:
 
 You can view [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
 
+> [!NOTE]
+> This project supports **GitLab CE/EE** starting from version **^17 and higher**!
+
 The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning system:
 
 1. **`latest`**:  
@@ -125,9 +128,6 @@ The following tags are available for the Docker images, providing flexibility an
     - `17-ce` (major version only)
 
 These tags allow you to use a specific version or track broader releases based on your requirements.
-
-> [!NOTE]
-> 🎉 We are excited to announce that our project now supports **GitLab CE/EE** starting from version **^17 and higher**! 🚀
 
 > [!TIP]
 > If you notice any missing tags, please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?template=docker_tag_missing.md).
