@@ -30,12 +30,6 @@ security patch requires an immediate update.
 To solve this problem, I created a GitHub Action that checks for new releases twice a day and automatically builds a
 Docker image for the latest release.
 
-> [!IMPORTANT]  
-> Currently, only the latest version of GitLab is built automatically.
-> Patches for older versions are not maintained.
-> For example, if the latest version is 17.6.1 and a patch is released for 17.5.10, the action will not create a Docker
-> image tag for 17.5.10.
-
 ## Features
 
 - **Automated Updates**:  
