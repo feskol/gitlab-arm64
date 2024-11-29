@@ -89,12 +89,14 @@ jobs:
           if [ -z "$saved_ce_last_modified_date" ]; then
             saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
             echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
+            mkdir -p .github/generated-files
             echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
           fi
           
           if [ -z "$saved_ee_last_modified_date" ]; then
             saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
             echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
+            mkdir -p .github/generated-files
             echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
           fi
           
