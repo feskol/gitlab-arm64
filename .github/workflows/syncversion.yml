@@ -320,11 +320,6 @@ jobs:
             echo "files_exist=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Check CE last_modified_ce_date.txt contents
-        run: cat .github/generated-files/last_modified_ce_date.txt
-      - name: Check EE last_modified_ee_date.txt contents
-        run: cat .github/generated-files/last_modified_ee_date.txt
-
       - name: Commit and Push changes
         if: |
           steps.check-files.outputs.files_exist == 'false' || 
@@ -336,8 +331,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add .github/generated-files/last_modified_ce_date.txt
-          git add .github/generated-files/last_modified_ee_date.txt
+          git add -f .github/generated-files/* # Force add ignored files
 
-          git commit -m "[BOT] Update last modified date"
+          git commit -m "[BOT] Update last modified date" || echo "No changes to commit"
           git push
