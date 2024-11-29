@@ -21,7 +21,7 @@ jobs:
       - name: Fetch Docker tags
         id: fetch-tags
         run: |
-          # Fetch own tags (only full image with "ce.0" suffix)
+          # Fetch own tags
           url="https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100"
           
           # Clear or create the file at the start
