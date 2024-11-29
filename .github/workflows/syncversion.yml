@@ -78,7 +78,7 @@ jobs:
       - name: Extract new tags to build
         id: find-update-tags
         run: |
-          # Define the array of supported versions
+          # Define the array of supported versions ("17" "18" "19")
           SUPPORTED_GITLAB_VERSIONS=("17")
           
           # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
