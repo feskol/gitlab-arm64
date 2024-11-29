@@ -27,8 +27,12 @@ As a result, GitLab does not provide official Docker images for ARM64. While the
 attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
 security patch requires an immediate update.
 
-To solve this problem, I created a GitHub Action that checks for new releases twice a day and automatically builds a
-Docker image for the latest release.
+To solve this problem, I created this repository providing a Gitlab Action that checks for new releases twice a day and 
+automatically builds a Docker image for the latest release.
+
+> [!NOTE]  
+> I aim to support GitLab CE/EE starting from version ^17 and higher.  
+> Currently, GitLab CE/EE versions from ^17.3 and above are available.
 
 ## Features
 
