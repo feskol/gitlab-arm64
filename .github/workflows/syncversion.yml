@@ -22,7 +22,22 @@ jobs:
         id: fetch-tags
         run: |
           # Fetch own tags (only full image with "ce.0" suffix)
-          curl -s "https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" > own_tags.txt
+          url="https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100"
+          
+          # Clear or create the file at the start
+          > own_tags.txt 
+          
+          # Loop through all pages
+          while [[ -n "$url" ]]; do
+            # Fetch data from the current URL
+            response=$(curl -s "$url")
+            
+            # Extract tags and append to a file or print (only full image with "ce.0" suffix)
+            echo "$response" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" >> own_tags.txt
+            
+            # Get the next page URL (or empty if no next page)
+            url=$(echo "$response" | jq -r '.next')
+          done
           
           # Fetch both ce and ee tags (tag name and last updated date)
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
