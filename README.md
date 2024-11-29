@@ -163,7 +163,7 @@ docker compose up -d
 
 ## Links
 
-Here are the links necessary for this repository to function properly:
+Here are the links used by this repository:
 - [GitLab Omnibus Docker Files](https://gitlab.com/gitlab-org/omnibus-gitlab/-/tree/master/docker)
 - [GitLab CE Versions](https://packages.gitlab.com/gitlab/gitlab-ce)
 - [GitLab EE Versions](https://packages.gitlab.com/gitlab/gitlab-ee)
