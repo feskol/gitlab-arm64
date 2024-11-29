@@ -18,7 +18,7 @@ jobs:
         with:
           ref: main
 
-      - name: Get GitLab Docker tags with last modified date
+      - name: Fetch Docker tags
         id: fetch-tags
         run: |
           # Fetch own tags (only full image with "ce.0" suffix)
@@ -28,7 +28,7 @@ jobs:
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
           curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ee.json
 
-      - name: Get latest major version
+      - name: Get latest MAJOR.MINOR version
         id: major-version
         run: |
           # Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
@@ -62,7 +62,7 @@ jobs:
           echo "EE latest major.minor: $LATEST_MAJOR_MINOR_EE"
 
 
-      - name: Get latest last_update
+      - name: Get latest "last_update" dates
         id: latest-last-update
         run: |
           # Get the most recent 'last_updated' for valid release tags
@@ -75,7 +75,7 @@ jobs:
           echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
           echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"
 
-      - name: Compare last modified dates
+      - name: Extract new tags to build
         id: find-update-tags
         run: |
           # Define the array of supported versions
@@ -209,7 +209,7 @@ jobs:
           fi
           
 
-      - name: Trigger build.yml for new CE versions
+      - name: Trigger build for CE versions
         if: steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
         with:
@@ -263,7 +263,7 @@ jobs:
             });
 
 
-      - name: Trigger build.yml for ee release
+      - name: Trigger build for EE versions
         if: steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
         with:
@@ -316,7 +316,7 @@ jobs:
               }
             });
 
-      - name: Commit and Push changes
+      - name: Commit and Push generated-files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
