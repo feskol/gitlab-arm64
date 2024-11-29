@@ -1,7 +1,7 @@
 # GitLab (CE/EE) Docker Image for ARM64
 [![build-badge][github-actions-badge-build]][github-actions-build]
 [![build-badge][github-actions-badge-syncversion]][github-actions-syncversion]
-[![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-%5E17-orange?logo=gitlab)][dockerhub]  
+[![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
 [![DOcker Image](https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker)][dockerhub]
 [![Docker Pulls][dockerhub-badge-pulls]][dockerhub-tags]
 [![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ce]][dockerhub-tags]
