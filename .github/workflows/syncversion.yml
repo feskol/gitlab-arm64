@@ -149,7 +149,7 @@ jobs:
             TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
             # Process only valid release tags for gitlab-ce and compare dates
-            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${MAJOR_TAG} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
+            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${TAG_MAJOR} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
 
               ### Flag "is_latest_patch"
               LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ce\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ce.0$//" | cut -d. -f1-3)
@@ -190,7 +190,7 @@ jobs:
             TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
             # Process only valid release tags for gitlab-ee and compare dates
-            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${MAJOR_TAG} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
+            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${TAG_MAJOR} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
 
               ### Flag "is_latest_patch"
               LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ee\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ee.0$//" | cut -d. -f1-3)
