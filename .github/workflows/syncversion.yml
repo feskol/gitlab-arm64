@@ -107,31 +107,31 @@ jobs:
             # Process only valid release tags for gitlab-ce and compare dates
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
           
-              major_minor_tag=$(echo "$tag_name" | sed -E "s/-ce.0$//" | cut -d. -f1-2)
-              matching_tags=$(grep -E "^${major_minor_tag//./\\.}.*-ce\.0$" own_tags.txt)
-              
-              # Check if `matching_tags` is empty
-              if [[ -z "$matching_tags" ]]; then
-                is_newer=true
-              else
-                is_newer=true
+              # Strip version-specific parts to generate base tags
+              BASE_TAG=$(echo "$tag_name" | sed -E "s/-ce.0$//")
+              TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
+              TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
+              TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
-                # Check if the tag is the newest
-                for tag in $matching_tags; do
-                  # Compare the patch version using sort -V (natural sort of versions)
-                  if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
-                    # The tag version is older than a newer tag
-                    is_newer=false
-                  fi
-                done
+              ### Flag "is_latest_patch"
+              LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ce\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ce.0$//" | cut -d. -f1-3)
           
-                # Check if the tag already exists and is the same version
-                if [[ " $matching_tags " =~ " $tag_name " ]]; then
-                  is_newer=false
-                fi
+              is_latest_patch=false
+              if [[ "$(echo -e "$TAG_MAJOR_MINOR_PATCH\n$LATEST_PATCH" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR_PATCH" ]]; then
+                # The tag version is the latest
+                is_latest_patch=true
               fi
           
-              new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
+              ### Flag "is_latest_minor"
+              LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-ce\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ce.0$//" | cut -d. -f1-2)
+              
+              is_latest_minor=false
+              if [[ "$(echo -e "$TAG_MAJOR_MINOR\n$LATEST_MINOR" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR" ]]; then
+                # The tag version is the latest
+                is_latest_minor=true
+              fi
+                      
+              new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor}]" )
           
               echo "Adding new CE Version: $tag_name"
             fi
@@ -148,39 +148,32 @@ jobs:
             # Process only valid release tags for gitlab-ee and compare dates
             if [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
           
-              major_minor_tag=$(echo "$tag_name" | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-              matching_tags=$(grep -E "^${major_minor_tag//./\\.}.*-ce\.0$" own_tags.txt)
-    
+              # Strip version-specific parts to generate base tags
+              BASE_TAG=$(echo "$tag_name" | sed -E "s/-ee.0$//")
+              TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
+              TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
+              TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
           
-              # Check if `matching_tags` is empty
-              if [[ -z "$matching_tags" ]]; then
-                is_newer=true
-              else
-                is_newer=true
+              ### Flag "is_latest_patch"
+              LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ee\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ee.0$//" | cut -d. -f1-3)
           
-                # Check if the tag is the newest
-                for tag in $matching_tags; do
-                  # Compare the patch version using sort -V (natural sort of versions)
-                  if [[ "$(echo -e "$tag_name\n$tag" | sort -V | head -n 1)" != "$tag_name" ]]; then
-                    # The tag version is older than a newer tag
-                    is_newer=false
-                  fi
-                done
+              is_latest_patch=false
+              if [[ "$(echo -e "$TAG_MAJOR_MINOR_PATCH\n$LATEST_PATCH" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR_PATCH" ]]; then
+                # The tag version is the latest
+                is_latest_patch=true
+              fi
           
-                # Check if the tag already exists and is the same version
-                if [[ " $matching_tags " =~ " $tag_name " ]]; then
-                  is_newer=false
-                fi
+              ### Flag "is_latest_minor"
+              LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-ee\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ee.0$//" | cut -d. -f1-2)
+          
+              is_latest_minor=false
+              if [[ "$(echo -e "$TAG_MAJOR_MINOR\n$LATEST_MINOR" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR" ]]; then
+                # The tag version is the latest
+                is_latest_minor=true
               fi
           
               # Append to the JSON array
-              new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_newest_patch\": $is_newer}]" )
-
-              # Check for jq errors
-              if [ $? -ne 0 ]; then
-                echo "Error with jq operation."
-                exit 1
-              fi
+              new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor}]" )
 
               echo "Adding new EE Version: $tag_name"
             fi
@@ -220,8 +213,8 @@ jobs:
             const filePath = './new_ce_versions.json';
             
             const newCeVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            const highestCeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
-            const highestCeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
+            const highestMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
+            const highestMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
             
             // Trigger workflows for new GitLab CE versions
             newCeVersions.forEach(version => {
@@ -232,13 +225,18 @@ jobs:
                 const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
             
                 let includeLatestTags = false;
-                is_newest_patch=false;
+                is_latest_patch=false;
+                is_latest_minor=false;
             
-                if (version.is_newest_patch) {
-                  is_newest_patch=true;
+                if (version.is_latest_patch) {
+                  is_latest_patch=true;
             
-                  if (majorMinorVersion === highestCeMajorMinorVersion) {
-                    if (majorVersion === highestCeMajorVersion) {
+                  if (version.is_latest_minor) {
+                    is_latest_minor=true
+                  }
+            
+                  if (majorMinorVersion === highestMajorMinorVersion) {
+                    if (majorVersion === highestMajorVersion) {
                       includeLatestTags = true;
                     }
                   }
@@ -252,8 +250,8 @@ jobs:
                   inputs: {
                     gitlab_release: version.tag,
                     include_latest_tags: includeLatestTags,
-                    include_major_tag: is_newest_patch,
-                    include_major_minor_tag: is_newest_patch
+                    include_major_tag: is_latest_minor,
+                    include_major_minor_tag: is_latest_patch
                   }
                 });
               }
@@ -269,8 +267,8 @@ jobs:
             const filePath = './new_ee_versions.json';
             
             const newEeVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            const highestEeMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
-            const highestEeMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
+            const highestMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
+            const highestMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
             
             // Trigger workflows for new GitLab EE versions
             newEeVersions.forEach(version => {
@@ -281,13 +279,18 @@ jobs:
                 const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
             
                 let includeLatestTags = false;
-                is_newest_patch=false;
+                is_latest_patch=false;
+                is_latest_minor=false;
             
-                if (version.is_newest_patch) {
-                  is_newest_patch=true;
+                if (version.is_latest_patch) {
+                  is_latest_patch=true;
             
-                  if (majorMinorVersion === highestEeMajorMinorVersion) {
-                    if (majorVersion === highestEeMajorVersion) {
+                  if (version.is_latest_minor) {
+                    is_latest_minor=true
+                  }
+            
+                  if (majorMinorVersion === highestMajorMinorVersion) {
+                    if (majorVersion === highestMajorVersion) {
                       includeLatestTags = true;
                     }
                   }
@@ -301,8 +304,8 @@ jobs:
                   inputs: {
                     gitlab_release: version.tag,
                     include_latest_tags: includeLatestTags,
-                    include_major_tag: is_newest_patch,
-                    include_major_minor_tag: is_newest_patch
+                    include_major_tag: is_latest_minor,
+                    include_major_minor_tag: is_latest_patch
                   }
                 });
               }
