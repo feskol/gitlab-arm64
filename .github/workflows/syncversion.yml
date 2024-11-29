@@ -315,20 +315,13 @@ jobs:
               }
             });
 
-      - name: Check if files exist
-        id: check-files
-        run: |
-          if [[ -f .github/generated-files/last_modified_ce_date.txt && -f .github/generated-files/last_modified_ee_date.txt ]]; then
-            echo "files_exist=true" >> $GITHUB_OUTPUT
-          else
-            echo "files_exist=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Commit and Push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
+          
+          git status -uno #ignore untracked files
+          
           git add -f .github/generated-files/* # Force add ignored files
 
           git commit -m "[BOT] Update last modified date" || echo "No changes to commit"
