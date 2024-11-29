@@ -108,6 +108,8 @@ jobs:
           # Define the array of supported versions ("17" "18" "19")
           SUPPORTED_GITLAB_VERSIONS=("17")
           
+          echo "Supported GitLab Versions: ${SUPPORTED_GITLAB_VERSIONS[@]}"
+          
           saved_ce_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}"
           saved_ee_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}"
           
