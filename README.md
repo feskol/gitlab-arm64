@@ -1,19 +1,23 @@
 # GitLab (CE/EE) Docker Image for ARM64
+[![build-badge][github-actions-badge-build]][github-actions-build]
+[![build-badge][github-actions-badge-syncversion]][github-actions-syncversion]  
+[![](https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker)][dockerhub]
+[![Docker Pulls][dockerhub-badge-pulls]][dockerhub-tags]
+[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ce]][dockerhub-tags]
+[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ee]][dockerhub-tags]
+[![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub-tags]
+[![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub-tags]  
+[![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
-[![build-badge][github-actions-badge]][github-actions]
-[![Docker Pulls][dockerhub-badge-pulls]][dockerhub]
-[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ce]][dockerhub]
-[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ee]][dockerhub]
-[![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub]
-[![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub]
-[![PayPal ME](https://img.shields.io/badge/Support_me_with-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
-
-[github-actions]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
-[github-actions-badge]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
-[dockerhub]: https://hub.docker.com/r/feskol/gitlab/tags
+[github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
+[github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
+[github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml
+[github-actions-badge-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml/badge.svg?branch=main
+[dockerhub]: https://hub.docker.com/r/feskol/gitlab
+[dockerhub-tags]: https://hub.docker.com/r/feskol/gitlab/tags
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
-[dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&logo=docker
-[dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&logo=docker
+[dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
+[dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
