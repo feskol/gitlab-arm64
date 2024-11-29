@@ -75,12 +75,9 @@ jobs:
           echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
           echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"
 
-      - name: Extract new tags to build
-        id: find-update-tags
+      - name: Get the last saved "last_update" date for gitlab-ce & gitlab-ee from the file
+        id: last-saved-last-update-date
         run: |
-          # Define the array of supported versions ("17" "18" "19")
-          SUPPORTED_GITLAB_VERSIONS=("17")
-          
           # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
           saved_ce_last_modified_date=$(cat .github/generated-files/last_modified_ce_date.txt || echo "")
           saved_ee_last_modified_date=$(cat .github/generated-files/last_modified_ee_date.txt || echo "")
@@ -90,18 +87,29 @@ jobs:
           
           # If this is the first run, we don't have a saved date, so save the current one
           if [ -z "$saved_ce_last_modified_date" ]; then
-            saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
-            echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
-            mkdir -p .github/generated-files
-            echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
+           saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
+           echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
+           mkdir -p .github/generated-files
+           echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
           fi
           
           if [ -z "$saved_ee_last_modified_date" ]; then
-            saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
-            echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
-            mkdir -p .github/generated-files
-            echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
+           saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
+           echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
+           mkdir -p .github/generated-files
+           echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
           fi
+          
+          echo "SAVED_CE_LAST_MODIFIED_DATE=$saved_ce_last_modified_date" >> $GITHUB_OUTPUT
+          echo "SAVED_EE_LAST_MODIFIED_DATE=$saved_ee_last_modified_date" >> $GITHUB_OUTPUT
+
+      - name: Extract new tags to build
+        run: |
+          # Define the array of supported versions ("17" "18" "19")
+          SUPPORTED_GITLAB_VERSIONS=("17")
+          
+          saved_ce_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}"
+          saved_ee_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}"
           
           # Prepare the list of new releases for gitlab-ce
           new_ce_versions="[]"
@@ -185,15 +193,25 @@ jobs:
           done
           
           echo "New EE versions json: $new_ee_versions"
-
-          # Save the new last modified date for future runs for gitlab-ce and gitlab-ee
-          echo "${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}" > .github/generated-files/last_modified_ce_date.txt
-          echo "${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}" > .github/generated-files/last_modified_ee_date.txt
           
           # Set output for new versions
           echo "${new_ce_versions}" > new_ce_versions.json
           echo "${new_ee_versions}" > new_ee_versions.json
+
+      - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
+        run: |
+          new_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
+          new_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
           
+          echo "${new_ce_last_modified_date}" > .github/generated-files/last_modified_ce_date.txt
+          echo "${new_ee_last_modified_date}" > .github/generated-files/last_modified_ee_date.txt
+          
+          echo "Overridden CE file with new date: ${new_ce_last_modified_date}"
+          echo "Overridden EE file with new date: ${new_ee_last_modified_date}"
+
+      - name: Check new_versions.json files
+        id: new-update-available-check
+        run: |
           # if empty "" or contains an empty array "[]"
           if [[ ! -s "new_ce_versions.json" || $(jq 'length == 0' new_ce_versions.json) == "true" ]]; then
             echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
@@ -207,10 +225,9 @@ jobs:
           else
             echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
           fi
-          
 
       - name: Trigger build for CE versions
-        if: steps.find-update-tags.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true'
+        if: steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -264,7 +281,7 @@ jobs:
 
 
       - name: Trigger build for EE versions
-        if: steps.find-update-tags.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
+        if: steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
         with:
           script: |
