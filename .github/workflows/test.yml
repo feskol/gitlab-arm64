@@ -17,4 +17,4 @@ jobs:
 
       - name: Run tests
         working-directory: ./tests
-        run: ../lib/bashunit --verbose ./unit/workflows/syncversion
+        run: ../lib/bashunit ./unit/workflows/syncversion
