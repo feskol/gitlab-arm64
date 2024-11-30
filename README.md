@@ -12,15 +12,25 @@
 [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
+
 [github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
+
 [github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml
+
 [github-actions-badge-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml/badge.svg?branch=main
+
 [dockerhub]: https://hub.docker.com/r/feskol/gitlab
+
 [dockerhub-tags]: https://hub.docker.com/r/feskol/gitlab/tags
+
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
+
 [dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
+
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
+
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
+
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
 ## Overview
@@ -197,25 +207,29 @@ Thank you for your support!
 
 ## Testing
 
-In the ./tests folder, you will find the test files.  
-To ensure everyone uses the same test suite, I provided a Dockerfile for running the tests.  
-A docker-compose.yaml file is also included, defining a service that builds the Dockerfile and runs the test.sh script.
+Tests can be found in the `./tests/unit`.  
+To ensure everyone uses the same test suite, I provided a Dockerfile with a docker-compose.yaml file including a service
+that runs the tests.
 
 #### Commands:
+
+To execute the tests, run:
+
 ```bash
 # Run test
-docker compose run --rm -it test
+docker compose run --rm test
 ```
 
 #### Structure:
+
 ```
 ...
 ├── scripts
 └── tests
-    ├── helper      # Directory containing helper scripts.
-    ├── workflows   # Directory with workflow-specific scripts (e.g., environment variable scripts).
-    ├── scripts.sh  # A collection of scripts to execute.
-    └── test.sh     # Script that runs the "full" workflow.
+    ├── fixtures        # containing fixtures for the tests
+    ├── helper          # contains helping scripts
+    ├── unit            # The actual test for each scripts
+    └── workflows       # Directory with workflow-specific scripts (e.g., mocks).
 ```
 
 ---

@@ -2,9 +2,7 @@
 /.github/generated-files/*
 
 /tests/*
-!/tests/scripts.sh
-!/tests/test.sh
-!/tests/helper
-!/tests/workflows
-!/tests/unit
 !/tests/fixtures
+!/tests/helper
+!/tests/unit
+!/tests/workflows

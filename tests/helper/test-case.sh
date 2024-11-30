@@ -6,11 +6,3 @@
 #
 
 source ./helper/gitlab_simulation.sh
-
-# shellcheck disable=SC2120
-getOriginalScriptPath() {
-    local test_script=$1
-    echo "$TEST_DIRECTORY/../scripts/$test_script"
-}
-
-ORIGINAL_SCRIPT=$(getOriginalScriptPath "$TEST_SCRIPT")
