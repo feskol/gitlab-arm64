@@ -146,8 +146,8 @@ These tags allow you to use a specific version or track broader releases based o
 
 > [!TIP]
 > If you notice any missing tags,
->
-please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?labels=Missing+Docker+Tag&template=docker_tag_missing.md&title=%5BMissing+Docker+Tag%5D+X.Y-%28ce%7Cee%29).
+> please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?labels=Missing+Docker+Tag&template=docker_tag_missing.md&title=%5BMissing+Docker+Tag%5D+X.Y-%28ce%7Cee%29).
+
 ---
 
 ### Update
@@ -192,7 +192,6 @@ Here are the links used by this repository:
 - [GitLab EE Versions](https://packages.gitlab.com/gitlab/gitlab-ee)
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
-- [bashunit (for testing)](https://bashunit.typeddevs.com/)
 
 ## Support Me
 
@@ -211,12 +210,14 @@ Tests can be found in the `./tests/unit`.
 To ensure everyone uses the same test suite, I provided a Dockerfile with a docker-compose.yaml file including a service
 that runs the tests.
 
-#### Commands:
+We're using [bashunit](https://bashunit.typeddevs.com/) for testing our scripts.
 
-To execute the tests, run:
+#### Command:
+
+To run the tests, run:
 
 ```bash
-# Run test
+# Run tests
 docker compose run --rm test
 ```
 
@@ -228,7 +229,7 @@ docker compose run --rm test
 └── tests
     ├── fixtures        # containing fixtures for the tests
     ├── helper          # contains helping scripts
-    ├── unit            # The actual test for each scripts
+    ├── unit            # The actual tests
     └── workflows       # Directory with workflow-specific scripts (e.g., mocks).
 ```
 
