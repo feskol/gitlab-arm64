@@ -22,5 +22,11 @@ extract_value() {
     local file=$2
 
     # Extract the value from the file, using grep and cut to get the value
-    grep -E "^$name=" "$file" | cut -d '=' -f2-
+    value=$(grep -E "^$name=" "$file" | cut -d '=' -f2-)
+
+    # Clean up the value by removing trailing newlines and spaces
+    value=$(echo "$value" | sed 's/[[:space:]]*$//' | tr -d '\n')
+
+    # Return the cleaned-up value
+    echo "$value"
 }
