@@ -5,7 +5,8 @@
 # (c) Festim Kolgeci <festim.kolgeci@pm.me>
 #
 
-# Here are all scripts defined to run through (starting from ./scripts/ folder)
+# Here are all scripts defined to run through:
+# [ATTENTION] they should have the same path as in ./scripts
 SCRIPTS=(
     "workflows/syncversion/fetch_docker_tags.sh"
     "workflows/syncversion/extract_latest_available_major_version.sh"
@@ -13,6 +14,6 @@ SCRIPTS=(
     "workflows/syncversion/get_last_update_date_from_file.sh"
     "workflows/syncversion/extract_new_build_tags.sh"
     "workflows/syncversion/check-new-build-tags-available.sh"
-    #"workflows/syncversion/trigger-build-action.js"
+    "workflows/syncversion/trigger-build-action.sh"
     "workflows/syncversion/override_last_update_date_from_file.sh"
 )

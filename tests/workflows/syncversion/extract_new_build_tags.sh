@@ -7,8 +7,8 @@
 
 set -e
 
-# Import helper
-source ./helper/gitlab_simulation.sh
+# Import test-case
+source ./helper/test-case.sh
 
 # Define ENV variables
 export SAVED_CE_LAST_MODIFIED_DATE=$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "GITHUB_OUTPUT")
@@ -19,4 +19,4 @@ export LATEST_MAJOR_EE=$(extract_value "LATEST_MAJOR_EE" "GITHUB_OUTPUT")
 export LATEST_MAJOR_MINOR_EE=$(extract_value "LATEST_MAJOR_MINOR_EE" "GITHUB_OUTPUT")
 
 # Run the original script
-./$ORIGINAL_SCRIPT
+bash $ORIGINAL_SCRIPT

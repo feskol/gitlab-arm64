@@ -7,8 +7,8 @@
 
 set -e
 
-# Import helper
-source ./helper/gitlab_simulation.sh
+# Import test-case
+source ./helper/test-case.sh
 
 # Run the original script
-./$ORIGINAL_SCRIPT
+bash $ORIGINAL_SCRIPT

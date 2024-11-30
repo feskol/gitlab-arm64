@@ -5,6 +5,9 @@
 # (c) Festim Kolgeci <festim.kolgeci@pm.me>
 #
 
+# Export working directory
+export TEST_DIRECTORY=$(pwd)
+
 # Handle CTRL+C
 trap ctrl_c INT
 

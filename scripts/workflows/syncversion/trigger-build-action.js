@@ -31,5 +31,3 @@ if (process.env.NEW_BUILD_CE_VERSION_AVAILABLE === 'true') {
 if (process.env.NEW_BUILD_EE_VERSION_AVAILABLE === 'true') {
     triggerBuilds('./new_ee_versions.json', 'EE');
 }
-
-console.info('reached scripts execution');

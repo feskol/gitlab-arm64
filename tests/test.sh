@@ -47,7 +47,7 @@ run_script() {
     script_name=$1
     echoInfoLine "Running" "$script_name..."
 
-    export ORIGINAL_SCRIPT="../scripts/$script_name"
+    export TEST_SCRIPT="$script_name"
 
     # Execute the script and check for errors
     ./$script_name

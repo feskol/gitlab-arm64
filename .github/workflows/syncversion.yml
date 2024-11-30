@@ -20,11 +20,9 @@ jobs:
         with:
           ref: main
 
-
       - name: Fetch Docker tags
         id: fetch-tags
         run: ./scripts/workflows/syncversion/fetch_docker_tags.sh
-
 
       - name: Get latest MAJOR.MINOR version
         id: major-version
@@ -40,7 +38,6 @@ jobs:
         # GITHUB_OUTPUT: LATEST_CE_LAST_UPDATE
         # GITHUB_OUTPUT: LATEST_EE_LAST_UPDATE
 
-
       - name: Get the last saved "last_update" date for gitlab-ce & gitlab-ee from the file
         id: last-saved-last-update-date
         env:
@@ -52,7 +49,6 @@ jobs:
         # GITHUB_OUTPUT: SAVED_CE_LAST_MODIFIED_DATE
         # GITHUB_OUTPUT: SAVED_EE_LAST_MODIFIED_DATE
 
-
       - name: Extract new tags to build
         env:
           SAVED_CE_LAST_MODIFIED_DATE: '${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}'
@@ -63,13 +59,11 @@ jobs:
           LATEST_MAJOR_MINOR_EE: '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}'
         run: ./scripts/workflows/syncversion/extract_new_build_tags.sh
 
-
       - name: Check new_versions.json files
         id: new-build-tags-available-check
         run: ./scripts/workflows/syncversion/check-new-build-tags-available.sh
         # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
         # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
-
 
       - name: Trigger builds for new versions
         if: steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
@@ -78,48 +72,13 @@ jobs:
           NEW_BUILD_CE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}'
           NEW_BUILD_EE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE }}'
         with:
-          script: |
-            const fs = require('fs');
-
-            // Function to process versions and trigger workflows
-            const triggerBuilds = (filePath, versionType) => {
-              const newVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-
-              newVersions.forEach(version => {
-                if (version.tag) {
-                  console.log(`Triggering build for GitLab ${versionType} version: ${version.tag}`);
-
-                  github.rest.actions.createWorkflowDispatch({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    workflow_id: "build.yml",
-                    ref: "main",
-                    inputs: {
-                      gitlab_release: version.tag,
-                      include_latest_tags: version.is_latest_overall,
-                      include_major_tag: version.is_latest_minor,
-                      include_major_minor_tag: version.is_latest_patch
-                    }
-                  });
-                }
-              });
-            };
-
-            // Check and trigger builds for CE and EE versions
-            if (process.env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true') {
-              triggerBuilds('./new_ce_versions.json', 'CE');
-            }
-            if (process.env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true') {
-              triggerBuilds('./new_ee_versions.json', 'EE');
-            }
-      
+          script: ./scripts/workflows/syncversion/trigger-build-action.js
 
       - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
         env:
           LATEST_CE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}'
           LATEST_EE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}'
         run: ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
-
 
       - name: Commit and Push generated-files
         run: |
