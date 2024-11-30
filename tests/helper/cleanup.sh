@@ -16,5 +16,4 @@ rm -f \
     own_tags.txt
 
 # Cleanup directories
-rm -rf \
-    .github/generated-files
+rm -rf .github
