@@ -1,8 +1,5 @@
 name: Test
 
-permissions:
-  contents: write
-
 on:
   push:
     branches-ignore:
@@ -15,6 +12,9 @@ jobs:
 #      - name: Checkout code
 #        uses: actions/checkout@v3
 #
+#      - name: Set permissions
+#        run: chmod +x ./lib/bashunit
+#
 #      - name: Run tests
 #        run: ./lib/bashunit ./unit/workflows/build
 
@@ -23,6 +23,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set permissions
+        run: chmod +x ./lib/bashunit
 
       - name: Run tests
         run: ./lib/bashunit ./unit/workflows/syncversion
