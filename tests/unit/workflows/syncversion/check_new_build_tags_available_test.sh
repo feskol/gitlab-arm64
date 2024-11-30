@@ -21,11 +21,7 @@ function test_new_build_tags_available() {
     cp ./fixtures/new_ce_versions.json ./
     cp ./fixtures/new_ee_versions.json ./
 
-    cat "$GITHUB_OUTPUT"
-
     runScript
-
-    cat "$GITHUB_OUTPUT"
 
     assert_same "true" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
     assert_same "true" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
@@ -35,11 +31,7 @@ function test_no_new_build_tags_available() {
     echo "[]" > new_ce_versions.json
     echo "[]" > new_ee_versions.json
 
-    cat "$GITHUB_OUTPUT"
-
     runScript
-
-    cat "$GITHUB_OUTPUT"
 
     assert_same "false" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
     assert_same "false" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"

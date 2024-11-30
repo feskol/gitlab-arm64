@@ -13,11 +13,14 @@ function runScript() {
     bash "../scripts/workflows/syncversion/extract_new_build_tags.sh"
 }
 
-function set_up() {
+function set_up_before_script() {
     export LATEST_MAJOR_CE="17"
     export LATEST_MAJOR_MINOR_CE="17.6"
     export LATEST_MAJOR_EE="17"
     export LATEST_MAJOR_MINOR_EE="17.6"
+}
+
+function set_up() {
 
     cp ./fixtures/own_tags.txt ./
     cp ./fixtures/gitlab_tags_ce.json ./
