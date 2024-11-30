@@ -14,6 +14,8 @@ function runScript() {
 }
 
 function tear_down() {
+    unset LATEST_CE_LAST_UPDATE LATEST_EE_LAST_UPDATE
+
     ./helper/cleanup.sh
 }
 

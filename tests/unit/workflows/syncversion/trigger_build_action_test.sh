@@ -16,6 +16,8 @@ function runScript() {
 }
 
 function tear_down() {
+    unset NEW_BUILD_CE_VERSION_AVAILABLE NEW_BUILD_EE_VERSION_AVAILABLE
+
     ./helper/cleanup.sh
 }
 
