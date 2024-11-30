@@ -30,9 +30,10 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    cp -r ./fixtures/.github/ ./.github
+    cp -r ./fixtures/.github/ .github
 
-    ls -l .github
+    cat .github/generated-files/last_modified_ce_date.txt
+    cat .github/generated-files/last_modified_ee_date.txt
 
     runScript
 
