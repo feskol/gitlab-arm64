@@ -14,20 +14,17 @@ function runScript() {
 }
 
 function set_up() {
-    cp ./fixtures/own_tags.txt ./
-    cp ./fixtures/gitlab_tags_ce.json ./
-    cp ./fixtures/gitlab_tags_ee.json ./
-
     export LATEST_MAJOR_CE="17"
     export LATEST_MAJOR_MINOR_CE="17.6"
     export LATEST_MAJOR_EE="17"
     export LATEST_MAJOR_MINOR_EE="17.6"
+
+    cp ./fixtures/own_tags.txt ./
+    cp ./fixtures/gitlab_tags_ce.json ./
+    cp ./fixtures/gitlab_tags_ee.json ./
 }
 
 function tear_down() {
-    unset LATEST_MAJOR_CE LATEST_MAJOR_MINOR_CE LATEST_MAJOR_EE LATEST_MAJOR_MINOR_EE
-    unset SAVED_CE_LAST_MODIFIED_DATE SAVED_EE_LAST_MODIFIED_DATE
-
     ./helper/cleanup.sh
 }
 

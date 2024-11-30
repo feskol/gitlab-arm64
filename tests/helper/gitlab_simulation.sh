@@ -6,12 +6,15 @@
 #
 
 # Simulate GitHub Actions environment locally
+if [ -z "$GITHUB_OUTPUT" ]; then
+    GITHUB_OUTPUT=./GITHUB_OUTPUT
+    export GITHUB_OUTPUT
+fi
 
-export GITHUB_OUTPUT=./GITHUB_OUTPUT
-export GITHUB_ENV=./GITHUB_ENV
-
-echo "$GITHUB_OUTPUT"
-ls -l "$GITHUB_OUTPUT"
+if [ -z "$GITHUB_ENV" ]; then
+    GITHUB_ENV=./GITHUB_ENV
+    export GITHUB_ENV
+fi
 
 # Function to extract the value from $GITHUB_OUTPUT or GITHUB_ENV files
 extract_value() {
@@ -19,5 +22,5 @@ extract_value() {
     local file=$2
 
     # Extract the value from the file, using grep and cut to get the value
-    grep -E "^$name=" "$file" | cut -d '=' -f2-
+    grep -E "^$name=" "$file" | tail -n 1 | cut -d '=' -f2-
 }
