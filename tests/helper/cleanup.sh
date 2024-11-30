@@ -5,12 +5,16 @@
 # (c) Festim Kolgeci <festim.kolgeci@pm.me>
 #
 
-# Cleanup files locally
+# Cleanup files
 rm -f \
-  GITHUB_OUTPUT \
-  GITHUB_ENV \
-  gitlab_tags_ce.json \
-  gitlab_tags_ee.json \
-  new_ce_versions.json \
-  new_ee_versions.json \
-  own_tags.txt
+    GITHUB_OUTPUT \
+    GITHUB_ENV \
+    gitlab_tags_ce.json \
+    gitlab_tags_ee.json \
+    new_ce_versions.json \
+    new_ee_versions.json \
+    own_tags.txt
+
+# Cleanup directories
+rm -rf \
+    .github

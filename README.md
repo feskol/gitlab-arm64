@@ -182,6 +182,7 @@ Here are the links used by this repository:
 - [GitLab EE Versions](https://packages.gitlab.com/gitlab/gitlab-ee)
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
+- [bashunit (for testing)](https://bashunit.typeddevs.com/)
 
 ## Support Me
 

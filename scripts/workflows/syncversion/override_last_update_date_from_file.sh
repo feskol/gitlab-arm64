@@ -10,6 +10,8 @@ set -e
 new_ce_last_modified_date="$LATEST_CE_LAST_UPDATE"
 new_ee_last_modified_date="$LATEST_EE_LAST_UPDATE"
 
+mkdir -p .github/generated-files/
+
 echo "${new_ce_last_modified_date}" > .github/generated-files/last_modified_ce_date.txt
 echo "${new_ee_last_modified_date}" > .github/generated-files/last_modified_ee_date.txt
 

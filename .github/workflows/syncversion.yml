@@ -12,7 +12,7 @@ on:
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'  # Only run if the branch is 'main'
+    if: github.ref == 'refs/heads/main'  # Ensure the branch is 'main'
 
     steps:
       - name: Checkout Repository
@@ -61,7 +61,7 @@ jobs:
 
       - name: Check new_versions.json files
         id: new-build-tags-available-check
-        run: ./scripts/workflows/syncversion/check-new-build-tags-available.sh
+        run: ./scripts/workflows/syncversion/check_new_build_tags_available.sh
         # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
         # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
 
@@ -72,7 +72,7 @@ jobs:
           NEW_BUILD_CE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}'
           NEW_BUILD_EE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE }}'
         with:
-          script: ./scripts/workflows/syncversion/trigger-build-action.js
+          script: ./scripts/workflows/syncversion/trigger_build_action.js
 
       - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
         env:

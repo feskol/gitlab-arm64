@@ -6,3 +6,5 @@
 !/tests/test.sh
 !/tests/helper
 !/tests/workflows
+!/tests/unit
+!/tests/fixtures

@@ -1,6 +1,5 @@
 services:
     test:
-        container_name: script-testing
         build:
             context: "."
             dockerfile: "Dockerfile"
@@ -9,3 +8,14 @@ services:
             - .:/feskol_gitlab_arm64_docker_app_tests  # Mount your script directory
         working_dir: /feskol_gitlab_arm64_docker_app_tests/tests   # Set working directory
         command: bash test.sh   # Run the test scripts
+
+
+    test-unit:
+        build:
+            context: "."
+            dockerfile: "Dockerfile"
+        restart: "no"
+        volumes:
+            - .:/app  # Mount your script directory
+        working_dir: /app/tests   # Set working directory
+        command: ../lib/bashunit ./unit
