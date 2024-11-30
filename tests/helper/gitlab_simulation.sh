@@ -6,15 +6,9 @@
 #
 
 # Simulate GitHub Actions environment locally
-if [ -z "$GITHUB_OUTPUT" ]; then
-    GITHUB_OUTPUT=./GITHUB_OUTPUT
-    export GITHUB_OUTPUT
-fi
 
-if [ -z "$GITHUB_ENV" ]; then
-    GITHUB_ENV=./GITHUB_ENV
-    export GITHUB_ENV
-fi
+export GITHUB_OUTPUT=./GITHUB_OUTPUT
+export GITHUB_ENV=./GITHUB_ENV
 
 # Function to extract the value from $GITHUB_OUTPUT or GITHUB_ENV files
 extract_value() {
