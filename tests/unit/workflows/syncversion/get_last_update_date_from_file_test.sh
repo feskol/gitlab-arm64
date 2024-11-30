@@ -14,6 +14,8 @@ function runScript() {
 }
 
 function tear_down() {
+    unset LATEST_CE_LAST_UPDATE LATEST_EE_LAST_UPDATE
+
     ./helper/cleanup.sh
 }
 
@@ -33,6 +35,8 @@ function test_existing_last_modified_files() {
     ls -l .github
 
     runScript
+
+    echo "$GITHUB_OUTPUT"
 
     assert_same "2024-10-31T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
     assert_same "2024-10-30T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
