@@ -13,11 +13,6 @@ function runScript() {
     bash "../scripts/workflows/syncversion/check_new_build_tags_available.sh"
 }
 
-function set_up() {
-    cp ./fixtures/new_ce_versions.json ./
-    cp ./fixtures/new_ee_versions.json ./
-}
-
 function tear_down() {
     ./helper/cleanup.sh
 }
