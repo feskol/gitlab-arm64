@@ -20,6 +20,7 @@ fi
 extract_value() {
     local name=$1
     local file=$2
+
     # Extract the value from the file, using grep and cut to get the value
     grep -E "^$name=" "$file" | cut -d '=' -f2-
 }
