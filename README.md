@@ -1,4 +1,5 @@
 # GitLab (CE/EE) Docker Image for ARM64
+
 [![build-badge][github-actions-badge-build]][github-actions-build]
 [![build-badge][github-actions-badge-syncversion]][github-actions-syncversion]
 [![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
@@ -22,7 +23,6 @@
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 
-
 ## Overview
 
 This repository provides **GitLab Docker images for ARM64 architecture**.
@@ -32,30 +32,33 @@ As a result, GitLab does not provide official Docker images for ARM64. While the
 attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
 security patch requires an immediate update.
 
-To solve this problem, I created this repository providing a Gitlab Action that checks for new releases twice a day and 
+To solve this problem, I created this repository providing a Gitlab Action that checks for new releases twice a day and
 automatically builds a Docker image for the latest release.
 
 ## Features
 
 - **Automated Updates**:  
-  A GitHub Action checks the latest releases of the official GitLab Docker images and triggers a build when a new version is available.  
+  A GitHub Action checks the latest releases of the official GitLab Docker images and triggers a build when a new
+  version is available.  
   This ensures the repository always provides up-to-date images for ARM64.
 
 - **Fully Automatic**:  
   No manual intervention is required. The entire process, from release checking to image building, is automated.
 
 - **Compatibility**:  
-  These images are specifically designed for ARM64 architecture, making GitLab accessible to users on ARM-based platforms.
+  These images are specifically designed for ARM64 architecture, making GitLab accessible to users on ARM-based
+  platforms.
 
 ## Requirements
 
 To use the Docker images built by this repository, you need:
+
 - **ARM64 Architecture** (e.g., Raspberry Pi 4/5, ARM64 servers)
 - **Docker** installed on your system
 
 ## Usage
 
-You can pull the Docker images from docker.io registry once they are published.  
+You can pull the Docker images from docker.io registry once they are published.
 
 ```bash
 # latest GitLab Community Edition (CE)
@@ -108,7 +111,8 @@ You can view [all available tags on Docker Hub](https://hub.docker.com/r/feskol/
 > [!NOTE]
 > This project supports **GitLab CE/EE** starting from version **^17 and higher**!
 
-The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning system:
+The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning
+system:
 
 1. **`latest`**:  
    Points to the newest Community Edition (CE) release available.
@@ -131,7 +135,9 @@ The following tags are available for the Docker images, providing flexibility an
 These tags allow you to use a specific version or track broader releases based on your requirements.
 
 > [!TIP]
-> If you notice any missing tags, please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?labels=Missing+Docker+Tag&template=docker_tag_missing.md&title=%5BMissing+Docker+Tag%5D+X.Y-%28ce%7Cee%29).
+> If you notice any missing tags,
+>
+please [open an issue](https://github.com/feskol/gitlab-arm64/issues/new?labels=Missing+Docker+Tag&template=docker_tag_missing.md&title=%5BMissing+Docker+Tag%5D+X.Y-%28ce%7Cee%29).
 ---
 
 ### Update
@@ -140,7 +146,7 @@ To update GitLab, remove the current Docker container, pull the newer image vers
 
 > [!WARNING]  
 > Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
-> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/?distro=docker) for 
+> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/?distro=docker) for
 > step-by-step guidance on update paths.
 
 ```bash
@@ -170,6 +176,7 @@ docker compose up -d
 ## Links
 
 Here are the links used by this repository:
+
 - [GitLab Omnibus Docker Files](https://gitlab.com/gitlab-org/omnibus-gitlab/-/tree/master/docker)
 - [GitLab CE Versions](https://packages.gitlab.com/gitlab/gitlab-ce)
 - [GitLab EE Versions](https://packages.gitlab.com/gitlab/gitlab-ee)
@@ -181,11 +188,36 @@ Here are the links used by this repository:
 If you find this project helpful and would like to support my work:
 
 - 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💸 **Donate via PayPal
+  **: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 - 💬 **Spread the word** by sharing this project with others.
 
 Thank you for your support!
 
+## Testing
+
+In the ./tests folder, you will find the test files.  
+To ensure everyone uses the same test suite, I provided a Dockerfile for running the tests.  
+A docker-compose.yaml file is also included, defining a service that builds the Dockerfile and runs the test.sh script.
+
+#### Commands:
+```bash
+# Run test
+docker compose run --rm -it test
+```
+
+#### Structure:
+```
+...
+├── scripts
+└── tests
+    ├── helper      # Directory containing helper scripts.
+    ├── workflows   # Directory with workflow-specific scripts (e.g., environment variable scripts).
+    ├── scripts.sh  # A collection of scripts to execute.
+    └── test.sh     # Script that runs the "full" workflow.
+```
+
 ---
 
-*Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub Actions YAML for automating the image builds.*
+*Note: This repository does not provide installation instructions or additional configuration files beyond the GitHub
+Actions YAML for automating the image builds.*

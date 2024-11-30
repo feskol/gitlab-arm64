@@ -26,6 +26,8 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'  # Only run if the branch is 'main'
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3

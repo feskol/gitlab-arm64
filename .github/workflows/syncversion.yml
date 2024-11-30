@@ -12,351 +12,111 @@ on:
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'  # Only run if the branch is 'main'
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
           ref: main
 
+
       - name: Fetch Docker tags
         id: fetch-tags
-        run: |
-          # Fetch own tags
-          url="https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100"
-          
-          echo "Start fetching 'feskol/gitlab tags'"
-          
-          # Loop through all pages
-          while [[ -n "$url" ]]; do
-            echo "Fetching tags from: $url"
-          
-            # Fetch data from the current URL
-            response=$(curl -s "$url")
-            
-            # Extract tags and append to a file or print (only full image with "ce.0" suffix)
-            echo "$response" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" >> own_tags.txt
-            
-            # Get the next page URL (or empty if no next page)
-            url=$(echo "$response" | jq -r '.next // empty')
-          done
-          
-          echo "Done fetching 'feskol/gitlab' tags"
-          
-          # Fetch both ce and ee tags (tag name and last updated date)
-          echo "Start fetching latest 'gitlab/gitlab-ce' tags"
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ce/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ce.json
-          echo "Done fetching 'gitlab/gitlab-ce' tags"
-          
-          echo "Start fetching latest 'gitlab/gitlab-ee' tags"
-          curl -s "https://hub.docker.com/v2/namespaces/gitlab/repositories/gitlab-ee/tags?page_size=100" | jq -r '[.results[] | {name: .name, last_updated: .last_updated}]' > gitlab_tags_ee.json
-          echo "Done fetching 'gitlab/gitlab-ee' tags"
+        run: ./scripts/workflows/syncversion/fetch_docker_tags.sh
+
 
       - name: Get latest MAJOR.MINOR version
         id: major-version
-        run: |
-          # Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
-          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1  > latest_ce_tag.txt
-          jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ee.json | sort -V | tail -n 1 > latest_ee_tag.txt
-          
-          # Strip version-specific parts to generate base tags
-          BASE_TAG_CE=$(cat latest_ce_tag.txt | sed -E "s/-ce.0$//")
-          BASE_TAG_EE=$(cat latest_ee_tag.txt | sed -E "s/-ee.0$//")
-          
-          # Read the highest version tag
-          LATEST_MAJOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1)
-          LATEST_MAJOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1)
-          
-          echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> $GITHUB_OUTPUT
-          echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> $GITHUB_OUTPUT
-          
-          # Output major
-          echo "CE latest major: $LATEST_MAJOR_CE"
-          echo "EE latest major: $LATEST_MAJOR_EE"
-          
-          # Read the highest major.minor
-          LATEST_MAJOR_MINOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1-2)
-          LATEST_MAJOR_MINOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1-2)
-          
-          echo "LATEST_MAJOR_MINOR_CE=$LATEST_MAJOR_MINOR_CE" >> $GITHUB_OUTPUT
-          echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> $GITHUB_OUTPUT
-          
-          # Output major.minor
-          echo "CE latest major.minor: $LATEST_MAJOR_MINOR_CE"
-          echo "EE latest major.minor: $LATEST_MAJOR_MINOR_EE"
-
+        run: ./scripts/workflows/syncversion/extract_latest_available_major_version.sh
+        # GITHUB_OUTPUT: LATEST_MAJOR_CE
+        # GITHUB_OUTPUT: LATEST_MAJOR_EE
+        # GITHUB_OUTPUT: LATEST_MAJOR_MINOR_CE
+        # GITHUB_OUTPUT: LATEST_MAJOR_MINOR_EE
 
       - name: Get latest "last_update" dates
         id: latest-last-update
-        run: |
-          # Get the most recent 'last_updated' for valid release tags
-          LATEST_CE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' gitlab_tags_ce.json | sort -V | tail -n 1)
-          LATEST_EE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .last_updated' gitlab_tags_ee.json | sort -V | tail -n 1)
+        run: ./scripts/workflows/syncversion/extract_latest_last_update.sh
+        # GITHUB_OUTPUT: LATEST_CE_LAST_UPDATE
+        # GITHUB_OUTPUT: LATEST_EE_LAST_UPDATE
 
-          echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> $GITHUB_OUTPUT
-          echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> $GITHUB_OUTPUT
-          
-          echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
-          echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"
 
       - name: Get the last saved "last_update" date for gitlab-ce & gitlab-ee from the file
         id: last-saved-last-update-date
-        run: |
-          # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
-          saved_ce_last_modified_date=$(cat .github/generated-files/last_modified_ce_date.txt || echo "")
-          saved_ee_last_modified_date=$(cat .github/generated-files/last_modified_ee_date.txt || echo "")
-          
-          echo "Last saved modified date for gitlab-ce: $saved_ce_last_modified_date"
-          echo "Last saved modified date for gitlab-ee: $saved_ee_last_modified_date"
-          
-          # If this is the first run, we don't have a saved date, so save the current one
-          if [ -z "$saved_ce_last_modified_date" ]; then
-           saved_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
-           echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
-           mkdir -p .github/generated-files
-           echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
-          fi
-          
-          if [ -z "$saved_ee_last_modified_date" ]; then
-           saved_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
-           echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
-           mkdir -p .github/generated-files
-           echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
-          fi
-          
-          echo "SAVED_CE_LAST_MODIFIED_DATE=$saved_ce_last_modified_date" >> $GITHUB_OUTPUT
-          echo "SAVED_EE_LAST_MODIFIED_DATE=$saved_ee_last_modified_date" >> $GITHUB_OUTPUT
+        env:
+          # The latest ce/ee last_update is only needed if the files don't exist, then those
+          # dates are written to the files
+          LATEST_CE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}
+          LATEST_EE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}
+        run: ./scripts/workflows/syncversion/get_last_update_date_from_file.sh
+        # GITHUB_OUTPUT: SAVED_CE_LAST_MODIFIED_DATE
+        # GITHUB_OUTPUT: SAVED_EE_LAST_MODIFIED_DATE
+
 
       - name: Extract new tags to build
-        run: |
-          # Define the array of supported versions ("17" "18" "19")
-          SUPPORTED_GITLAB_VERSIONS=("17")
-          
-          echo "Supported GitLab Versions: ${SUPPORTED_GITLAB_VERSIONS[@]}"
-          
-          saved_ce_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}"
-          saved_ee_last_modified_date="${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}"
-          
-          # Prepare the list of new releases for gitlab-ce
-          new_ce_versions="[]"
-          for tag_data in $(jq -c '.[]' gitlab_tags_ce.json); do
-            tag_name=$(echo "$tag_data" | jq -r '.name')
-            tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
-          
-            # Strip version-specific parts to generate base tags
-            BASE_TAG=$(echo "$tag_name" | sed -E "s/-ce.0$//")
-            TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
-            TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
-            TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
-          
-            # Process only valid release tags for gitlab-ce and compare dates
-            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${MAJOR_TAG} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ce\.0$ ]] && [[ "$tag_last_updated" > "$saved_ce_last_modified_date" ]]; then
+        env:
+          SAVED_CE_LAST_MODIFIED_DATE: ${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}
+          SAVED_EE_LAST_MODIFIED_DATE: ${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}
+          LATEST_MAJOR_CE: ${{ steps.major-version.outputs.LATEST_MAJOR_CE }}
+          LATEST_MAJOR_MINOR_CE: ${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}
+          LATEST_MAJOR_EE: ${{ steps.major-version.outputs.LATEST_MAJOR_EE }}
+          LATEST_MAJOR_MINOR_EE: ${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}
+        run: ./scripts/workflows/syncversion/extract_new_build_tags.sh
 
-              ### Flag "is_latest_patch"
-              LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ce\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ce.0$//" | cut -d. -f1-3)
-          
-              is_latest_patch=false
-              if [[ "$(echo -e "$TAG_MAJOR_MINOR_PATCH\n$LATEST_PATCH" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR_PATCH" ]]; then
-                # The tag version is the latest
-                is_latest_patch=true
-              fi
-          
-              ### Flag "is_latest_minor"
-              LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-ce\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ce.0$//" | cut -d. -f1-2)
-              
-              is_latest_minor=false
-              if [[ "$(echo -e "$TAG_MAJOR_MINOR\n$LATEST_MINOR" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR" ]]; then
-                # The tag version is the latest
-                is_latest_minor=true
-              fi
-                      
-              new_ce_versions=$(echo "$new_ce_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor}]" )
-          
-              echo "Adding new CE Version: $tag_name"
-            fi
-          done
-          
-          echo "New CE versions json: $new_ce_versions"
-          
-          # Prepare the list of new releases for gitlab-ee
-          new_ee_versions="[]"
-          for tag_data in $(jq -c '.[]' gitlab_tags_ee.json); do
-            tag_name=$(echo "$tag_data" | jq -r '.name')
-            tag_last_updated=$(echo "$tag_data" | jq -r '.last_updated')
-          
-            # Strip version-specific parts to generate base tags
-            BASE_TAG=$(echo "$tag_name" | sed -E "s/-ee.0$//")
-            TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
-            TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
-            TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
-          
-            # Process only valid release tags for gitlab-ee and compare dates
-            if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${MAJOR_TAG} " ]] && [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ee\.0$ ]] && [[ "$tag_last_updated" > "$saved_ee_last_modified_date" ]]; then
-
-              ### Flag "is_latest_patch"
-              LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-ee\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ee.0$//" | cut -d. -f1-3)
-          
-              is_latest_patch=false
-              if [[ "$(echo -e "$TAG_MAJOR_MINOR_PATCH\n$LATEST_PATCH" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR_PATCH" ]]; then
-                # The tag version is the latest
-                is_latest_patch=true
-              fi
-          
-              ### Flag "is_latest_minor"
-              LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-ee\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-ee.0$//" | cut -d. -f1-2)
-          
-              is_latest_minor=false
-              if [[ "$(echo -e "$TAG_MAJOR_MINOR\n$LATEST_MINOR" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR" ]]; then
-                # The tag version is the latest
-                is_latest_minor=true
-              fi
-          
-              # Append to the JSON array
-              new_ee_versions=$(echo "$new_ee_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor}]" )
-
-              echo "Adding new EE Version: $tag_name"
-            fi
-          done
-          
-          echo "New EE versions json: $new_ee_versions"
-          
-          # Set output for new versions
-          echo "${new_ce_versions}" > new_ce_versions.json
-          echo "${new_ee_versions}" > new_ee_versions.json
-
-      - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
-        run: |
-          new_ce_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}"
-          new_ee_last_modified_date="${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}"
-          
-          echo "${new_ce_last_modified_date}" > .github/generated-files/last_modified_ce_date.txt
-          echo "${new_ee_last_modified_date}" > .github/generated-files/last_modified_ee_date.txt
-          
-          echo "Overridden CE file with new date: ${new_ce_last_modified_date}"
-          echo "Overridden EE file with new date: ${new_ee_last_modified_date}"
 
       - name: Check new_versions.json files
         id: new-update-available-check
-        run: |
-          # if empty "" or contains an empty array "[]"
-          if [[ ! -s "new_ce_versions.json" || $(jq 'length == 0' new_ce_versions.json) == "true" ]]; then
-            echo "NEW_CE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
-          else
-            echo "NEW_CE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
-          fi
-          
-           # if empty "" or contains an empty array "[]"
-          if [[ ! -s "new_ee_versions.json" || $(jq 'length == 0' new_ee_versions.json) == "true" ]]; then
-            echo "NEW_EE_VERSIONS_AVAILABLE=false" >> $GITHUB_OUTPUT
-          else
-            echo "NEW_EE_VERSIONS_AVAILABLE=true" >> $GITHUB_OUTPUT
-          fi
+        run: ./scripts/workflows/syncversion/check-new-build-tags-available.sh
+        # GITHUB_OUTPUT: NEW_CE_VERSIONS_AVAILABLE
+        # GITHUB_OUTPUT: NEW_EE_VERSIONS_AVAILABLE
 
-      - name: Trigger build for CE versions
-        if: steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true'
+
+      - name: Trigger builds for new versions
+        if: steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const filePath = './new_ce_versions.json';
-            
-            const newCeVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            const highestMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}';
-            const highestMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}';
-            
-            // Trigger workflows for new GitLab CE versions
-            newCeVersions.forEach(version => {
-              if (version.tag) {
-                console.log(`Triggering build for GitLab CE version: ${version.tag}`);
-            
-                const majorVersion = version.tag.match(/^(\d+)/)[1];
-                const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
-            
-                let includeLatestTags = false;
-                is_latest_patch=false;
-                is_latest_minor=false;
-            
-                if (version.is_latest_patch) {
-                  is_latest_patch=true;
-            
-                  if (version.is_latest_minor) {
-                    is_latest_minor=true
-                  }
-            
-                  if (majorMinorVersion === highestMajorMinorVersion) {
-                    if (majorVersion === highestMajorVersion) {
-                      includeLatestTags = true;
-                    }
-                  }
-                }
-            
-                github.rest.actions.createWorkflowDispatch({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  workflow_id: "build.yml",
-                  ref: "main",
-                  inputs: {
-                    gitlab_release: version.tag,
-                    include_latest_tags: includeLatestTags,
-                    include_major_tag: is_latest_minor,
-                    include_major_minor_tag: is_latest_patch
-                  }
-                });
-              }
-            });
 
+            // Function to process versions and trigger workflows
+            const triggerBuilds = (filePath, versionType) => {
+              const newVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-      - name: Trigger build for EE versions
-        if: steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const filePath = './new_ee_versions.json';
-            
-            const newEeVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            const highestMajorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}';
-            const highestMajorMinorVersion = '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}';
-            
-            // Trigger workflows for new GitLab EE versions
-            newEeVersions.forEach(version => {
-              if (version.tag) {
-                console.log(`Triggering build for GitLab EE version: ${version.tag}`);
-            
-                const majorVersion = version.tag.match(/^(\d+)/)[1];
-                const majorMinorVersion = version.tag.match(/^(\d+\.\d+)/)[1];
-            
-                let includeLatestTags = false;
-                is_latest_patch=false;
-                is_latest_minor=false;
-            
-                if (version.is_latest_patch) {
-                  is_latest_patch=true;
-            
-                  if (version.is_latest_minor) {
-                    is_latest_minor=true
-                  }
-            
-                  if (majorMinorVersion === highestMajorMinorVersion) {
-                    if (majorVersion === highestMajorVersion) {
-                      includeLatestTags = true;
+              newVersions.forEach(version => {
+                if (version.tag) {
+                  console.log(`Triggering build for GitLab ${versionType} version: ${version.tag}`);
+
+                  github.rest.actions.createWorkflowDispatch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: "build.yml",
+                    ref: "main",
+                    inputs: {
+                      gitlab_release: version.tag,
+                      include_latest_tags: version.is_latest_overall,
+                      include_major_tag: version.is_latest_minor,
+                      include_major_minor_tag: version.is_latest_patch
                     }
-                  }
+                  });
                 }
-            
-                github.rest.actions.createWorkflowDispatch({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  workflow_id: "build.yml",
-                  ref: "main",
-                  inputs: {
-                    gitlab_release: version.tag,
-                    include_latest_tags: includeLatestTags,
-                    include_major_tag: is_latest_minor,
-                    include_major_minor_tag: is_latest_patch
-                  }
-                });
-              }
-            });
+              });
+            };
+
+            // Check and trigger builds for CE and EE versions
+            if ('${{ steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}' == 'true') {
+              triggerBuilds('./new_ce_versions.json', 'CE');
+            }
+            if ('${{ steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE }}' == 'true') {
+              triggerBuilds('./new_ee_versions.json', 'EE');
+            }
+      
+
+      - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
+        env:
+          LATEST_CE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}
+          LATEST_EE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}
+        run: ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
+
 
       - name: Commit and Push generated-files
         run: |
