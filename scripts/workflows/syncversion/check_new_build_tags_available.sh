@@ -7,20 +7,21 @@
 
 set -e
 
-# if empty "" or contains an empty array "[]"
-if [[ ! -s "new_ce_versions.json" || $(jq 'length == 0' new_ce_versions.json) == "true" ]]; then
-    echo "[NOT AVAILABLE] No new CE build tags"
-    echo "NEW_BUILD_CE_VERSION_AVAILABLE=false" >> $GITHUB_OUTPUT
-else
-    echo "[AVAILABLE] New CE build tags are available"
-    echo "NEW_BUILD_CE_VERSION_AVAILABLE=true" >> $GITHUB_OUTPUT
-fi
+check_files() {
+    local input_file="$1"
+    local suffix="$2"
+    local github_output_key="$3"
 
-# if empty "" or contains an empty array "[]"
-if [[ ! -s "new_ee_versions.json" || $(jq 'length == 0' new_ee_versions.json) == "true" ]]; then
-    echo "[NOT AVAILABLE] No new EE build tags"
-    echo "NEW_BUILD_EE_VERSION_AVAILABLE=false" >> $GITHUB_OUTPUT
-else
-    echo "[AVAILABLE] New EE build tags are available"
-    echo "NEW_BUILD_EE_VERSION_AVAILABLE=true" >> $GITHUB_OUTPUT
-fi
+    # if empty "" or contains an empty array "[]"
+    if [[ ! -s "$input_file" || $(jq 'length == 0' "$input_file") == "true" ]]; then
+        echo "[NOT AVAILABLE] No new ${suffix} build tags"
+        echo "${github_output_key}=false" >>$GITHUB_OUTPUT
+    else
+        echo "[AVAILABLE] New ${suffix} build tags are available"
+        echo "${github_output_key}=true" >>$GITHUB_OUTPUT
+    fi
+}
+
+# write outputs
+check_files "new_ce_versions.json" "CE" "NEW_BUILD_CE_VERSION_AVAILABLE"
+check_files "new_ee_versions.json" "EE" "NEW_BUILD_EE_VERSION_AVAILABLE"
