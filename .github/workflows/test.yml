@@ -16,7 +16,7 @@ jobs:
 #        run: chmod +x ./lib/bashunit
 #
 #      - name: Run tests
-#        run: ./lib/bashunit ./unit/workflows/build
+#        run: ./lib/bashunit ./tests/unit/workflows/build
 
   test-syncversion-scripts:
     runs-on: ubuntu-latest
@@ -28,4 +28,4 @@ jobs:
         run: chmod +x ./lib/bashunit
 
       - name: Run tests
-        run: ./lib/bashunit ./unit/workflows/syncversion
+        run: ./lib/bashunit ./tests/unit/workflows/syncversion
