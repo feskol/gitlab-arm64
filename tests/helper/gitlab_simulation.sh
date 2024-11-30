@@ -10,6 +10,9 @@
 export GITHUB_OUTPUT=./GITHUB_OUTPUT
 export GITHUB_ENV=./GITHUB_ENV
 
+echo "$GITHUB_OUTPUT"
+ls -l "$GITHUB_OUTPUT"
+
 # Function to extract the value from $GITHUB_OUTPUT or GITHUB_ENV files
 extract_value() {
     local name=$1
