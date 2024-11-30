@@ -29,5 +29,5 @@ jobs:
         run: chmod +x ./lib/bashunit
 
       - name: Run tests
-        run: ./lib/bashunit ./tests/unit/workflows/syncversion
+        run: ../lib/bashunit ./unit/workflows/syncversion
         working-directory: ./tests
