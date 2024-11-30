@@ -7,4 +7,4 @@ services:
         volumes:
             - .:/app  # Mount your script directory
         working_dir: /app/tests   # Set working directory
-        command: ../lib/bashunit ./unit
+        command: ../lib/bashunit --verbose ./unit

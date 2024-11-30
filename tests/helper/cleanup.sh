@@ -17,4 +17,4 @@ rm -f \
 
 # Cleanup directories
 rm -rf \
-    .github
+    .github/generated-files

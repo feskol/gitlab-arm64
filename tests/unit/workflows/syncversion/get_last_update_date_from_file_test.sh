@@ -30,7 +30,7 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    cp -r ./fixtures/.github/ .github
+    cp -a ./fixtures/.github/. .github/
 
     cat ./fixtures/.github/generated-files/last_modified_ce_date.txt
     cat ./fixtures/.github/generated-files/last_modified_ee_date.txt
@@ -39,8 +39,6 @@ function test_existing_last_modified_files() {
     cat .github/generated-files/last_modified_ee_date.txt
 
     runScript
-
-    echo "$GITHUB_OUTPUT"
 
     assert_same "2024-10-31T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
     assert_same "2024-10-30T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
