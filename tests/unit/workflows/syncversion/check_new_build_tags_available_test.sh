@@ -28,8 +28,8 @@ function test_new_build_tags_available() {
 
     runScript
 
-    assert_same "true" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "GITHUB_OUTPUT")"
-    assert_same "true" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "GITHUB_OUTPUT")"
+    assert_same "true" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
+    assert_same "true" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
 }
 
 function test_no_new_build_tags_available() {
@@ -38,6 +38,6 @@ function test_no_new_build_tags_available() {
 
     runScript
 
-    assert_same "false" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "GITHUB_OUTPUT")"
-    assert_same "false" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "GITHUB_OUTPUT")"
+    assert_same "false" "$(extract_value "NEW_BUILD_CE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
+    assert_same "false" "$(extract_value "NEW_BUILD_EE_VERSION_AVAILABLE" "$GITHUB_OUTPUT")"
 }

@@ -22,6 +22,6 @@ function tear_down() {
 }
 
 function test_extract_last_update() {
-    assert_same "2024-11-26T14:18:08.419895Z" "$(extract_value "LATEST_CE_LAST_UPDATE" "GITHUB_OUTPUT")"
-    assert_same "2024-11-26T14:18:17.782724Z" "$(extract_value "LATEST_EE_LAST_UPDATE" "GITHUB_OUTPUT")"
+    assert_same "2024-11-26T14:18:08.419895Z" "$(extract_value "LATEST_CE_LAST_UPDATE" "$GITHUB_OUTPUT")"
+    assert_same "2024-11-26T14:18:17.782724Z" "$(extract_value "LATEST_EE_LAST_UPDATE" "$GITHUB_OUTPUT")"
 }

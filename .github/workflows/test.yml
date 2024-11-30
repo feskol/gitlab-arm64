@@ -17,4 +17,4 @@ jobs:
 
       - name: Run tests
         working-directory: ./tests
-        run: echo "$GITHUB_OUTPUT"
+        run: ../lib/bashunit ./unit/workflows/syncversion

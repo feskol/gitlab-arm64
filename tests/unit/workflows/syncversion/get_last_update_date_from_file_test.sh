@@ -23,8 +23,8 @@ function test_not_existing_last_modified_files() {
 
     runScript
 
-    assert_same "2024-01-01T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "GITHUB_OUTPUT")"
-    assert_same "2024-02-02T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "GITHUB_OUTPUT")"
+    assert_same "2024-01-01T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
+    assert_same "2024-02-02T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
 }
 
 function test_existing_last_modified_files() {
@@ -32,6 +32,6 @@ function test_existing_last_modified_files() {
 
     runScript
 
-    assert_same "2024-10-31T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "GITHUB_OUTPUT")"
-    assert_same "2024-10-30T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "GITHUB_OUTPUT")"
+    assert_same "2024-10-31T00:00:00.000000Z" "$(extract_value "SAVED_CE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
+    assert_same "2024-10-30T00:00:00.000000Z" "$(extract_value "SAVED_EE_LAST_MODIFIED_DATE" "$GITHUB_OUTPUT")"
 }
