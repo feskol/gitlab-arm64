@@ -12,7 +12,7 @@ SUPPORTED_GITLAB_VERSIONS=("17")
 echo "Supported GitLab Versions: ${SUPPORTED_GITLAB_VERSIONS[@]}"
 
 # Function to process tags
-process_tags() {
+extract_new_build_tags() {
     local input_file="$1"
     local saved_date="$2"
     local suffix="$3"
@@ -35,16 +35,14 @@ process_tags() {
            [[ "$tag_last_updated" > "$saved_date" ]]; then
 
             local LATEST_PATCH is_latest_patch
-            LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-${suffix}\.0$" own_tags.txt | sort -V | tail -n 1 | \
-                sed -E "s/-${suffix}.0$//" | cut -d. -f1-3)
+            LATEST_PATCH=$(grep -E "^${TAG_MAJOR_MINOR//./\\.}\.[0-9]+-${suffix}\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-${suffix}.0$//" | cut -d. -f1-3)
             is_latest_patch=false
             if [[ "$(echo -e "$TAG_MAJOR_MINOR_PATCH\n$LATEST_PATCH" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR_PATCH" ]]; then
                 is_latest_patch=true
             fi
 
             local LATEST_MINOR is_latest_minor
-            LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-${suffix}\.0$" own_tags.txt | sort -V | tail -n 1 | \
-                sed -E "s/-${suffix}.0$//" | cut -d. -f1-2)
+            LATEST_MINOR=$(grep -E "^${TAG_MAJOR}\.[0-9]+\.[0-9]+-${suffix}\.0$" own_tags.txt | sort -V | tail -n 1 | sed -E "s/-${suffix}.0$//" | cut -d. -f1-2)
             is_latest_minor=false
             if [[ $is_latest_patch == "true" ]] && [[ "$(echo -e "$TAG_MAJOR_MINOR\n$LATEST_MINOR" | sort -V | tail -n 1)" == "$TAG_MAJOR_MINOR" ]]; then
                 is_latest_minor=true
@@ -67,8 +65,8 @@ process_tags() {
 
 
 # Process gitlab-ce and gitlab-ee
-new_ce_versions=$(process_tags "gitlab_tags_ce.json" "$SAVED_CE_LAST_MODIFIED_DATE" "ce" "$LATEST_MAJOR_CE" "$LATEST_MAJOR_MINOR_CE")
-new_ee_versions=$(process_tags "gitlab_tags_ee.json" "$SAVED_EE_LAST_MODIFIED_DATE" "ee" "$LATEST_MAJOR_EE" "$LATEST_MAJOR_MINOR_EE")
+new_ce_versions=$(extract_new_build_tags "gitlab_tags_ce.json" "$SAVED_CE_LAST_MODIFIED_DATE" "ce" "$LATEST_MAJOR_CE" "$LATEST_MAJOR_MINOR_CE")
+new_ee_versions=$(extract_new_build_tags "gitlab_tags_ee.json" "$SAVED_EE_LAST_MODIFIED_DATE" "ee" "$LATEST_MAJOR_EE" "$LATEST_MAJOR_MINOR_EE")
 
 # Output results
 echo "New CE versions json: $new_ce_versions"
