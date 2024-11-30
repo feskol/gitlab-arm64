@@ -7,8 +7,8 @@
 
 # Cleanup files
 rm -f \
-    GITHUB_OUTPUT \
-    GITHUB_ENV \
+    "$GITHUB_OUTPUT" \
+    "$GITHUB_ENV" \
     gitlab_tags_ce.json \
     gitlab_tags_ee.json \
     new_ce_versions.json \
