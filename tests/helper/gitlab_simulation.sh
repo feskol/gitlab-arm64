@@ -16,17 +16,11 @@ if [ -z "$GITHUB_ENV" ]; then
     export GITHUB_ENV
 fi
 
-# Function to extract the value from $GITHUB_OUTPUT or $GITHUB_ENV files
+# Function to extract the value from $GITHUB_OUTPUT or GITHUB_ENV files
 extract_value() {
     local name=$1
     local file=$2
 
     # Extract the value from the file, using grep and cut to get the value
-    value=$(grep -E "^$name=" "$file" | cut -d '=' -f2-)
-
-    # Clean up the value by removing trailing newlines and spaces
-    value=$(echo "$value" | sed 's/[[:space:]]*$//' | tr -d '\n')
-
-    # Return the cleaned-up value
-    echo "$value"
+    grep -E "^$name=" "$file" | cut -d '=' -f2-
 }

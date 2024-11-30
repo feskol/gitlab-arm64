@@ -15,14 +15,6 @@ jobs:
       - name: Set permissions
         run: chmod +x ./lib/bashunit
 
-      - name: Test GITHUB_OUTPUT
-        run: |
-          echo "TEST_TEST=This is my tests" >> $GITHUB_OUTPUT
-          
-          cat "$GITHUB_OUTPUT"
-          rm -f "$GITHUB_OUTPUT"
-          cat "$GITHUB_OUTPUT"
-
       - name: Run tests
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/syncversion
