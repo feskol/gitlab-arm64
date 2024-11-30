@@ -6,7 +6,7 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function runScript() {
     # Run original script
@@ -14,9 +14,7 @@ function runScript() {
 }
 
 function tear_down() {
-    unset LATEST_CE_LAST_UPDATE LATEST_EE_LAST_UPDATE
-
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_not_existing_last_modified_files() {
@@ -30,7 +28,8 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    cp -a ./fixtures/.github/. .github/
+    github_fixture_path=$(fixture_path ".github")
+    cp -a "$github_fixture_path/." .github/
 
     runScript
 

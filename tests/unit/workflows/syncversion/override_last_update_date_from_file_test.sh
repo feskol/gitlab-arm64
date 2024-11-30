@@ -6,7 +6,7 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function runScript() {
     # Run original script
@@ -14,7 +14,7 @@ function runScript() {
 }
 
 function tear_down() {
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_() {
@@ -23,8 +23,8 @@ function test_() {
 
     runScript
 
-    assert_file_exists ".github/generated-files/last_modified_ce_date.txt"
-    assert_file_exists ".github/generated-files/last_modified_ee_date.txt"
+    assert_file_exists .github/generated-files/last_modified_ce_date.txt
+    assert_file_exists .github/generated-files/last_modified_ee_date.txt
 
     assert_same "2001-01-01T00:00:00.000000Z" "$(cat ".github/generated-files/last_modified_ce_date.txt")"
     assert_same "2001-01-01T00:00:00.000000Z" "$(cat ".github/generated-files/last_modified_ee_date.txt")"

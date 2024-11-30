@@ -6,7 +6,7 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function set_up() {
     # Run the original script
@@ -14,7 +14,7 @@ function set_up() {
 }
 
 function tear_down() {
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_files_and_not_empty() {

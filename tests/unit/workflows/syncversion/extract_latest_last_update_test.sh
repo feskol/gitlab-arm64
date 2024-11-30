@@ -6,19 +6,19 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function set_up() {
     # load fixtures
-    cp ./fixtures/gitlab_tags_ce.json ./
-    cp ./fixtures/gitlab_tags_ee.json ./
+    cp "$(fixture_path "gitlab_tags_ce.json")" ./
+    cp "$(fixture_path "gitlab_tags_ee.json")" ./
 
     # Run original Script
     bash "../scripts/workflows/syncversion/extract_latest_last_update.sh"
 }
 
 function tear_down() {
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_extract_last_update() {

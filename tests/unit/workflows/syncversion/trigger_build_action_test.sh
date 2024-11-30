@@ -6,7 +6,7 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function runScript() {
     # Run the original script
@@ -16,12 +16,12 @@ function runScript() {
 }
 
 function tear_down() {
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_build_run() {
-    cp ./fixtures/new_ce_versions.json ./
-    cp ./fixtures/new_ee_versions.json ./
+    cp "$(fixture_path "new_ce_versions.json")" ./
+    cp "$(fixture_path "new_ee_versions.json")" ./
 
     export NEW_BUILD_CE_VERSION_AVAILABLE="true"
     export NEW_BUILD_EE_VERSION_AVAILABLE="true"

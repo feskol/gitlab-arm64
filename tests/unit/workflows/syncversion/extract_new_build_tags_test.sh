@@ -6,7 +6,7 @@
 #
 
 # Import test-case
-source ./helper/test-case.sh
+source ./helper/workflows/syncversion/test-case.sh
 
 function runScript() {
     # Run original Script
@@ -19,13 +19,13 @@ function set_up() {
     export LATEST_MAJOR_EE="17"
     export LATEST_MAJOR_MINOR_EE="17.6"
 
-    cp ./fixtures/own_tags.txt ./
-    cp ./fixtures/gitlab_tags_ce.json ./
-    cp ./fixtures/gitlab_tags_ee.json ./
+    cp "$(fixture_path "own_tags.txt")" ./
+    cp "$(fixture_path "gitlab_tags_ce.json")" ./
+    cp "$(fixture_path "gitlab_tags_ee.json")" ./
 }
 
 function tear_down() {
-    ./helper/cleanup.sh
+    cleanup
 }
 
 function test_file_creation() {
@@ -34,8 +34,8 @@ function test_file_creation() {
 
     runScript
 
-    assert_file_exists "new_ce_versions.json"
-    assert_file_exists "new_ee_versions.json"
+    assert_file_exists new_ce_versions.json
+    assert_file_exists new_ee_versions.json
 }
 
 function test_found_new_build_tags() {
@@ -44,11 +44,13 @@ function test_found_new_build_tags() {
 
     runScript
 
-    assert_not_empty "$(cat "new_ce_versions.json")"
-    assert_not_empty "$(cat "new_ee_versions.json")"
+    assert_not_empty "$(cat new_ce_versions.json)"
+    assert_not_empty "$(cat new_ee_versions.json)"
 
-    assert_same "$(cat ./fixtures/new_ce_versions.json)" "$(cat new_ce_versions.json)"
-    assert_same "$(cat ./fixtures/new_ee_versions.json)" "$(cat new_ee_versions.json)"
+    new_ce_versions_fixture_path="$(fixture_path "new_ce_versions.json")"
+    new_ee_versions_fixture_path="$(fixture_path "new_ee_versions.json")"
+    assert_same "$(cat "$new_ce_versions_fixture_path")" "$(cat new_ce_versions.json)"
+    assert_same "$(cat "$new_ee_versions_fixture_path")" "$(cat new_ee_versions.json)"
 }
 
 function test_no_new_builds() {
