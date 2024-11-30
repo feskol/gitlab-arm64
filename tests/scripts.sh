@@ -13,5 +13,6 @@ SCRIPTS=(
     "workflows/syncversion/get_last_update_date_from_file.sh"
     "workflows/syncversion/extract_new_build_tags.sh"
     "workflows/syncversion/check-new-build-tags-available.sh"
+    #"workflows/syncversion/trigger-build-action.js"
     "workflows/syncversion/override_last_update_date_from_file.sh"
 )

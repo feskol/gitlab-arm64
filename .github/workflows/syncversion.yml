@@ -46,8 +46,8 @@ jobs:
         env:
           # The latest ce/ee last_update is only needed if the files don't exist, then those
           # dates are written to the files
-          LATEST_CE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}
-          LATEST_EE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}
+          LATEST_CE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}'
+          LATEST_EE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}'
         run: ./scripts/workflows/syncversion/get_last_update_date_from_file.sh
         # GITHUB_OUTPUT: SAVED_CE_LAST_MODIFIED_DATE
         # GITHUB_OUTPUT: SAVED_EE_LAST_MODIFIED_DATE
@@ -55,25 +55,28 @@ jobs:
 
       - name: Extract new tags to build
         env:
-          SAVED_CE_LAST_MODIFIED_DATE: ${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}
-          SAVED_EE_LAST_MODIFIED_DATE: ${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}
-          LATEST_MAJOR_CE: ${{ steps.major-version.outputs.LATEST_MAJOR_CE }}
-          LATEST_MAJOR_MINOR_CE: ${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}
-          LATEST_MAJOR_EE: ${{ steps.major-version.outputs.LATEST_MAJOR_EE }}
-          LATEST_MAJOR_MINOR_EE: ${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}
+          SAVED_CE_LAST_MODIFIED_DATE: '${{ steps.last-saved-last-update-date.outputs.SAVED_CE_LAST_MODIFIED_DATE }}'
+          SAVED_EE_LAST_MODIFIED_DATE: '${{ steps.last-saved-last-update-date.outputs.SAVED_EE_LAST_MODIFIED_DATE }}'
+          LATEST_MAJOR_CE: '${{ steps.major-version.outputs.LATEST_MAJOR_CE }}'
+          LATEST_MAJOR_MINOR_CE: '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_CE }}'
+          LATEST_MAJOR_EE: '${{ steps.major-version.outputs.LATEST_MAJOR_EE }}'
+          LATEST_MAJOR_MINOR_EE: '${{ steps.major-version.outputs.LATEST_MAJOR_MINOR_EE }}'
         run: ./scripts/workflows/syncversion/extract_new_build_tags.sh
 
 
       - name: Check new_versions.json files
-        id: new-update-available-check
+        id: new-build-tags-available-check
         run: ./scripts/workflows/syncversion/check-new-build-tags-available.sh
-        # GITHUB_OUTPUT: NEW_CE_VERSIONS_AVAILABLE
-        # GITHUB_OUTPUT: NEW_EE_VERSIONS_AVAILABLE
+        # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
+        # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
 
 
       - name: Trigger builds for new versions
         if: steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true'
         uses: actions/github-script@v7
+        env:
+          NEW_BUILD_CE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}'
+          NEW_BUILD_EE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE }}'
         with:
           script: |
             const fs = require('fs');
@@ -103,18 +106,18 @@ jobs:
             };
 
             // Check and trigger builds for CE and EE versions
-            if ('${{ steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}' == 'true') {
+            if (process.env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true') {
               triggerBuilds('./new_ce_versions.json', 'CE');
             }
-            if ('${{ steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE }}' == 'true') {
+            if (process.env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true') {
               triggerBuilds('./new_ee_versions.json', 'EE');
             }
       
 
       - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
         env:
-          LATEST_CE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}
-          LATEST_EE_LAST_UPDATE: ${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}
+          LATEST_CE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_CE_LAST_UPDATE }}'
+          LATEST_EE_LAST_UPDATE: '${{ steps.latest-last-update.outputs.LATEST_EE_LAST_UPDATE }}'
         run: ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
 
 

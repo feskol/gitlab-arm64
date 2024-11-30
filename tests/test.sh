@@ -7,18 +7,15 @@
 
 # include helpers and preparation
 source ./helper/helper.sh
-source ./helper/gitlab_simulation.sh
 
 ######################################
-# Check if this script is running correctly
+# Check if this script is running through docker
 ######################################
 parent_name=$(basename "$(realpath ../)")
-echo $parent_name
-if [[ "$parent_name" != "feskol_gitlab_arm64_app_tests" ]]; then
+if [[ "$parent_name" != "feskol_gitlab_arm64_docker_app_tests" ]]; then
     echoError "Please run this script with: docker compose run --rm -it test"
     exit 1
 fi
-
 
 # execute cleanup
 cleanup
@@ -50,18 +47,10 @@ run_script() {
     script_name=$1
     echoInfoLine "Running" "$script_name..."
 
-    # Prepend "test/" and append "-env.sh"
-    env_file_path="${script_name%.sh}-env.sh"
-
-    # load env file for script that needs it
-    if [[ -f "$env_file_path" ]]; then
-        # If file exists, source it
-        echoSystemLine "Found Env-file" "loading file $env_file_path"
-        source "$env_file_path"
-    fi
+    export ORIGINAL_SCRIPT="../scripts/$script_name"
 
     # Execute the script and check for errors
-    ../scripts/$script_name
+    ./$script_name
     if [ $? -eq 0 ]; then
         echoSuccessLine "Successfully" "ran $script_name"
     else
@@ -80,6 +69,7 @@ if [[ -z "$input_script" ]]; then
     echoSuccess "All scripts completed successfully."
 else
     # Run only the specified script
+    # shellcheck disable=SC2199
     if [[ " ${SCRIPTS[@]} " =~ " $input_script " ]]; then
         run_script "$input_script"
     else

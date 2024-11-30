@@ -6,6 +6,6 @@ services:
             dockerfile: "Dockerfile"
         restart: "no"
         volumes:
-            - .:/feskol_gitlab_arm64_app_tests  # Mount your script directory
-        working_dir: /feskol_gitlab_arm64_app_tests/tests   # Set working directory
+            - .:/feskol_gitlab_arm64_docker_app_tests  # Mount your script directory
+        working_dir: /feskol_gitlab_arm64_docker_app_tests/tests   # Set working directory
         command: bash test.sh   # Run the test scripts
