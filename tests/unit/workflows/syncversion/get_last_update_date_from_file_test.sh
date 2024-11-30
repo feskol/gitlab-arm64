@@ -28,7 +28,9 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    cp -rf ./fixtures/.github ./.github
+    cp -r ./fixtures/.github/ ./.github
+
+    ls -l .github
 
     runScript
 
