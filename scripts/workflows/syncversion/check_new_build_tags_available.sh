@@ -15,13 +15,13 @@ check_files() {
     # if empty "" or contains an empty array "[]"
     if [[ ! -s "$input_file" || $(jq 'length == 0' "$input_file") == "true" ]]; then
         echo "[NOT AVAILABLE] No new ${suffix} build tags"
-        echo "${github_output_key}=false" >>$GITHUB_OUTPUT
+        echo "${github_output_key}=false" >> "$GITHUB_OUTPUT"
     else
         echo "[AVAILABLE] New ${suffix} build tags are available"
-        echo "${github_output_key}=true" >>$GITHUB_OUTPUT
+        echo "${github_output_key}=true" >> "$GITHUB_OUTPUT"
     fi
 }
 
-# write outputs
+# Check files for CE and EE
 check_files "new_ce_versions.json" "CE" "NEW_BUILD_CE_VERSION_AVAILABLE"
 check_files "new_ee_versions.json" "EE" "NEW_BUILD_EE_VERSION_AVAILABLE"
