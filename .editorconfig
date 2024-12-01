@@ -6,10 +6,14 @@ root = true
 [*]
 end_of_line = lf
 charset = utf-8
-tab_width = 4
 indent_style = space
 indent_size = 4
+tab_width = 4
+
+[*.sh]
+insert_final_newline = true
+trim_trailing_whitespace = true
 
 [.github/workflows/**.yml]
-indent_style = space
 indent_size = 2
+tab_width = 2

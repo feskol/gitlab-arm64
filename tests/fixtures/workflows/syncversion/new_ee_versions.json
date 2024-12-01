@@ -1,0 +1,44 @@
+[
+  {
+    "tag": "17.4.5-ee.0",
+    "is_latest_patch": true,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  },
+  {
+    "tag": "17.5.3-ee.0",
+    "is_latest_patch": true,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  },
+  {
+    "tag": "17.6.1-ee.0",
+    "is_latest_patch": true,
+    "is_latest_minor": true,
+    "is_latest_overall": true
+  },
+  {
+    "tag": "17.6.0-ee.0",
+    "is_latest_patch": false,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  },
+  {
+    "tag": "17.3.7-ee.0",
+    "is_latest_patch": true,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  },
+  {
+    "tag": "17.4.4-ee.0",
+    "is_latest_patch": false,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  },
+  {
+    "tag": "17.5.2-ee.0",
+    "is_latest_patch": false,
+    "is_latest_minor": false,
+    "is_latest_overall": false
+  }
+]
