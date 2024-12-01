@@ -38,12 +38,12 @@
 This repository provides **GitLab Docker images for ARM64 architecture**.
 
 GitLab does not officially support ARM64.
-As a result, GitLab does not provide official Docker images for ARM64. While there are some GitHub repositories that
+As a result, GitLab does not provide official **Docker images for ARM64**. While there are some repositories that
 attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
 security patch requires an immediate update.
 
 To solve this problem, I created this repository providing a Gitlab Action that checks for new releases twice a day and
-automatically builds a Docker image for the latest release.
+automatically builds a **Docker image** for the latest release.
 
 ## Features
 
