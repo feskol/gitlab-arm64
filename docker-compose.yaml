@@ -1,7 +1,7 @@
 services:
     test:
         build:
-            context: "."
+            context: "tests"
             dockerfile: "Dockerfile"
         restart: "no"
         volumes:
