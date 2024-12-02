@@ -21,14 +21,8 @@ jobs:
           ref: main
 
       - name: Set Permissions
-        run: |
-          chmod +x ./scripts/workflows/syncversion/fetch_docker_tags.sh
-          chmod +x ./scripts/workflows/syncversion/extract_latest_available_major_version.sh
-          chmod +x ./scripts/workflows/syncversion/extract_latest_last_update.sh
-          chmod +x ./scripts/workflows/syncversion/get_last_update_date_from_file.sh
-          chmod +x ./scripts/workflows/syncversion/extract_new_build_tags.sh
-          chmod +x ./scripts/workflows/syncversion/check_new_build_tags_available.sh
-          chmod +x ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
+        # make all scripts in scripts/workflows/syncversion executable
+        run: chmod +x ./scripts/workflows/syncversion/*.sh
 
       - name: Fetch Docker tags
         id: fetch-tags

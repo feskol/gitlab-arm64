@@ -9,11 +9,5 @@ source ./helper/test-case.sh
 
 function cleanup() {
     gitlab_simulation_cleanup
-    ./helper/workflows/syncversion/cleanup.sh
-}
-
-function fixture_path() {
-    local file_or_path="$1"
-
-    echo "./fixtures/workflows/syncversion/$file_or_path"
+    ./helper/workflows/build/cleanup.sh
 }

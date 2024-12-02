@@ -214,8 +214,17 @@ directory.
 To run the tests, run:
 
 ```bash
-# Run tests
+# Run all tests
 docker compose run --rm test
+
+# Run tests for specific folder
+docker compose run --rm test ../lib/bashunit ./unit/workflows/build
+```
+
+If you encounter errors, try using the `--verbose` option for more details.
+
+```bash
+docker compose run --rm test ../lib/bashunit --verbose ./unit
 ```
 
 #### Structure:

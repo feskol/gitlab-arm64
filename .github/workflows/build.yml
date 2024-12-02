@@ -7,9 +7,9 @@ on:
         type: string
         description: "GitLab Release Docker-Tag (e.g. 17.6.1-ce.0)"
         required: true
-      include_latest_tags:
+      include_major_minor_tag:
         type: boolean
-        description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
+        description: "Update 'major.minor' tag (e.g. 17.6-ce)"
         required: false
         default: false
       include_major_tag:
@@ -17,9 +17,9 @@ on:
         description: "Update 'major' tag (e.g. 17-ce)"
         required: false
         default: false
-      include_major_minor_tag:
+      include_latest_tags:
         type: boolean
-        description: "Update 'major.minor' tag (e.g. 17.6-ce)"
+        description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
 
@@ -31,6 +31,45 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Validate Input "gitlab_release"
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+        run: ./scripts/workflows/build/validate_input_gitlab_release.sh
+
+      - name: Extract GitLab Edition
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+        run: ./scripts/workflows/build/extract_gitlab_edition_suffix.sh
+        # GITHUB_ENV: GITLAB_EDITION_SUFFIX
+
+      - name: Generate Tags
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+          INPUT_INCLUDE_LATEST_TAGS: ${{ github.event.inputs.include_latest_tags }}
+          INPUT_INCLUDE_MAJOR_TAG: ${{ github.event.inputs.include_major_tag }}
+          INPUT_INCLUDE_MAJOR_MINOR_TAG: ${{ github.event.inputs.include_major_minor_tag }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/generate_tags.sh
+        # GITHUB_ENV: GENERATED_TAGS
+
+
+      - name: Generate Docker tags
+        env:
+          GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: ./scripts/workflows/build/generate_docker_tags.sh
+        # GITHUB_ENV: DOCKERHUB_PUSH_TAGS
+
+      - name: Setup GitLab build files
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/setup_build_files.sh
 
       - name: docker login to docker.io
         uses: docker/login-action@v2
@@ -46,99 +85,17 @@ jobs:
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Define ENV variables
-        id: define-variables
-        run: |
-          # Extract suffix (-ce or -ee)
-          SUFFIX=$(echo "${{ github.event.inputs.gitlab_release }}" | sed -E 's/.*-(ce|ee).*/\1/')
-          echo "GITLAB_EDITION=$SUFFIX" >> $GITHUB_ENV
-
-      - name: Parse Tags
-        id: parse-tags
-        run: |
-          GITLAB_RELEASE="${{ github.event.inputs.gitlab_release }}"
-          
-          # Extract suffix (ce or ee)
-          SUFFIX="${{ env.GITLAB_EDITION }}"
-          
-          # Strip version-specific parts to generate base tags
-          BASE_TAG=$(echo "$GITLAB_RELEASE" | sed -E "s/-${SUFFIX}.0$//")
-          TAG_MAJOR=$(echo "$BASE_TAG" | cut -d. -f1)
-          TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
-          TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
-          
-          # Add default tag
-          DEFAULT_TAGS="$GITLAB_RELEASE $TAG_MAJOR_MINOR_PATCH-$SUFFIX"
-          
-          # include latest tags
-          if [ "${{ github.event.inputs.include_latest_tags }}" == "true" ]; then
-            DEFAULT_TAGS="$DEFAULT_TAGS $SUFFIX"
-          
-            if [ "$SUFFIX" == "ce" ]; then
-              DEFAULT_TAGS="$DEFAULT_TAGS latest"
-            fi
-          fi
-          
-          # include major tag
-          if [ "${{ github.event.inputs.include_major_tag }}" == "true" ]; then
-            DEFAULT_TAGS="$DEFAULT_TAGS $TAG_MAJOR-$SUFFIX"
-          fi
-          
-          # include major.minor tag
-          if [ "${{ github.event.inputs.include_major_minor_tag }}" == "true" ]; then
-            DEFAULT_TAGS="$DEFAULT_TAGS $TAG_MAJOR_MINOR-$SUFFIX"
-          fi
-
-          # Combine all tags, ensuring no extra spaces
-          ALL_TAGS="$DEFAULT_TAGS"
-          
-          # Replace spaces with comma
-          ALL_TAGS=$(echo "$ALL_TAGS" | tr ' ' ',')
-
-          echo "ALL_TAGS=$ALL_TAGS" >> $GITHUB_ENV
-          echo "Parsed tags: $ALL_TAGS"
-
-      - name: Generate Docker tags
-        id: generate-tags
-        run: |
-          DOCKERHUB_PUSH_TAGS=$(echo ${{ env.ALL_TAGS }} | tr ',' '\n' | xargs -I {} echo "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gitlab:{}" | tr '\n' ',')
-          echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> $GITHUB_ENV
-
-      - name: Download GitLab Build Files
-        run: |
-          # Replace "-" with "+" in the release
-          GITLAB_OMNIBUS_RELEASE=$(echo "${{ github.event.inputs.gitlab_release }}" | sed 's/-/+/g')
-          
-          mkdir -p build
-          curl -sL "https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_OMNIBUS_RELEASE}/omnibus-gitlab-${GITLAB_OMNIBUS_RELEASE}.tar.gz" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_OMNIBUS_RELEASE}/docker"
-
-      - name: List contents of build directory
-        run: |
-          ls -R build
-
-      - name: Create /RELEASE file
-        run: |
-          RELEASE_PACKAGE=gitlab-${{ env.GITLAB_EDITION }}
-          RELEASE_VERSION=${{ github.event.inputs.gitlab_release }}
-          
-          echo "DOWNLOAD_URL_amd64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_amd64.deb/download.deb" > build/RELEASE
-          echo "DOWNLOAD_URL_arm64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_arm64.deb/download.deb" >> build/RELEASE
-          
-          cat build/RELEASE
-
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
         with:
           context: build
-          # Only builds on the main branch will trigger the push, and forked repositories are excluded
+          # Only push on the main branch and exclude forked repositories
           push: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }}
           tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
           platforms: linux/arm64
-          # Disable provenance generation to resolve issue #82
           provenance: false
           build-args: |
             TARGETARCH=arm64
-            
 
       - name: Clean Up
         run: |

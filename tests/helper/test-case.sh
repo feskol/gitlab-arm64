@@ -6,3 +6,9 @@
 #
 
 source ./helper/gitlab_simulation.sh
+
+function gitlab_simulation_cleanup() {
+    rm -f \
+        "$GITHUB_OUTPUT" \
+        "$GITHUB_ENV"
+}
