@@ -140,14 +140,9 @@ system:
 Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
 
 > [!NOTE]
-> This project supports **GitLab (CE/EE)** starting from version **^17 and higher**!
+> This project supports **GitLab (CE/EE)** starting from version **17 and higher**!
 
 ## 🔄 Update
-
-> [!WARNING]  
-> Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
-> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/?distro=docker) for
-> step-by-step guidance on update paths.
 
 #### Using Docker Compose
 
@@ -179,6 +174,11 @@ services:
 docker compose up -d
 ````
 
+> [!WARNING]  
+> Always follow the [official update guide](https://docs.gitlab.com/ee/update/).  
+> Use GitLab's [Upgrade Path Tool](https://gitlab-com.gitlab.io/support/toolbox/upgrade-path/?distro=docker) for
+> step-by-step guidance on update paths.
+
 ## 🌐 Links
 
 Here are the links used by this repository:
@@ -194,8 +194,7 @@ Here are the links used by this repository:
 If you find this project helpful and would like to support my work:
 
 - 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal
-  **: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
 - 💬 **Spread the word** by sharing this project with others.
 
 Thank you for your support!
