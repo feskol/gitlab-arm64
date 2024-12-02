@@ -1,0 +1,33 @@
+name: Test
+
+on:
+  push:
+    branches-ignore:
+      - 'main' # This excludes the 'main' branch
+
+jobs:
+  test-build-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set permissions
+        run: chmod +x ./lib/bashunit
+
+      - name: Run tests
+        working-directory: ./tests
+        run: ../lib/bashunit ./unit/workflows/build
+
+  test-syncversion-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set permissions
+        run: chmod +x ./lib/bashunit
+
+      - name: Run tests
+        working-directory: ./tests
+        run: ../lib/bashunit ./unit/workflows/syncversion

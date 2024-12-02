@@ -1,0 +1,9 @@
+/.idea
+/.github/generated-files/*
+
+/tests/*
+!/tests/Dockerfile
+!/tests/fixtures
+!/tests/helper
+!/tests/unit
+!/tests/workflows

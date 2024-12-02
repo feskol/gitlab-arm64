@@ -1,0 +1,103 @@
+name: Build Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      gitlab_release:
+        type: string
+        description: "GitLab Release Docker-Tag (e.g. 17.6.1-ce.0)"
+        required: true
+      include_major_minor_tag:
+        type: boolean
+        description: "Update 'major.minor' tag (e.g. 17.6-ce)"
+        required: false
+        default: false
+      include_major_tag:
+        type: boolean
+        description: "Update 'major' tag (e.g. 17-ce)"
+        required: false
+        default: false
+      include_latest_tags:
+        type: boolean
+        description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
+        required: false
+        default: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Ensure the branch is 'main'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Validate Input "gitlab_release"
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+        run: ./scripts/workflows/build/validate_input_gitlab_release.sh
+
+      - name: Extract GitLab Edition
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+        run: ./scripts/workflows/build/extract_gitlab_edition_suffix.sh
+        # GITHUB_ENV: GITLAB_EDITION_SUFFIX
+
+      - name: Generate Tags
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+          INPUT_INCLUDE_LATEST_TAGS: ${{ github.event.inputs.include_latest_tags }}
+          INPUT_INCLUDE_MAJOR_TAG: ${{ github.event.inputs.include_major_tag }}
+          INPUT_INCLUDE_MAJOR_MINOR_TAG: ${{ github.event.inputs.include_major_minor_tag }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/generate_tags.sh
+        # GITHUB_ENV: GENERATED_TAGS
+
+
+      - name: Generate Docker tags
+        env:
+          GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: ./scripts/workflows/build/generate_docker_tags.sh
+        # GITHUB_ENV: DOCKERHUB_PUSH_TAGS
+
+      - name: Setup GitLab build files
+        env:
+          INPUT_GITLAB_RELEASE: ${{ github.event.inputs.gitlab_release }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/setup_build_files.sh
+
+      - name: docker login to docker.io
+        uses: docker/login-action@v2
+        if: github.repository_owner == 'feskol' && github.ref == 'refs/heads/main'
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup binfmt-support
+        uses: docker/setup-qemu-action@v2
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v3
+        with:
+          context: build
+          # Only push on the main branch and exclude forked repositories
+          push: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }}
+          tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
+          platforms: linux/arm64
+          provenance: false
+          build-args: |
+            TARGETARCH=arm64
+
+      - name: Clean Up
+        run: |
+          docker buildx rm
+          rm -rf build
