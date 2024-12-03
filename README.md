@@ -92,7 +92,7 @@ Refer to **GitLab's Docker** documentation for setup instructions:
 
 Here’s an example setup using `docker-compose.yaml`:
 
-```bash
+```yaml
 services:
   gitlab:
     image: feskol/gitlab:17.6.1-ce # change the tag to your needs
@@ -154,7 +154,7 @@ docker compose down
 
 2. Update the `docker-compose.yaml` file to the new version tag.
 
-```bash
+```yaml
 # Old image tag:
 services:
   gitlab:
