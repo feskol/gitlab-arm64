@@ -44,7 +44,7 @@ jobs:
 
   test-build-workflow:
     needs: test-build-scripts
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/build-shared.yml
     with:
       gitlab_release: '17.6.1-ce.0'
       include_major_minor_tag: true
@@ -54,6 +54,6 @@ jobs:
 
   test-snycversion-workflow:
     needs: test-syncversion-scripts
-    uses: ./.github/workflows/shared/syncversion-shared.yml
+    uses: ./.github/workflows/syncversion-shared.yml
     with:
       is_test: true # This must always be true in tests!
