@@ -1,0 +1,119 @@
+#----------------------------------------------------------
+# This file is part of the gitlab-arm64 project.
+#
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
+#
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
+
+name: Build Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      gitlab_release:
+        type: string
+        description: "GitLab Release Docker-Tag (e.g. 17.6.1-ce.0)"
+        required: true
+      include_major_minor_tag:
+        type: boolean
+        description: "Update 'major.minor' tag (e.g. 17.6-ce)"
+        required: false
+        default: false
+      include_major_tag:
+        type: boolean
+        description: "Update 'major' tag (e.g. 17-ce)"
+        required: false
+        default: false
+      include_latest_tags:
+        type: boolean
+        description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
+        required: false
+        default: false
+      is_test:
+        type: boolean
+        description: "If true then some steps gets disabled (e.g. build and push docker image)"
+        required: false
+        default: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Validate Input "gitlab_release"
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+        run: ./scripts/workflows/build/validate_input_gitlab_release.sh
+
+      - name: Extract GitLab Edition
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+        run: ./scripts/workflows/build/extract_gitlab_edition_suffix.sh
+        # GITHUB_ENV: GITLAB_EDITION_SUFFIX
+
+      - name: Generate Tags
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+          INPUT_INCLUDE_LATEST_TAGS: ${{ inputs.include_latest_tags }}
+          INPUT_INCLUDE_MAJOR_TAG: ${{ inputs.include_major_tag }}
+          INPUT_INCLUDE_MAJOR_MINOR_TAG: ${{ inputs.include_major_minor_tag }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/generate_tags.sh
+        # GITHUB_ENV: GENERATED_TAGS
+
+      - name: Generate Docker tags
+        env:
+          GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: ./scripts/workflows/build/generate_docker_tags.sh
+        # GITHUB_ENV: DOCKERHUB_PUSH_TAGS
+
+      - name: Setup GitLab build files
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+        run: ./scripts/workflows/build/setup_build_files.sh
+
+      - name: docker login to docker.io
+        uses: docker/login-action@v2
+        if: ${{ inputs.is_test == false }}
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup binfmt-support
+        uses: docker/setup-qemu-action@v2
+        if: ${{ inputs.is_test == false }}
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v2
+        if: ${{ inputs.is_test == false }}
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v3
+        if: ${{ inputs.is_test == false }}
+        with:
+          context: build
+          push: ${{ inputs.is_test == false }}
+          tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
+          platforms: linux/arm64
+          provenance: false
+          build-args: |
+            TARGETARCH=arm64
+
+      - name: Cleanup Docker
+        if: ${{ inputs.is_test == false }}
+        run: docker buildx rm
+
+      - name: Clean Up
+        run: rm -rf build
