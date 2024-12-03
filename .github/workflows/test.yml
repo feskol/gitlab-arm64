@@ -1,3 +1,12 @@
+#----------------------------------------------------------
+# This file is part of the gitlab-arm64 project.
+#
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
+#
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
+
 name: Test
 
 on:
@@ -31,3 +40,19 @@ jobs:
       - name: Run tests
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/syncversion
+
+  test-build-workflow:
+    needs: test-build-scripts
+    uses: ./.github/workflows/build-shared.yml
+    with:
+      gitlab_release: '17.6.1-ce.0'
+      include_major_minor_tag: true
+      include_major_tag: true
+      include_latest_tags: true
+      is_test: true # This must always be true in tests!
+
+  test-snycversion-workflow:
+    needs: test-syncversion-scripts
+    uses: ./.github/workflows/syncversion-shared.yml
+    with:
+      is_test: true # This must always be true in tests!
