@@ -41,4 +41,4 @@ jobs:
       include_major_minor_tag: ${{ github.event.inputs.include_major_minor_tag }}
       include_major_tag: ${{ github.event.inputs.include_major_tag }}
       include_latest_tags: ${{ github.event.inputs.include_latest_tags }}
-      is_test: 'false'
+      is_test: false

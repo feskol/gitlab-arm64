@@ -49,10 +49,10 @@ jobs:
       include_major_minor_tag: true
       include_major_tag: true
       include_latest_tags: true
-      is_test: 'true' # This must always be true in tests!
+      is_test: true # This must always be true in tests!
 
   test-snycversion-workflow:
     needs: test-syncversion-scripts
     uses: ./.github/workflows/syncversion-shared.yml
     with:
-      is_test: 'true' # This must always be true in tests!
+      is_test: true # This must always be true in tests!

@@ -17,21 +17,25 @@ on:
         description: "GitLab Release Docker-Tag (e.g. 17.6.1-ce.0)"
         required: true
       include_major_minor_tag:
+        type: boolean
         description: "Update 'major.minor' tag (e.g. 17.6-ce)"
         required: false
-        default: 'false'
+        default: false
       include_major_tag:
+        type: boolean
         description: "Update 'major' tag (e.g. 17-ce)"
         required: false
-        default: 'false'
+        default: false
       include_latest_tags:
+        type: boolean
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
-        default: 'false'
+        default: false
       is_test:
+        type: boolean
         description: "If true then some steps gets disabled (e.g. build and push docker image)"
         required: false
-        default: 'false'
+        default: false
 
 jobs:
   build-and-push:
@@ -81,7 +85,7 @@ jobs:
 
       - name: docker login to docker.io
         uses: docker/login-action@v2
-        if: ${{ inputs.is_test == 'false' }}
+        if: ${{ inputs.is_test == false }}
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -89,18 +93,18 @@ jobs:
 
       - name: Setup binfmt-support
         uses: docker/setup-qemu-action@v2
-        if: ${{ inputs.is_test == 'false' }}
+        if: ${{ inputs.is_test == false }}
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v2
-        if: ${{ inputs.is_test == 'false' }}
+        if: ${{ inputs.is_test == false }}
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
-        if: ${{ inputs.is_test == 'false' }}
+        if: ${{ inputs.is_test == false }}
         with:
           context: build
-          push: ${{ inputs.is_test == 'false' }}
+          push: ${{ inputs.is_test == false }}
           tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
           platforms: linux/arm64
           provenance: false
@@ -108,7 +112,7 @@ jobs:
             TARGETARCH=arm64
 
       - name: Cleanup Docker
-        if: ${{ inputs.is_test == 'false' }}
+        if: ${{ inputs.is_test == false }}
         run: docker buildx rm
 
       - name: Clean Up
