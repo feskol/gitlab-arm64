@@ -17,25 +17,21 @@ on:
         description: "GitLab Release Docker-Tag (e.g. 17.6.1-ce.0)"
         required: true
       include_major_minor_tag:
-        type: boolean
         description: "Update 'major.minor' tag (e.g. 17.6-ce)"
         required: false
-        default: false
+        default: 'false'
       include_major_tag:
-        type: boolean
         description: "Update 'major' tag (e.g. 17-ce)"
         required: false
-        default: false
+        default: 'false'
       include_latest_tags:
-        type: boolean
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
-        default: false
+        default: 'false'
       is_test:
-        type: boolean
         description: "If true then some steps gets disabled (e.g. build and push docker image)"
         required: false
-        default: false
+        default: 'false'
 
 jobs:
   build-and-push:
