@@ -85,7 +85,7 @@ jobs:
 
       - name: docker login to docker.io
         uses: docker/login-action@v2
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -93,18 +93,18 @@ jobs:
 
       - name: Setup binfmt-support
         uses: docker/setup-qemu-action@v2
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v2
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v3
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
         with:
           context: build
-          push: ${{ inputs.is_test == false }}
+          push: ${{ inputs.is_test == "false" }}
           tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
           platforms: linux/arm64
           provenance: false
@@ -112,7 +112,7 @@ jobs:
             TARGETARCH=arm64
 
       - name: Cleanup Docker
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
         run: docker buildx rm
 
       - name: Clean Up

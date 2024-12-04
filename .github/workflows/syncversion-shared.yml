@@ -28,7 +28,7 @@ jobs:
 
         # Copy fixtures for test-run
       - name: Create Test-Data
-        if: ${{ inputs.is_test == ture }}
+        if: ${{ inputs.is_test == "ture" }}
         run: cp -a ./tests/fixtures/workflows/syncversion/.github/. .github/
 
       - name: Set Permissions
@@ -81,7 +81,7 @@ jobs:
         # GITHUB_OUTPUT: NEW_BUILD_CE_VERSION_AVAILABLE
 
       - name: Trigger builds for new versions
-        if: ${{ inputs.is_test == false && (steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true') }}
+        if: ${{ inputs.is_test == "false" && (steps.new-update-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE == 'true' || steps.new-update-available-check.outputs.NEW_EE_VERSIONS_AVAILABLE == 'true') }}
         uses: actions/github-script@v7
         env:
           NEW_BUILD_CE_VERSION_AVAILABLE: '${{ steps.new-build-tags-available-check.outputs.NEW_CE_VERSIONS_AVAILABLE }}'
@@ -96,7 +96,7 @@ jobs:
         run: ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
 
       - name: Commit and Push generated-files
-        if: ${{ inputs.is_test == false }}
+        if: ${{ inputs.is_test == "false" }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
