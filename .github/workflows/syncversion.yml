@@ -24,4 +24,4 @@ jobs:
     if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }} # Only on the main branch and exclude forked repositories
     uses: ./.github/workflows/syncversion-shared.yml
     with:
-      is_test: false
+      is_test: "false"
