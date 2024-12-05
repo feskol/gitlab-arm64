@@ -120,7 +120,7 @@ jobs:
       - name: Test Docker Image
         if: inputs.run_docker_image_test == true
         run: |
-          docker run -d --name test-container ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
+          docker run -d --name  test-container --platform linux/arm64 ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
           
           start_time=$(date +%s) # Record the start time
           
