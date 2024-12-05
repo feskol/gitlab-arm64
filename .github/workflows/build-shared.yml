@@ -33,9 +33,15 @@ on:
         default: false
       is_test:
         type: boolean
-        description: "If true then some steps gets disabled (e.g. build and push docker image)"
+        description: "Enable testing mode"
         required: false
         default: false
+      run_docker_image_test:
+        type: boolean
+        description: "Build Docker images and run tests"
+        required: false
+        default: true
+
 
 jobs:
   build-and-push:
@@ -100,6 +106,7 @@ jobs:
 
       - name: Build and export ARM64 image
         uses: docker/build-push-action@v6
+        if: inputs.run_docker_image_test == true
         with:
           context: build
           load: true
@@ -111,6 +118,7 @@ jobs:
             TARGETARCH=arm64
 
       - name: Test Docker Image
+        if: inputs.run_docker_image_test == true
         run: |
           docker run -d --name test-container ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
           

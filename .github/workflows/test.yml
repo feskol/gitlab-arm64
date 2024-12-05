@@ -56,3 +56,4 @@ jobs:
     uses: ./.github/workflows/syncversion-shared.yml
     with:
       is_test: true # This must always be true in tests!
+      run_docker_image_test: ${{ startsWith(github.ref_name, 'hotfix') == false }} # Only run docker_image_test if it's not a hotfix
