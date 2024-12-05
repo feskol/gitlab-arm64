@@ -136,10 +136,10 @@ jobs:
           
             status=$(docker inspect --format='{{.State.Health.Status}}' test-container)
             if [ "$status" = "healthy" ]; then
-              echo -e "$GREEN[$elapsed_time seconds elapsed] Container is healthy!$RESET"
+              echo -e "${GREEN}[$elapsed_time seconds elapsed] Container is healthy!${RESET}"
               break
             elif [ "$status" = "unhealthy" ]; then
-              echo -e "$RED[$elapsed_time seconds elapsed] Container is unhealthy!$RESET"
+              echo -e "${RED}[$elapsed_time seconds elapsed] Container is unhealthy!${RESET}"
               echo "Container logs:"
               docker logs test-container
             else
@@ -153,7 +153,7 @@ jobs:
           docker rm test-container
           
           if [ "$status" != "healthy" ]; then
-            echo -e "$REDContainer health check failed"
+            echo -e "${RED}Container health check failed"
             exit 1
           fi
             
