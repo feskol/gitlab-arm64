@@ -7,7 +7,7 @@
 # to the LICENSE file distributed with this source code.
 #----------------------------------------------------------
 
-name: Build Docker Image
+name: "[SHARED] build_docker_image"
 
 on:
   workflow_call:

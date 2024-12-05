@@ -7,7 +7,7 @@
 # to the LICENSE file distributed with this source code.
 #----------------------------------------------------------
 
-name: GitLab Release Checker
+name: "[SHARED] gitlab_release_checker"
 
 on:
   workflow_call:
