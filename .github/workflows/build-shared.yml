@@ -72,10 +72,12 @@ jobs:
 
       - name: Generate Docker tags
         env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
           GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: ./scripts/workflows/build/generate_docker_tags.sh
         # GITHUB_ENV: DOCKERHUB_PUSH_TAGS
+        # GITHUB_ENV: DOCKERHUB_PUSH_ORIGINAL_TAG
 
       - name: Setup GitLab build files
         env:
@@ -83,37 +85,71 @@ jobs:
           GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
         run: ./scripts/workflows/build/setup_build_files.sh
 
-      - name: docker login to docker.io
-        uses: docker/login-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         if: inputs.is_test == false
         with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Setup binfmt-support
-        uses: docker/setup-qemu-action@v2
-        if: inputs.is_test == false
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v2
-        if: inputs.is_test == false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build and push ARM64 image
-        uses: docker/build-push-action@v3
-        if: inputs.is_test == false
+      - name: Build and export ARM64 image
+        uses: docker/build-push-action@v6
         with:
           context: build
-          push: inputs.is_test == false
+          load: true
+          push: false
           tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
           platforms: linux/arm64
           provenance: false
           build-args: |
             TARGETARCH=arm64
 
-      - name: Cleanup Docker
+      - name: Test Docker Image
+        run: |
+          docker run -d --name test-container ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
+          
+          start_time=$(date +%s) # Record the start time
+          
+          # Wait for health status
+          for i in {1..100}; do
+            current_time=$(date +%s) # Current time in seconds
+            elapsed_time=$((current_time - start_time)) # Calculate elapsed time
+          
+            status=$(docker inspect --format='{{.State.Health.Status}}' test-container)
+            if [ "$status" = "healthy" ]; then
+              echo "[$elapsed_time seconds elapsed] Container is healthy!"
+              break
+            elif [ "$status" = "unhealthy" ]; then
+              echo "[$elapsed_time seconds elapsed] Container is unhealthy!"
+              break
+            else
+              echo "[$elapsed_time seconds elapsed] Current status: $status"
+            fi
+            sleep 5
+          done
+          
+          # Stop and clean up
+          docker stop test-container && docker rm test-container
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v3
         if: inputs.is_test == false
-        run: docker buildx rm
+        with:
+          context: build
+          push: true
+          tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
+          platforms: linux/arm64
+          provenance: false
+          build-args: |
+            TARGETARCH=arm64
 
       - name: Clean Up
-        run: rm -rf build
+        run: |
+          docker buildx rm
+          rm -rf build
