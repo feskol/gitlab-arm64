@@ -120,9 +120,14 @@ jobs:
       - name: Test Docker Image
         if: inputs.run_docker_image_test == true
         run: |
-          docker run -d --name  test-container --platform linux/arm64 ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
+          GREEN="\033[0;32m"
+          RED="\033[0;31m"
+          RESET="\033[0m"
+          
+          docker run -d --name test-container --platform linux/arm64 ${{ env.DOCKERHUB_PUSH_ORIGINAL_TAG }}
           
           start_time=$(date +%s) # Record the start time
+          status=""
           
           # Wait for health status
           for i in {1..100}; do
@@ -131,11 +136,12 @@ jobs:
           
             status=$(docker inspect --format='{{.State.Health.Status}}' test-container)
             if [ "$status" = "healthy" ]; then
-              echo "[$elapsed_time seconds elapsed] Container is healthy!"
+              echo -e "$GREEN[$elapsed_time seconds elapsed] Container is healthy!$RESET"
               break
             elif [ "$status" = "unhealthy" ]; then
-              echo "[$elapsed_time seconds elapsed] Container is unhealthy!"
-              break
+              echo -e "$RED[$elapsed_time seconds elapsed] Container is unhealthy!$RESET"
+              echo "Container logs:"
+              docker logs test-container
             else
               echo "[$elapsed_time seconds elapsed] Current status: $status"
             fi
@@ -143,7 +149,14 @@ jobs:
           done
           
           # Stop and clean up
-          docker stop test-container && docker rm test-container
+          docker stop test-container
+          docker rm test-container
+          
+          if [ "$status" != "healthy" ]; then
+            echo -e "$REDContainer health check failed"
+            exit 1
+          fi
+            
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v6
