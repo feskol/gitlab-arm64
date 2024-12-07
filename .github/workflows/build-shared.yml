@@ -111,6 +111,16 @@ jobs:
           build-args: |
             TARGETARCH=arm64
 
+      - name: Create multi-arch docker manifest
+        if: inputs.is_test == false
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+          DOCKERHUB_PUSH_TAGS: ${{ env.DOCKERHUB_PUSH_TAGS }}
+          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+          IS_TEST: ${{ inputs.is_test }}
+        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
+          
+
       - name: Cleanup Docker
         if: inputs.is_test == false
         run: docker buildx rm
