@@ -189,6 +189,23 @@ Here are the links used by this repository:
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
+## Contribution Guidelines
+
+We welcome contributions to this project! To ensure clarity and fairness for all contributors, we require that all contributors sign our **Contributor License Agreement (CLA)**.
+
+By signing the CLA, you confirm that:
+1. You grant us the perpetual, worldwide, non-exclusive, royalty-free, irrevocable right to use, modify, sublicense, and distribute your contribution as part of this project or any other project.
+2. You retain ownership of your contribution, but grant us the rights necessary to use it without restriction, including for commercial purposes or in closed-source projects.
+3. Your contribution does not violate the rights of any third party.
+
+### How to Sign the CLA
+Before submitting a pull request, please sign the CLA using the following link:  
+[Sign the CLA](https://cla-assistant.io/feskol/gitlab-arm64)
+
+Contributions cannot be merged unless the CLA is signed.
+
+Thank you for your contributions and for helping us build something great!
+
 ## ❤️ Support This Project
 
 If you find this project helpful and would like to support my work:
