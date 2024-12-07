@@ -213,7 +213,7 @@ Here are the links used by this repository:
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
-## Contribution Guidelines
+## 🤝 Contribution Guidelines
 
 We welcome contributions to this project! To ensure clarity and fairness for all contributors, we require that all contributors sign our **Contributor License Agreement (CLA)**.
 
