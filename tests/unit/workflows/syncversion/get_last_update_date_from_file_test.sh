@@ -31,8 +31,9 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    github_fixture_path=$(fixture_path ".github")
-    cp -a "$github_fixture_path/." .github/
+    mkdir -p .github/generated-files/
+    echo "2024-10-31T00:00:00.000000Z" > .github/generated-files/last_modified_ce_date.txt
+    echo "2024-10-30T00:00:00.000000Z" > .github/generated-files/last_modified_ee_date.txt
 
     runScript
 
