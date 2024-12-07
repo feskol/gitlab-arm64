@@ -112,7 +112,6 @@ jobs:
             TARGETARCH=arm64
 
       - name: Create multi-arch docker manifest
-        if: inputs.is_test == false
         env:
           INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
           DOCKERHUB_PUSH_TAGS: ${{ env.DOCKERHUB_PUSH_TAGS }}
