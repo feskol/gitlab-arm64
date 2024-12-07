@@ -11,6 +11,10 @@
 # Import test-case
 source ./helper/workflows/syncversion/test-case.sh
 
+function set_up_before_script() {
+    cleanup
+}
+
 function tear_down() {
     cleanup
 }

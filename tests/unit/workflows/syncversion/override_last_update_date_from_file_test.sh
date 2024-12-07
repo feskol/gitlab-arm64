@@ -11,6 +11,10 @@
 # Import test-case
 source ./helper/workflows/syncversion/test-case.sh
 
+function set_up_before_script() {
+    cleanup
+}
+
 function runScript() {
     # Run original script
     bash "../scripts/workflows/syncversion/override_last_update_date_from_file.sh"

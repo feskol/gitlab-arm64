@@ -16,6 +16,10 @@ function runScript() {
     bash "../scripts/workflows/syncversion/get_last_update_date_from_file.sh"
 }
 
+function set_up_before_script() {
+    cleanup
+}
+
 function tear_down() {
     cleanup
 }
