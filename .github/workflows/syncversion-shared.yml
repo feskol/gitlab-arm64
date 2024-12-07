@@ -29,7 +29,10 @@ jobs:
         # Copy fixtures for test-run
       - name: Create Test-Data
         if: inputs.is_test == true
-        run: cp -a ./tests/fixtures/workflows/syncversion/.github/. .github/
+        run: |
+          mkdir -p .github/generated-files/
+          echo "2024-10-31T00:00:00.000000Z" > .github/generated-files/last_modified_ce_date.txt
+          echo "2024-10-30T00:00:00.000000Z" > .github/generated-files/last_modified_ee_date.txt
 
       - name: Set Permissions
         # make all scripts in scripts/workflows/syncversion executable
