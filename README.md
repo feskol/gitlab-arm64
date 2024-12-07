@@ -56,8 +56,8 @@ automatically builds a **Docker image** for the latest release.
   No manual intervention is required. The entire process, from release checking to image building, is automated.
 
 - **Compatibility**:  
-  These images are specifically designed for ARM64 architecture, making GitLab accessible to users on ARM-based
-  platforms.
+  These images are build for **ARM64 architecture**, making GitLab accessible to users on **ARM-based platforms**.  
+  They are also compatible with the **x86_64 architecture**. For more details, see  [Multi-Architecture Support](#-multi-architecture-support)
 
 ## 📋 Requirements
 
