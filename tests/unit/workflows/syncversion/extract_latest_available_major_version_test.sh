@@ -11,6 +11,10 @@
 # Import test-case
 source ./helper/workflows/syncversion/test-case.sh
 
+function set_up_before_script() {
+    cleanup
+}
+
 function set_up() {
     # load fixtures
     cp "$(fixture_path "gitlab_tags_ce.json")" ./

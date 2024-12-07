@@ -114,6 +114,30 @@ services:
 
 ---
 
+## 🐳 Multi-Architecture Support
+
+This repository now supports multi-architecture Docker images in addition to ARM64 images. This enhancement ensures 
+that the Docker images can run seamlessly on both x86_64 and ARM64 architectures.
+
+### Supported Architectures
+- **ARM64**: Optimized for ARM64 systems.
+- **x86_64**: Uses the official GitLab Docker image.
+
+### Benefits
+- **Cross-Platform Compatibility**: Use the same image across multiple platforms.
+- **Streamlined Workflows**: Unified image tagging for multi-arch builds simplifies deployment.
+
+### How It Works
+The build process creates a docker manifest for multi-arch images. For x86_64, the process leverages the official 
+GitLab Docker image to ensure compatibility and reliability.
+
+### Usage
+To pull the appropriate image for your architecture, simply use:
+```bash
+docker pull feskol/gitlab:latest
+```
+Docker will automatically fetch the image matching your system architecture.
+
 ## 🏷️ Tags
 
 The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning

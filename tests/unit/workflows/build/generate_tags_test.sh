@@ -11,6 +11,10 @@
 # Import test-case
 source ./helper/workflows/build/test-case.sh
 
+function set_up_before_script() {
+    cleanup
+}
+
 function runScript() {
     # Run original Script
     bash "../scripts/workflows/build/generate_tags.sh"

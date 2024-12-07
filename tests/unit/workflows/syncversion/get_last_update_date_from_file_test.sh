@@ -16,11 +16,16 @@ function runScript() {
     bash "../scripts/workflows/syncversion/get_last_update_date_from_file.sh"
 }
 
+function set_up_before_script() {
+    cleanup
+}
+
 function tear_down() {
     cleanup
 }
 
 function test_not_existing_last_modified_files() {
+    rm -rf .github
     export LATEST_CE_LAST_UPDATE="2024-01-01T00:00:00.000000Z"
     export LATEST_EE_LAST_UPDATE="2024-02-02T00:00:00.000000Z"
 
@@ -31,8 +36,9 @@ function test_not_existing_last_modified_files() {
 }
 
 function test_existing_last_modified_files() {
-    github_fixture_path=$(fixture_path ".github")
-    cp -a "$github_fixture_path/." .github/
+    mkdir -p .github/generated-files/
+    echo "2024-10-31T00:00:00.000000Z" > .github/generated-files/last_modified_ce_date.txt
+    echo "2024-10-30T00:00:00.000000Z" > .github/generated-files/last_modified_ee_date.txt
 
     runScript
 
