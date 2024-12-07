@@ -23,8 +23,6 @@ IFS=',' read -r -a tags <<< "$DOCKERHUB_PUSH_TAGS"
 for tag in "${tags[@]}"; do
     gitlab_tag="docker.io/gitlab/gitlab-$GITLAB_EDITION_SUFFIX:$INPUT_GITLAB_RELEASE"
 
-    echo "Creating manifest for $tag using amd64 tag from $gitlab_tag"
-
     if [ "$IS_TEST" == "false" ]; then
         # Create the manifest
         docker manifest create "$tag" \
@@ -33,7 +31,7 @@ for tag in "${tags[@]}"; do
 
         # Push the manifest
         docker manifest push -p "$tag"
-
-        echo "Created and pushed docker manifest for $tag"
+    else
+        echo "[TEST] Creating manifest for $tag using amd64 tag from $gitlab_tag"
     fi
 done
