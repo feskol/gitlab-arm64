@@ -25,6 +25,7 @@ function tear_down() {
 }
 
 function test_not_existing_last_modified_files() {
+    rm -rf .github
     export LATEST_CE_LAST_UPDATE="2024-01-01T00:00:00.000000Z"
     export LATEST_EE_LAST_UPDATE="2024-02-02T00:00:00.000000Z"
 
