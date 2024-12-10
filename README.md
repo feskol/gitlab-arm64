@@ -29,9 +29,9 @@
 
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 
-[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
 
-[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
+[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 
 ## 🚀 Overview
 
@@ -57,13 +57,14 @@ automatically builds a **Docker image** for the latest release.
 
 - **Compatibility**:  
   These images are build for **ARM64 architecture**, making GitLab accessible to users on **ARM-based platforms**.  
-  They are also compatible with the **x86_64 architecture**. For more details, see  [Multi-Architecture Support](#-multi-architecture-support)
+  They are also compatible with the **x86_64 architecture**. For more details, see [Multi-Architecture Support](#-multi-architecture-support)
 
 ## 📋 Requirements
 
 To use the Docker images built by this repository, you need:
 
-- **ARM64 Architecture** (e.g., Raspberry Pi 4/5, ARM64 servers)
+- **ARM64 Architecture** (e.g. Raspberry Pi 4/5, ARM64 servers)
+  or **x86_64 Architecture** (See [Multi-Architecture Support](#-multi-architecture-support))
 - **Docker** installed on your system
 
 ## 🛠️ Usage
@@ -74,7 +75,7 @@ Pull the Docker images from [Docker Hub][dockerhub-tags].
 ```bash
 # latest GitLab Community Edition (CE)
 docker pull feskol/gitlab:latest
-docker pull feskol/gitlab:ce          # "ce" is same as "latest"
+docker pull feskol/gitlab:ce     # "ce" is same as "latest"
 
 # latest GitLab Enterprise Edition (EE)
 docker pull feskol/gitlab:ee
@@ -156,7 +157,7 @@ system:
   Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
   For example, if the newest version is `17.6.1-ce.0`,
   the following Docker image tags are created pointing to that version:
-    - `17.6.1-ce.0` (original version)
+    - `17.6.1-ce.0` (original GitLab version)
     - `17.6.1-ce` (version without the `.0` suffix)
     - `17.6-ce` (major and minor version)
     - `17-ce` (major version only)
@@ -230,16 +231,6 @@ Contributions cannot be merged unless the CLA is signed.
 
 Thank you for your contributions and for helping us build something great!
 
-## ❤️ Support This Project
-
-If you find this project helpful and would like to support my work:
-
-- 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
-- 💬 **Spread the word** by sharing this project with others.
-
-Thank you for your support!
-
 ## 🧪 Testing
 
 Tests can be found in the `./tests/unit`.  
@@ -278,3 +269,13 @@ docker compose run --rm test ../lib/bashunit --verbose ./unit
     ├── unit            # The actual tests
     └── workflows       # Directory with workflow-specific scripts (e.g., mocks).
 ```
+
+## ❤️ Support This Project
+
+If you find this project helpful and would like to support my work:
+
+- 🌟 **Star the repository** to show your appreciation.
+- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💬 **Spread the word** by sharing this project with others.
+
+Thank you for your support!
