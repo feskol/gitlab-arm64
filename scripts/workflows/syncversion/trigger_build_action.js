@@ -31,10 +31,4 @@ const triggerBuilds = (new_version_json, versionType) => {
     });
 };
 
-// Check and trigger builds for CE and EE versions
-if (process.env.NEW_BUILD_CE_VERSION_AVAILABLE === 'true') {
-    triggerBuilds(process.env.NEW_BUILD_CE_VERSIONS, 'CE');
-}
-if (process.env.NEW_BUILD_EE_VERSION_AVAILABLE === 'true') {
-    triggerBuilds(process.env.NEW_BUILD_EE_VERSIONS, 'EE');
-}
+module.exports = triggerBuilds;

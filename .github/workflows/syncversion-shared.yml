@@ -91,13 +91,18 @@ jobs:
       - name: Trigger builds for new versions
         if: ${{ inputs.is_test == false && (env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true') }}
         uses: actions/github-script@v7
-        env:
-          NEW_BUILD_CE_VERSIONS: ${{ env.NEW_BUILD_CE_VERSIONS }}
-          NEW_BUILD_EE_VERSIONS: ${{ env.NEW_BUILD_EE_VERSIONS }}
-          NEW_BUILD_CE_VERSION_AVAILABLE: ${{ env.NEW_BUILD_CE_VERSION_AVAILABLE }}
-          NEW_BUILD_EE_VERSION_AVAILABLE: ${{ env.NEW_BUILD_EE_VERSION_AVAILABLE }}
         with:
-          script: ./scripts/workflows/syncversion/trigger_build_action.js
+          script: |
+            const triggerBuilds = require('./scripts/workflows/syncversion/trigger_build_action.js');
+            
+            // Check and trigger builds for CE and EE versions
+            if (${{ env.NEW_BUILD_CE_VERSION_AVAILABLE }} === 'true') {
+              triggerBuilds(${{ env.NEW_BUILD_CE_VERSIONS }}, 'CE');
+            }
+
+            if (${{ env.NEW_BUILD_EE_VERSION_AVAILABLE }} === 'true') {
+              triggerBuilds(${{ env.NEW_BUILD_EE_VERSIONS }}, 'EE');
+            }
 
       - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
         env:

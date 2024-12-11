@@ -17,9 +17,7 @@ function set_up_before_script() {
 
 function runScript() {
     # Run the original script
-    node \
-        --require "./workflows/syncversion/trigger-build-action/mock-github.js" \
-        "../scripts/workflows/syncversion/trigger_build_action.js"
+    node "./workflows/syncversion/trigger-build-action/test.js"
 }
 
 function tear_down() {
