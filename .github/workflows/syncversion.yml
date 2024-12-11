@@ -9,11 +9,6 @@
 
 name: GitLab Release Checker
 
-# Ensure Proper Permissions for the Workflow Token
-permissions:
-  contents: write
-  actions: write
-
 on:
   schedule:
     - cron: '0 2,14 * * *'
