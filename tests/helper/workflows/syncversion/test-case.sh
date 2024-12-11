@@ -11,7 +11,7 @@
 source ./helper/test-case.sh
 
 function cleanup() {
-    gitlab_simulation_cleanup
+    #gitlab_simulation_cleanup
     ./helper/workflows/syncversion/cleanup.sh
 }
 

@@ -7,15 +7,13 @@
 * to the LICENSE file distributed with this source code.
 */
 
-const fs = require('fs');
-
 // Function to process versions and trigger workflows
-const triggerBuilds = (filePath, versionType) => {
-    const newVersions = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+const triggerBuilds = (new_version_json, versionType) => {
+    const newVersions = JSON.parse(new_version_json);
 
     newVersions.forEach(version => {
-        if (version.tag) {
-            console.log(`Triggering build for GitLab ${versionType} version: ${version.tag}`);
+        if (version.tag_name) {
+            console.log(`Triggering build for GitLab ${versionType} version: ${version.tag_name}`);
 
             github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
@@ -23,7 +21,7 @@ const triggerBuilds = (filePath, versionType) => {
                 workflow_id: "build.yml",
                 ref: "main",
                 inputs: {
-                    gitlab_release: version.tag,
+                    gitlab_release: version.tag_name,
                     include_latest_tags: version.is_latest_overall,
                     include_major_tag: version.is_latest_minor,
                     include_major_minor_tag: version.is_latest_patch
@@ -35,8 +33,8 @@ const triggerBuilds = (filePath, versionType) => {
 
 // Check and trigger builds for CE and EE versions
 if (process.env.NEW_BUILD_CE_VERSION_AVAILABLE === 'true') {
-    triggerBuilds('./new_ce_versions.json', 'CE');
+    triggerBuilds(process.env.NEW_BUILD_CE_VERSIONS, 'CE');
 }
 if (process.env.NEW_BUILD_EE_VERSION_AVAILABLE === 'true') {
-    triggerBuilds('./new_ee_versions.json', 'EE');
+    triggerBuilds(process.env.NEW_BUILD_EE_VERSIONS, 'EE');
 }

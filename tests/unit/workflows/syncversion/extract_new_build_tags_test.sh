@@ -35,29 +35,19 @@ function tear_down() {
     cleanup
 }
 
-function test_file_creation() {
-    export SAVED_CE_LAST_MODIFIED_DATE="2024-10-31T00:00:00.000000Z"
-    export SAVED_EE_LAST_MODIFIED_DATE="2024-10-30T00:00:00.000000Z"
-
-    runScript
-
-    assert_file_exists new_ce_versions.json
-    assert_file_exists new_ee_versions.json
-}
-
 function test_found_new_build_tags() {
     export SAVED_CE_LAST_MODIFIED_DATE="2024-10-31T00:00:00.000000Z"
     export SAVED_EE_LAST_MODIFIED_DATE="2024-10-30T00:00:00.000000Z"
 
     runScript
 
-    assert_not_empty "$(cat new_ce_versions.json)"
-    assert_not_empty "$(cat new_ee_versions.json)"
+    assert_not_empty "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_not_empty "$(extract_value "NEW_BUILD_EE_VERSIONS" "$GITHUB_ENV")"
 
     new_ce_versions_fixture_path="$(fixture_path "new_ce_versions.json")"
     new_ee_versions_fixture_path="$(fixture_path "new_ee_versions.json")"
-    assert_same "$(cat "$new_ce_versions_fixture_path")" "$(cat new_ce_versions.json)"
-    assert_same "$(cat "$new_ee_versions_fixture_path")" "$(cat new_ee_versions.json)"
+    assert_same "$(jq -c . "$new_ce_versions_fixture_path")" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_same "$(jq -c . "$new_ee_versions_fixture_path")" "$(extract_value "NEW_BUILD_EE_VERSIONS" "$GITHUB_ENV")"
 }
 
 function test_no_new_builds() {
@@ -66,6 +56,6 @@ function test_no_new_builds() {
 
     runScript
 
-    assert_same "[]" "$(cat new_ce_versions.json)"
-    assert_same "[]" "$(cat new_ee_versions.json)"
+    assert_same "[]" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_same "[]" "$(extract_value "NEW_BUILD_EE_VERSIONS" "$GITHUB_ENV")"
 }

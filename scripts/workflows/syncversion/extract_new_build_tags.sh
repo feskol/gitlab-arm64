@@ -59,7 +59,7 @@ extract_new_build_tags() {
             fi
 
             # Append to JSON array
-            new_versions=$(echo "$new_versions" | jq ". += [{\"tag\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor, \"is_latest_overall\": $is_latest_overall}]")
+            new_versions=$(echo "$new_versions" | jq ". += [{\"tag_name\": \"$tag_name\", \"is_latest_patch\": $is_latest_patch, \"is_latest_minor\": $is_latest_minor, \"is_latest_overall\": $is_latest_overall}]")
         fi
     done
 
@@ -74,5 +74,7 @@ new_ee_versions=$(extract_new_build_tags "gitlab_tags_ee.json" "$SAVED_EE_LAST_M
 # Output results
 echo "New CE versions json: $new_ce_versions"
 echo "New EE versions json: $new_ee_versions"
-echo "$new_ce_versions" > new_ce_versions.json
-echo "$new_ee_versions" > new_ee_versions.json
+
+# Save versions as environment variables for use in GitHub Actions
+echo "NEW_BUILD_CE_VERSIONS=$(echo "$new_ce_versions" | jq -c .)" >> "$GITHUB_ENV"
+echo "NEW_BUILD_EE_VERSIONS=$(echo "$new_ee_versions" | jq -c .)" >> "$GITHUB_ENV"
