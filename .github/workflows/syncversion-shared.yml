@@ -77,8 +77,13 @@ jobs:
           LATEST_MAJOR_EE: ${{ env.LATEST_MAJOR_EE }}
           LATEST_MAJOR_MINOR_EE: ${{ env.LATEST_MAJOR_MINOR_EE }}
         run: ./scripts/workflows/syncversion/extract_new_build_tags.sh
+        # GITHUB_ENV: NEW_BUILD_CE_VERSIONS
+        # GITHUB_ENV: NEW_BUILD_EE_VERSIONS
 
       - name: Check new_versions.json files
+        env:
+          NEW_BUILD_CE_VERSIONS: ${{ env.NEW_BUILD_CE_VERSIONS }}
+          NEW_BUILD_EE_VERSIONS: ${{ env.NEW_BUILD_EE_VERSIONS }}
         run: ./scripts/workflows/syncversion/check_new_build_tags_available.sh
         # GITHUB_ENV: NEW_BUILD_CE_VERSION_AVAILABLE
         # GITHUB_ENV: NEW_BUILD_EE_VERSION_AVAILABLE
@@ -87,6 +92,8 @@ jobs:
         if: ${{ inputs.is_test == false && (env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true') }}
         uses: actions/github-script@v7
         env:
+          NEW_BUILD_CE_VERSIONS: ${{ env.NEW_BUILD_CE_VERSIONS }}
+          NEW_BUILD_EE_VERSIONS: ${{ env.NEW_BUILD_EE_VERSIONS }}
           NEW_BUILD_CE_VERSION_AVAILABLE: ${{ env.NEW_BUILD_CE_VERSION_AVAILABLE }}
           NEW_BUILD_EE_VERSION_AVAILABLE: ${{ env.NEW_BUILD_EE_VERSION_AVAILABLE }}
         with:

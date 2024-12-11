@@ -25,8 +25,10 @@ function tear_down() {
 }
 
 function test_new_build_tags_available() {
-    cp "$(fixture_path "new_ce_versions.json")" ./
-    cp "$(fixture_path "new_ee_versions.json")" ./
+    export NEW_BUILD_CE_VERSIONS="$(fixture_path "new_ce_versions.json" | cat)"
+    export NEW_BUILD_EE_VERSIONS="$(fixture_path "new_ee_versions.json" | cat)"
+
+    echo "$NEW_BUILD_CE_VERSIONS"
 
     runScript
 
@@ -35,8 +37,8 @@ function test_new_build_tags_available() {
 }
 
 function test_no_new_build_tags_available() {
-    echo "[]" > new_ce_versions.json
-    echo "[]" > new_ee_versions.json
+    export NEW_BUILD_CE_VERSIONS="[]"
+    export NEW_BUILD_EE_VERSIONS="[]"
 
     runScript
 

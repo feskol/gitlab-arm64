@@ -11,11 +11,11 @@
 set -e
 
 check_files() {
-    local input_file="$1"
+    local new_versions_json="$1"
     local suffix="$2"
 
     # if empty "" or contains an empty array "[]"
-    if [[ ! -s "$input_file" || $(jq 'length == 0' "$input_file") == "true" ]]; then
+    if [[ -z "$new_versions_json" || $(echo "$new_versions_json" | jq 'length == 0') == "true" ]]; then
         echo "[NOT AVAILABLE] No new ${suffix} build tags"
         echo "NEW_BUILD_${suffix}_VERSION_AVAILABLE=false" >> "$GITHUB_ENV"
     else
@@ -25,5 +25,5 @@ check_files() {
 }
 
 # Check files for CE and EE
-check_files "new_ce_versions.json" "CE"
-check_files "new_ee_versions.json" "EE"
+check_files "$NEW_BUILD_CE_VERSIONS" "CE"
+check_files "$NEW_BUILD_EE_VERSIONS" "EE"
