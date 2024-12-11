@@ -32,5 +32,5 @@ if [ -z "$saved_ee_last_modified_date" ]; then
     echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
 fi
 
-echo "SAVED_CE_LAST_MODIFIED_DATE=$saved_ce_last_modified_date" >> "$GITHUB_OUTPUT"
-echo "SAVED_EE_LAST_MODIFIED_DATE=$saved_ee_last_modified_date" >> "$GITHUB_OUTPUT"
+echo "SAVED_CE_LAST_MODIFIED_DATE=$saved_ce_last_modified_date" >> "$GITHUB_ENV"
+echo "SAVED_EE_LAST_MODIFIED_DATE=$saved_ee_last_modified_date" >> "$GITHUB_ENV"

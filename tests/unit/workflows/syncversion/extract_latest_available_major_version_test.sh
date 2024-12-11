@@ -29,11 +29,11 @@ function tear_down() {
 }
 
 function test_latest_major_extraction() {
-    assert_same "17" "$(extract_value "LATEST_MAJOR_CE" "$GITHUB_OUTPUT")"
-    assert_same "17" "$(extract_value "LATEST_MAJOR_EE" "$GITHUB_OUTPUT")"
+    assert_same "17" "$(extract_value "LATEST_MAJOR_CE" "$GITHUB_ENV")"
+    assert_same "17" "$(extract_value "LATEST_MAJOR_EE" "$GITHUB_ENV")"
 }
 
 function test_latest_major_minor_extraction() {
-    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_CE" "$GITHUB_OUTPUT")"
-    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_EE" "$GITHUB_OUTPUT")"
+    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_CE" "$GITHUB_ENV")"
+    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_EE" "$GITHUB_ENV")"
 }

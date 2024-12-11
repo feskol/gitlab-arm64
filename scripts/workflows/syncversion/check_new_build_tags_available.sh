@@ -17,10 +17,10 @@ check_files() {
     # if empty "" or contains an empty array "[]"
     if [[ ! -s "$input_file" || $(jq 'length == 0' "$input_file") == "true" ]]; then
         echo "[NOT AVAILABLE] No new ${suffix} build tags"
-        echo "NEW_BUILD_${suffix}_VERSION_AVAILABLE=false" >> "$GITHUB_OUTPUT"
+        echo "NEW_BUILD_${suffix}_VERSION_AVAILABLE=false" >> "$GITHUB_ENV"
     else
         echo "[AVAILABLE] New ${suffix} build tags are available"
-        echo "NEW_BUILD_${suffix}_VERSION_AVAILABLE=true" >> "$GITHUB_OUTPUT"
+        echo "NEW_BUILD_${suffix}_VERSION_AVAILABLE=true" >> "$GITHUB_ENV"
     fi
 }
 
