@@ -9,7 +9,8 @@
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub-tags]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub-tags]  
 [![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
-[![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
+[![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
 
@@ -275,7 +276,11 @@ docker compose run --rm test ../lib/bashunit --verbose ./unit
 If you find this project helpful and would like to support my work:
 
 - 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+- 💸 **Donate via**: 
+  - **Buy Me a Coffe**: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
+  - **PayPal**: [![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
 - 💬 **Spread the word** by sharing this project with others.
 
 Thank you for your support!
+
+
