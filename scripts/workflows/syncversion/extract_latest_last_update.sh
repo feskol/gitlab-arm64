@@ -1,9 +1,12 @@
 #!/bin/bash
-#
+#----------------------------------------------------------
 # This file is part of the gitlab-arm64 project.
 #
-# (c) Festim Kolgeci <festim.kolgeci@pm.me>
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
 #
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
 
 set -e
 
@@ -19,8 +22,8 @@ if [[ $? -ne 0 || -z "$LATEST_EE_LAST_UPDATE" ]]; then
   exit 1
 fi
 
-echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> "$GITHUB_OUTPUT"
-echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> "$GITHUB_OUTPUT"
+echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> "$GITHUB_ENV"
+echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> "$GITHUB_ENV"
 
 echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
 echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"

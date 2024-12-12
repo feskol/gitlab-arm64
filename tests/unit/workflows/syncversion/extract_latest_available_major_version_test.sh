@@ -1,12 +1,19 @@
 #!/bin/bash
-#
+#----------------------------------------------------------
 # This file is part of the gitlab-arm64 project.
 #
-# (c) Festim Kolgeci <festim.kolgeci@pm.me>
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
 #
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
 
 # Import test-case
 source ./helper/workflows/syncversion/test-case.sh
+
+function set_up_before_script() {
+    cleanup
+}
 
 function set_up() {
     # load fixtures
@@ -22,11 +29,11 @@ function tear_down() {
 }
 
 function test_latest_major_extraction() {
-    assert_same "17" "$(extract_value "LATEST_MAJOR_CE" "$GITHUB_OUTPUT")"
-    assert_same "17" "$(extract_value "LATEST_MAJOR_EE" "$GITHUB_OUTPUT")"
+    assert_same "17" "$(extract_value "LATEST_MAJOR_CE" "$GITHUB_ENV")"
+    assert_same "17" "$(extract_value "LATEST_MAJOR_EE" "$GITHUB_ENV")"
 }
 
 function test_latest_major_minor_extraction() {
-    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_CE" "$GITHUB_OUTPUT")"
-    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_EE" "$GITHUB_OUTPUT")"
+    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_CE" "$GITHUB_ENV")"
+    assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_EE" "$GITHUB_ENV")"
 }

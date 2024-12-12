@@ -9,7 +9,8 @@
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub-tags]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub-tags]  
 [![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
-[![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
+[![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
 
@@ -29,9 +30,9 @@
 
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 
-[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
 
-[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
+[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 
 ## 🚀 Overview
 
@@ -56,14 +57,15 @@ automatically builds a **Docker image** for the latest release.
   No manual intervention is required. The entire process, from release checking to image building, is automated.
 
 - **Compatibility**:  
-  These images are specifically designed for ARM64 architecture, making GitLab accessible to users on ARM-based
-  platforms.
+  These images are build for **ARM64 architecture**, making GitLab accessible to users on **ARM-based platforms**.  
+  They are also compatible with the **x86_64 architecture**. For more details, see [Multi-Architecture Support](#-multi-architecture-support)
 
 ## 📋 Requirements
 
 To use the Docker images built by this repository, you need:
 
-- **ARM64 Architecture** (e.g., Raspberry Pi 4/5, ARM64 servers)
+- **ARM64 Architecture** (e.g. Raspberry Pi 4/5, ARM64 servers)
+  or **x86_64 Architecture** (See [Multi-Architecture Support](#-multi-architecture-support))
 - **Docker** installed on your system
 
 ## 🛠️ Usage
@@ -74,7 +76,7 @@ Pull the Docker images from [Docker Hub][dockerhub-tags].
 ```bash
 # latest GitLab Community Edition (CE)
 docker pull feskol/gitlab:latest
-docker pull feskol/gitlab:ce          # "ce" is same as "latest"
+docker pull feskol/gitlab:ce     # "ce" is same as "latest"
 
 # latest GitLab Enterprise Edition (EE)
 docker pull feskol/gitlab:ee
@@ -92,7 +94,7 @@ Refer to **GitLab's Docker** documentation for setup instructions:
 
 Here’s an example setup using `docker-compose.yaml`:
 
-```bash
+```yaml
 services:
   gitlab:
     image: feskol/gitlab:17.6.1-ce # change the tag to your needs
@@ -114,6 +116,30 @@ services:
 
 ---
 
+## 🐳 Multi-Architecture Support
+
+This repository now supports multi-architecture Docker images in addition to ARM64 images. This enhancement ensures 
+that the Docker images can run seamlessly on both x86_64 and ARM64 architectures.
+
+### Supported Architectures
+- **ARM64**: Optimized for ARM64 systems.
+- **x86_64**: Uses the official GitLab Docker image.
+
+### Benefits
+- **Cross-Platform Compatibility**: Use the same image across multiple platforms.
+- **Streamlined Workflows**: Unified image tagging for multi-arch builds simplifies deployment.
+
+### How It Works
+The build process creates a docker manifest for multi-arch images. For x86_64, the process leverages the official 
+GitLab Docker image to ensure compatibility and reliability.
+
+### Usage
+To pull the appropriate image for your architecture, simply use:
+```bash
+docker pull feskol/gitlab:latest
+```
+Docker will automatically fetch the image matching your system architecture.
+
 ## 🏷️ Tags
 
 The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning
@@ -132,7 +158,7 @@ system:
   Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
   For example, if the newest version is `17.6.1-ce.0`,
   the following Docker image tags are created pointing to that version:
-    - `17.6.1-ce.0` (original version)
+    - `17.6.1-ce.0` (original GitLab version)
     - `17.6.1-ce` (version without the `.0` suffix)
     - `17.6-ce` (major and minor version)
     - `17-ce` (major version only)
@@ -154,7 +180,7 @@ docker compose down
 
 2. Update the `docker-compose.yaml` file to the new version tag.
 
-```bash
+```yaml
 # Old image tag:
 services:
   gitlab:
@@ -189,15 +215,22 @@ Here are the links used by this repository:
 - [DockerHub Gitlab CE](https://hub.docker.com/r/gitlab/gitlab-ce)
 - [DockerHub Gitlab EE](https://hub.docker.com/r/gitlab/gitlab-ee)
 
-## ❤️ Support This Project
+## 🤝 Contribution Guidelines
 
-If you find this project helpful and would like to support my work:
+We welcome contributions to this project! To ensure clarity and fairness for all contributors, we require that all contributors sign our **Contributor License Agreement (CLA)**.
 
-- 🌟 **Star the repository** to show your appreciation.
-- 💸 **Donate via PayPal**: [![PayPal ME](https://img.shields.io/badge/Support_me-PayPal.Me-00457C?logo=paypal&logoColor=00457C)](https://paypal.me/feskol)
-- 💬 **Spread the word** by sharing this project with others.
+By signing the CLA, you confirm that:
+1. You grant us the perpetual, worldwide, non-exclusive, royalty-free, irrevocable right to use, modify, sublicense, and distribute your contribution as part of this project or any other project.
+2. You retain ownership of your contribution, but grant us the rights necessary to use it without restriction, including for commercial purposes or in closed-source projects.
+3. Your contribution does not violate the rights of any third party.
 
-Thank you for your support!
+### How to Sign the CLA
+Before submitting a pull request, please sign the CLA using the following link:  
+[Sign the CLA](https://cla-assistant.io/feskol/gitlab-arm64)
+
+Contributions cannot be merged unless the CLA is signed.
+
+Thank you for your contributions and for helping us build something great!
 
 ## 🧪 Testing
 
@@ -237,3 +270,17 @@ docker compose run --rm test ../lib/bashunit --verbose ./unit
     ├── unit            # The actual tests
     └── workflows       # Directory with workflow-specific scripts (e.g., mocks).
 ```
+
+## ❤️ Support This Project
+
+If you find this project helpful and would like to support my work:
+
+- 🌟 **Star the repository** to show your appreciation.
+- 💸 **Donate via**: 
+  - **Buy Me a Coffe**: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
+  - **PayPal**: [![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
+- 💬 **Spread the word** by sharing this project with others.
+
+Thank you for your support!
+
+

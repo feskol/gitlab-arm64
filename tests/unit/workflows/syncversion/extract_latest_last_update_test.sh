@@ -1,12 +1,19 @@
 #!/bin/bash
-#
+#----------------------------------------------------------
 # This file is part of the gitlab-arm64 project.
 #
-# (c) Festim Kolgeci <festim.kolgeci@pm.me>
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
 #
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
 
 # Import test-case
 source ./helper/workflows/syncversion/test-case.sh
+
+function set_up_before_script() {
+    cleanup
+}
 
 function set_up() {
     # load fixtures
@@ -22,6 +29,6 @@ function tear_down() {
 }
 
 function test_extract_last_update() {
-    assert_same "2024-11-26T14:18:08.419895Z" "$(extract_value "LATEST_CE_LAST_UPDATE" "$GITHUB_OUTPUT")"
-    assert_same "2024-11-26T14:18:17.782724Z" "$(extract_value "LATEST_EE_LAST_UPDATE" "$GITHUB_OUTPUT")"
+    assert_same "2024-11-26T14:18:08.419895Z" "$(extract_value "LATEST_CE_LAST_UPDATE" "$GITHUB_ENV")"
+    assert_same "2024-11-26T14:18:17.782724Z" "$(extract_value "LATEST_EE_LAST_UPDATE" "$GITHUB_ENV")"
 }

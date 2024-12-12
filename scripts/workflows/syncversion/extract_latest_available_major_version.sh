@@ -1,9 +1,12 @@
 #!/bin/bash
-#
+#----------------------------------------------------------
 # This file is part of the gitlab-arm64 project.
 #
-# (c) Festim Kolgeci <festim.kolgeci@pm.me>
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
 #
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
 
 set -e
 
@@ -27,8 +30,8 @@ BASE_TAG_EE=$(echo "$latest_ee_tag" | sed -E "s/-ee.0$//")
 LATEST_MAJOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1)
 LATEST_MAJOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1)
 
-echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> "$GITHUB_OUTPUT"
-echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> "$GITHUB_OUTPUT"
+echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> "$GITHUB_ENV"
+echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> "$GITHUB_ENV"
 
 # Output major
 echo "CE latest major: $LATEST_MAJOR_CE"
@@ -38,8 +41,8 @@ echo "EE latest major: $LATEST_MAJOR_EE"
 LATEST_MAJOR_MINOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1-2)
 LATEST_MAJOR_MINOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1-2)
 
-echo "LATEST_MAJOR_MINOR_CE=$LATEST_MAJOR_MINOR_CE" >> "$GITHUB_OUTPUT"
-echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> "$GITHUB_OUTPUT"
+echo "LATEST_MAJOR_MINOR_CE=$LATEST_MAJOR_MINOR_CE" >> "$GITHUB_ENV"
+echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> "$GITHUB_ENV"
 
 # Output major.minor
 echo "CE latest major.minor: $LATEST_MAJOR_MINOR_CE"

@@ -1,12 +1,19 @@
 #!/bin/bash
-#
+#----------------------------------------------------------
 # This file is part of the gitlab-arm64 project.
 #
-# (c) Festim Kolgeci <festim.kolgeci@pm.me>
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
 #
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
 
 # Import test-case
 source ./helper/workflows/build/test-case.sh
+
+function set_up_before_script() {
+    cleanup
+}
 
 function runScript() {
     # Run original Script

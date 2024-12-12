@@ -1,0 +1,151 @@
+#----------------------------------------------------------
+# This file is part of the gitlab-arm64 project.
+#
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
+#
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
+
+name: "[SHARED] gitlab_release_checker"
+
+# Ensure Proper Permissions for the Workflow Token
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_call:
+    inputs:
+      is_test:
+        type: boolean
+        description: "If true then some steps gets disabled (e.g. trigger build workflow)"
+        required: false
+        default: false
+
+jobs:
+  check-new-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+        # Copy fixtures for test-run
+      - name: Create Test-Data
+        if: inputs.is_test == true
+        run: |
+          mkdir -p .github/generated-files/
+          echo "2024-10-31T00:00:00.000000Z" > .github/generated-files/last_modified_ce_date.txt
+          echo "2024-10-30T00:00:00.000000Z" > .github/generated-files/last_modified_ee_date.txt
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/syncversion executable
+        run: chmod +x ./scripts/workflows/syncversion/*.sh
+
+      - name: Fetch Docker tags
+        run: ./scripts/workflows/syncversion/fetch_docker_tags.sh
+
+      - name: Get latest MAJOR.MINOR version
+        run: ./scripts/workflows/syncversion/extract_latest_available_major_version.sh
+        # GITHUB_ENV: LATEST_MAJOR_CE
+        # GITHUB_ENV: LATEST_MAJOR_EE
+        # GITHUB_ENV: LATEST_MAJOR_MINOR_CE
+        # GITHUB_ENV: LATEST_MAJOR_MINOR_EE
+
+      - name: Get latest "last_update" dates
+        run: ./scripts/workflows/syncversion/extract_latest_last_update.sh
+        # GITHUB_ENV: LATEST_CE_LAST_UPDATE
+        # GITHUB_ENV: LATEST_EE_LAST_UPDATE
+
+      - name: Get the last saved "last_update" date for gitlab-ce & gitlab-ee from the file
+        env:
+          # The latest ce/ee last_update is only needed if the files don't exist, then those
+          # dates are written to the files
+          LATEST_CE_LAST_UPDATE: ${{ env.LATEST_CE_LAST_UPDATE }}
+          LATEST_EE_LAST_UPDATE: ${{ env.LATEST_EE_LAST_UPDATE }}
+        run: ./scripts/workflows/syncversion/get_last_update_date_from_file.sh
+        # GITHUB_ENV: SAVED_CE_LAST_MODIFIED_DATE
+        # GITHUB_ENV: SAVED_EE_LAST_MODIFIED_DATE
+
+      - name: Extract new tags to build
+        env:
+          SAVED_CE_LAST_MODIFIED_DATE: ${{ env.SAVED_CE_LAST_MODIFIED_DATE }}
+          SAVED_EE_LAST_MODIFIED_DATE: ${{ env.SAVED_EE_LAST_MODIFIED_DATE }}
+          LATEST_MAJOR_CE: ${{ env.LATEST_MAJOR_CE }}
+          LATEST_MAJOR_MINOR_CE: ${{ env.LATEST_MAJOR_MINOR_CE }}
+          LATEST_MAJOR_EE: ${{ env.LATEST_MAJOR_EE }}
+          LATEST_MAJOR_MINOR_EE: ${{ env.LATEST_MAJOR_MINOR_EE }}
+        run: ./scripts/workflows/syncversion/extract_new_build_tags.sh
+        # GITHUB_ENV: NEW_BUILD_CE_VERSIONS
+        # GITHUB_ENV: NEW_BUILD_EE_VERSIONS
+
+      - name: Check new_versions.json files
+        env:
+          NEW_BUILD_CE_VERSIONS: ${{ env.NEW_BUILD_CE_VERSIONS }}
+          NEW_BUILD_EE_VERSIONS: ${{ env.NEW_BUILD_EE_VERSIONS }}
+        run: ./scripts/workflows/syncversion/check_new_build_tags_available.sh
+        # GITHUB_ENV: NEW_BUILD_CE_VERSION_AVAILABLE
+        # GITHUB_ENV: NEW_BUILD_EE_VERSION_AVAILABLE
+
+      - name: Trigger builds for new versions
+        if: ${{ inputs.is_test == false && (env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const triggerBuilds = (versionType, new_version_json) => {
+              const newVersions = JSON.parse(new_version_json);
+          
+              newVersions.forEach(version => {
+                if (version.tag_name) {
+                  console.log(`Triggering build for GitLab ${versionType} version: ${version.tag_name}`);
+                  
+                  github.rest.actions.createWorkflowDispatch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: "build.yml",
+                    ref: "main",
+                    inputs: {
+                      gitlab_release: version.tag_name,
+                      include_major_minor_tag: version.is_latest_patch,
+                      include_major_tag: version.is_latest_minor,
+                      include_latest_tags: version.is_latest_overall,
+                    }
+                  });
+                }
+              });
+            };
+            
+            // Check and trigger builds for CE and EE versions
+            if ('${{ env.NEW_BUILD_CE_VERSION_AVAILABLE }}' === 'true') {
+              triggerBuilds('CE', '${{ env.NEW_BUILD_CE_VERSIONS }}');
+            }
+
+            if ('${{ env.NEW_BUILD_EE_VERSION_AVAILABLE }}' === 'true') {
+              triggerBuilds('EE', '${{ env.NEW_BUILD_EE_VERSIONS }}');
+            }
+
+      - name: Override the new "last_updated" date in file for gitlab-ce & gitlab-ee
+        env:
+          NEW_BUILD_CE_VERSION_AVAILABLE: ${{ env.LATEST_CE_LAST_UPDATE }}
+          NEW_BUILD_EE_VERSION_AVAILABLE: ${{ env.LATEST_EE_LAST_UPDATE }}
+        run: ./scripts/workflows/syncversion/override_last_update_date_from_file.sh
+
+      - name: Commit and Push generated-files
+        if: inputs.is_test == false
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          
+          git remote set-url origin git@github.com:${{ github.repository }}.git
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config status.showUntrackedFiles no
+          
+          git add -f .github/generated-files/* # Force add ignored files
+
+          git commit -m "[BOT] Update last modified date" || echo "No changes to commit"
+          git push
