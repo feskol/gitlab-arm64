@@ -56,12 +56,34 @@ function test_input_whit_whitespace_2() {
     assert_exit_code "0"
 }
 
+function test_input_failure_other_chars() {
+    export INPUT_GITLAB_RELEASE="-   17.6.1-ce.0    "
+
+    runScript
+
+    assert_exit_code "1"
+}
+
 function test_input_whit_large_versions() {
-    export INPUT_GITLAB_RELEASE=" 999.999.999-ce.999"
+    export INPUT_GITLAB_RELEASE="999.999.999-ce.0"
 
     runScript
 
     assert_exit_code "0"
+}
+
+function test_input_failure_last_digit_should_be_always_0() {
+    export INPUT_GITLAB_RELEASE="999.999.999-ce.1"
+    runScript
+    assert_exit_code "1"
+
+    export INPUT_GITLAB_RELEASE="999.999.999-ce.999"
+    runScript
+    assert_exit_code "1"
+
+    export INPUT_GITLAB_RELEASE="999.999.999-ce."
+    runScript
+    assert_exit_code "1"
 }
 
 function test_input_failure_bad_edition() {

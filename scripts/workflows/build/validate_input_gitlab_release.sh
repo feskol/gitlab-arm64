@@ -20,25 +20,23 @@ validate_version() {
     version=$(echo "$version" | xargs)
 
     # Regex to match the version format with a 1-digit integer at the end
-    local regex='^([0-9]+)\.([0-9]+)\.([0-9]+)-(ce|ee)\.([0-9]+)$'
+    local regex='^([0-9]+)\.([0-9]+)\.([0-9]+)-(ce|ee)\.0$'
 
     if [[ $version =~ $regex ]]; then
         major=${BASH_REMATCH[1]}
         minor=${BASH_REMATCH[2]}
         patch=${BASH_REMATCH[3]}
         edition=${BASH_REMATCH[4]}
-        last_digit=${BASH_REMATCH[5]}
 
         echo "Valid version format."
         echo "  Major: $major"
         echo "  Minor: $minor"
         echo "  Patch: $patch"
         echo "  Edition: $edition"
-        echo "  Last digit: $last_digit"
 
         return 0
     else
-        echo "Invalid version format. Expected format: (major).(minor).(patch)-(edition).(single-digit)"
+        echo "Invalid version format. Expected format: (major).(minor).(patch)-(edition).0"
         return 1
     fi
 }
