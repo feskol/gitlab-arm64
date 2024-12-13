@@ -38,13 +38,13 @@
 
 This repository provides **GitLab Docker images for ARM64 architecture**.
 
-GitLab does not officially support ARM64.
-As a result, GitLab does not provide official **Docker images for ARM64**. While there are some repositories that
-attempt to address this issue, they often take time to release updates. This poses a challenge, especially when a
-security patch requires an immediate update.
+GitLab does not officially support ARM64 yet.
+As a result, GitLab does not provide **Docker images for ARM64**.
+While there are some repositories that attempt to address this issue, they often take time to release updates.
+This poses a challenge, especially when a security patch requires an immediate update.
 
-To solve this problem, I created this repository providing a Gitlab Action that checks for new releases twice a day and
-automatically builds a **Docker image** for the latest release.
+To solve this problem, I created this repository providing a Gitlab Action that checks for new releases daily and
+automatically builds a **Docker image** for the latest releases.
 
 ## ✨ Features
 
@@ -72,7 +72,6 @@ To use the Docker images built by this repository, you need:
 
 Pull the Docker images from [Docker Hub][dockerhub-tags].
 
-
 ```bash
 # latest GitLab Community Edition (CE)
 docker pull feskol/gitlab:latest
@@ -84,7 +83,8 @@ docker pull feskol/gitlab:ee
 # Specific version - replace "-ce" to "-ee" for Enterprise Edition
 docker pull feskol/gitlab:17-ce
 docker pull feskol/gitlab:17.6-ce
-docker pull feskol/gitlab:17.6.1-ce
+docker pull feskol/gitlab:17.6.2-ce
+docker pull feskol/gitlab:17.6.2-ce.0
 ```
 
 These images are used like GitLab’s official Docker images.  
@@ -97,7 +97,7 @@ Here’s an example setup using `docker-compose.yaml`:
 ```yaml
 services:
   gitlab:
-    image: feskol/gitlab:17.6.1-ce # change the tag to your needs
+    image: feskol/gitlab:17.6.2-ce # change the tag to your needs
     container_name: gitlab
     restart: unless-stopped
     hostname: 'gitlab.example.com'
@@ -107,6 +107,10 @@ services:
         # Reduce the number of running workers in order to reduce memory usage
         puma['worker_processes'] = 2
         sidekiq['concurrency'] = 9
+    ports:
+      - '80:80'
+      - '443:443'
+      - '22:22'
     volumes:
       - './config:/etc/gitlab'
       - './logs:/var/log/gitlab'
@@ -136,7 +140,7 @@ GitLab Docker image to ensure compatibility and reliability.
 ### Usage
 To pull the appropriate image for your architecture, simply use:
 ```bash
-docker pull feskol/gitlab:latest
+docker pull feskol/gitlab:latest    # you can use here any tag from the DockerHub (e.g. 17.6.2-ce / 17.6-ce / ce )
 ```
 Docker will automatically fetch the image matching your system architecture.
 
@@ -184,13 +188,13 @@ docker compose down
 # Old image tag:
 services:
   gitlab:
-    image: feskol/gitlab:17.6.0-ce # you need to update your tag here
+    image: feskol/gitlab:17.5.4-ce # outdated version
 ...
 
 # New image tag
 services:
   gitlab:
-    image: feskol/gitlab:17.6.1-ce # updated patch
+    image: feskol/gitlab:17.6.2-ce # updated version
 ...
 ```
 
@@ -238,8 +242,8 @@ Tests can be found in the `./tests/unit`.
 To ensure everyone uses the same test suite, I provided a Dockerfile with a docker-compose.yaml file including a service
 that runs the tests.
 
-We're using [bashunit](https://bashunit.typeddevs.com/) for testing our scripts which is located in the `./lib`
-directory.
+We're using [bashunit](https://bashunit.typeddevs.com/) for testing our scripts.
+Its binary is located in the `./lib` directory.
 
 #### Command:
 
@@ -263,12 +267,12 @@ docker compose run --rm test ../lib/bashunit --verbose ./unit
 
 ```
 ...
-├── scripts
+├── lib                 # bashunit binary
+├── scripts             # scripts for the build/syncversion workflows
 └── tests
-    ├── fixtures        # containing fixtures for the tests
-    ├── helper          # contains helping scripts
-    ├── unit            # The actual tests
-    └── workflows       # Directory with workflow-specific scripts (e.g., mocks).
+    ├── fixtures        # fixtures for the tests
+    ├── helper          # helping scripts (e.g. "test-case.sh"-files)
+    └── unit            # The actual tests
 ```
 
 ## ❤️ Support This Project
