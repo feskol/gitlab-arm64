@@ -94,12 +94,17 @@ jobs:
         with:
           script: |
             const triggerBuilds = (versionType, new_version_json) => {
-              const newVersions = JSON.parse(new_version_json);
-          
+              let newVersions = JSON.parse(new_version_json);
+            
+              // If is_test = true, we reduce the the newVersions-Array to 1 entry to avoid too many test-workflow-dispatches
+              if(${{ inputs.is_test }} === true) {
+                newVersions = newVersions.slice(0, 1);
+              }
+            
               newVersions.forEach(version => {
                 if (version.tag_name) {
                   console.log(`Triggering build for GitLab ${versionType} version: ${version.tag_name}`);
-                  
+            
                   github.rest.actions.createWorkflowDispatch({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
