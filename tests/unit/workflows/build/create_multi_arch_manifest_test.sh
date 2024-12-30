@@ -40,4 +40,11 @@ function test_gitlab_tag_building() {
     response=$(runScript)
 
     assert_contains "docker.io/gitlab/gitlab-ce:17.6.1-ce.0" "$response"
+
+    assert_contains "docker.io/randomusername/gitlab:17.6.1-ce.0" "$response"
+    assert_contains "docker.io/randomusername/gitlab:17.6.1-ce" "$response"
+    assert_contains "docker.io/randomusername/gitlab:17.6-ce" "$response"
+    assert_contains "docker.io/randomusername/gitlab:17-ce" "$response"
+    assert_contains "docker.io/randomusername/gitlab:ce" "$response"
+    assert_contains "docker.io/randomusername/gitlab:latest" "$response"
 }

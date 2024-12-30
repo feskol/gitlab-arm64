@@ -23,17 +23,15 @@ IFS=',' read -r -a tags <<<"$DOCKERHUB_PUSH_TAGS"
 for tag in "${tags[@]}"; do
     gitlab_tag="docker.io/gitlab/gitlab-$GITLAB_EDITION_SUFFIX:$INPUT_GITLAB_RELEASE"
 
-    # Create the manifest
-    docker manifest create "$tag" \
-        --amend "$tag" \
-        --amend "$gitlab_tag"
-
     if [ "$IS_TEST" == "false" ]; then
+        # Create the manifest
+        docker manifest create "$tag" \
+            --amend "$tag" \
+            --amend "$gitlab_tag"
+
         # Push the manifest
         docker manifest push -p "$tag"
     else
-        echo "[TEST] Created manifest for $tag using the official Gitlab tag $gitlab_tag"
-        # Remove created manifest
-        docker manifest rm "$tag"
+        echo "[TEST] Create manifest for $tag using the official Gitlab tag $gitlab_tag"
     fi
 done
