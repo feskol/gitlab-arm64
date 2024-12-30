@@ -17,21 +17,23 @@ set -e
 # IS_TEST
 
 # Split the DOCKERHUB_PUSH_TAGS into an array
-IFS=',' read -r -a tags <<< "$DOCKERHUB_PUSH_TAGS"
+IFS=',' read -r -a tags <<<"$DOCKERHUB_PUSH_TAGS"
 
 # Loop through each tag and create and push the manifest
 for tag in "${tags[@]}"; do
     gitlab_tag="docker.io/gitlab/gitlab-$GITLAB_EDITION_SUFFIX:$INPUT_GITLAB_RELEASE"
 
-    if [ "$IS_TEST" == "false" ]; then
-        # Create the manifest
-        docker manifest create "$tag" \
-            --amend "$tag" \
-            --amend "$gitlab_tag"
+    # Create the manifest
+    docker manifest create "$tag" \
+        --amend "$tag" \
+        --amend "$gitlab_tag"
 
+    if [ "$IS_TEST" == "false" ]; then
         # Push the manifest
         docker manifest push -p "$tag"
     else
-        echo "[TEST] Creating manifest for $tag using amd64 tag from $gitlab_tag"
+        echo "[TEST] Created manifest for $tag using the official Gitlab tag $gitlab_tag"
+        # Remove created manifest
+        docker manifest rm "$tag"
     fi
 done
