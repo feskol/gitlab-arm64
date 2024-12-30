@@ -92,15 +92,12 @@ jobs:
 
       - name: Setup binfmt-support
         uses: docker/setup-qemu-action@v3
-        if: inputs.is_test == false
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v3
-        if: inputs.is_test == false
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v6
-        if: inputs.is_test == false
         with:
           context: build
           push: ${{ inputs.is_test == false }}
@@ -119,7 +116,6 @@ jobs:
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
 
       - name: Cleanup Docker
-        if: inputs.is_test == false
         run: docker buildx rm
 
       - name: Clean Up

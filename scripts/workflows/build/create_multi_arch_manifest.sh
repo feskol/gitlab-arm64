@@ -17,7 +17,7 @@ set -e
 # IS_TEST
 
 # Split the DOCKERHUB_PUSH_TAGS into an array
-IFS=',' read -r -a tags <<< "$DOCKERHUB_PUSH_TAGS"
+IFS=',' read -r -a tags <<<"$DOCKERHUB_PUSH_TAGS"
 
 # Loop through each tag and create and push the manifest
 for tag in "${tags[@]}"; do
@@ -32,6 +32,6 @@ for tag in "${tags[@]}"; do
         # Push the manifest
         docker manifest push -p "$tag"
     else
-        echo "[TEST] Creating manifest for $tag using amd64 tag from $gitlab_tag"
+        echo "[TEST] Create manifest for $tag using the official Gitlab tag $gitlab_tag"
     fi
 done
