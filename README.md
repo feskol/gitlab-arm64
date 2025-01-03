@@ -49,7 +49,7 @@ automatically builds a **Docker image** for the latest releases.
 ## ✨ Features
 
 - **Automated Updates**:  
-  A GitHub Action checks for latest releases of the official GitLab Docker images and triggers the build process when
+  A GitHub Action checks the latest releases of the official GitLab Docker images and triggers the build process when
   a new version is available.  
   This ensures the repository always provides up-to-date images for ARM64.
 
