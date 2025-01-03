@@ -17,7 +17,7 @@ on:
 jobs:
   call-snycversion-workflow:
     if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }} # Only on the main branch and exclude forked repositories
-    uses: ./.github/workflows/syncversion-shared.yml
+    uses: ./.github/workflows/_shared-syncversion.yml
     secrets: inherit
     with:
       is_test: false

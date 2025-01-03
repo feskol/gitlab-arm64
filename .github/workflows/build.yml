@@ -40,7 +40,7 @@ on:
 jobs:
   call-build-workflow:
     if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' && github.event.inputs.is_test == false }} # Only on the main branch and exclude forked repositories and is_test-input is set to false
-    uses: ./.github/workflows/build-shared.yml
+    uses: ./.github/workflows/_shared-build.yml
     secrets: inherit
     with:
       gitlab_release: ${{ github.event.inputs.gitlab_release }}
