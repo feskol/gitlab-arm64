@@ -99,7 +99,7 @@ jobs:
               <summary>Release Notes:</summary>
               ${{ env.release_notes }}
             </details>
-          labels: [ "dependencies" ]
+          labels: dependencies
           delete-branch: true
 
       - name: Enable Pull Request Automerge
