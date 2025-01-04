@@ -1,5 +1,5 @@
-# Use Ubuntu 22.04 as the base image
-FROM ubuntu:22.04
+# Use Ubuntu 24.04 as the base image
+FROM ubuntu:24.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
