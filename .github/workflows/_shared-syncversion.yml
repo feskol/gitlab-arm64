@@ -25,15 +25,17 @@ on:
     outputs:
       latest_ce_tag:
         description: "Latest CE tag"
-        value: ${{ jobs.check-new-release.steps.extract-latest-tag.outputs.LATEST_CE_TAG }}
+        value: ${{ jobs.check-new-release.outputs.latest_ce_tag }}
       latest_ee_tag:
         description: "Latest EE tag"
-        value: ${{ jobs.check-new-release.steps.extract-latest-tag.outputs.LATEST_EE_TAG }}
+        value: ${{ jobs.check-new-release.outputs.latest_ee_tag }}
 
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
-
+    outputs:
+      latest_ce_tag: ${{ steps.extract-latest-tag.outputs.LATEST_CE_TAG }}
+      latest_ee_tag: ${{ steps.extract-latest-tag.outputs.LATEST_EE_TAG }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
