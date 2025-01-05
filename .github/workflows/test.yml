@@ -41,6 +41,12 @@ jobs:
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/syncversion
 
+  test-snycversion-workflow:
+    needs: test-syncversion-scripts
+    uses: ./.github/workflows/_shared-syncversion.yml
+    with:
+      is_test: true # This must always be true in tests!
+
   test-build-workflow:
     needs: test-build-scripts
     uses: ./.github/workflows/_shared-build.yml
@@ -51,8 +57,3 @@ jobs:
       include_latest_tags: true
       is_test: true # This must always be true in tests!
 
-  test-snycversion-workflow:
-    needs: test-syncversion-scripts
-    uses: ./.github/workflows/_shared-syncversion.yml
-    with:
-      is_test: true # This must always be true in tests!

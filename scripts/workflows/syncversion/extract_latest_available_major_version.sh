@@ -47,3 +47,7 @@ echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> "$GITHUB_ENV"
 # Output major.minor
 echo "CE latest major.minor: $LATEST_MAJOR_MINOR_CE"
 echo "EE latest major.minor: $LATEST_MAJOR_MINOR_EE"
+
+# add latest CE- & EE-Tags to GitHub Output
+echo "LATEST_CE_TAG=$latest_ce_tag" >> "$GITHUB_OUTPUT"
+echo "LATEST_EE_TAG=$latest_ee_tag" >> "$GITHUB_OUTPUT"

@@ -47,11 +47,14 @@ jobs:
         run: ./scripts/workflows/syncversion/fetch_docker_tags.sh
 
       - name: Get latest MAJOR.MINOR version
+        id: extract-latest-tag
         run: ./scripts/workflows/syncversion/extract_latest_available_major_version.sh
         # GITHUB_ENV: LATEST_MAJOR_CE
         # GITHUB_ENV: LATEST_MAJOR_EE
         # GITHUB_ENV: LATEST_MAJOR_MINOR_CE
         # GITHUB_ENV: LATEST_MAJOR_MINOR_EE
+        # GITHUB_OUTPUT: LATEST_CE_TAG
+        # GITHUB_OUTPUT: LATEST_EE_TAG
 
       - name: Get latest "last_update" dates
         run: ./scripts/workflows/syncversion/extract_latest_last_update.sh
