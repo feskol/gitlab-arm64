@@ -22,6 +22,13 @@ on:
         description: "If true then some steps gets disabled (e.g. trigger build workflow)"
         required: false
         default: false
+    outputs:
+      latest_ce_tag:
+        description: "Latest CE tag"
+        value: ${{ steps.extract-latest-tag.outputs.LATEST_CE_TAG }}
+      latest_ee_tag:
+        description: "Latest EE tag"
+        value: ${{ steps.extract-latest-tag.outputs.LATEST_EE_TAG }}
 
 jobs:
   check-new-release:

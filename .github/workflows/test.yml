@@ -68,10 +68,10 @@ jobs:
       is_test: true # This must always be true in tests!
 
   test-build-workflow:
-    needs: test-build-scripts
+    needs: [test-build-scripts, test-snycversion-workflow]
     uses: ./.github/workflows/_shared-build.yml
     with:
-      gitlab_release: '17.7.0-ce.0'
+      gitlab_release: ${{ needs.test-snycversion-workflow.outputs.latest_ce_tag }}
       include_major_minor_tag: true
       include_major_tag: true
       include_latest_tags: true
