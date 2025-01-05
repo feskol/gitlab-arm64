@@ -10,12 +10,12 @@
 
 # Simulate GitHub Actions environment locally
 if [ -z "$GITHUB_OUTPUT" ]; then
-    GITHUB_OUTPUT=./GITHUB_OUTPUT
+    GITHUB_OUTPUT=./GITHUB_OUTPUT_SIMULATION
     export GITHUB_OUTPUT
 fi
 
 if [ -z "$GITHUB_ENV" ]; then
-    GITHUB_ENV=./GITHUB_ENV
+    GITHUB_ENV=./GITHUB_ENV_SIMULATION
     export GITHUB_ENV
 fi
 
