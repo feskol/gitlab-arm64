@@ -115,7 +115,6 @@ jobs:
                       include_major_minor_tag: version.is_latest_patch,
                       include_major_tag: version.is_latest_minor,
                       include_latest_tags: version.is_latest_overall,
-                      is_test: ${{ inputs.is_test }}
                     }
                   });
                 }
