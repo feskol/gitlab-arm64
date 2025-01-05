@@ -31,15 +31,10 @@ on:
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
-      is_test:
-        type: boolean
-        description: "This is used for the automated syncversion workflow to test the workflow_dispatch working correctly."
-        required: false
-        default: false
 
 jobs:
   call-build-workflow:
-    if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' && github.event.inputs.is_test == false }} # Only on the main branch and exclude forked repositories and is_test-input is set to false
+    if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }} # Only on the main branch and exclude forked repositories
     uses: ./.github/workflows/_shared-build.yml
     secrets: inherit
     with:

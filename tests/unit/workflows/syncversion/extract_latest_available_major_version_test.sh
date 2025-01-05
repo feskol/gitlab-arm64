@@ -37,3 +37,8 @@ function test_latest_major_minor_extraction() {
     assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_CE" "$GITHUB_ENV")"
     assert_same "17.6" "$(extract_value "LATEST_MAJOR_MINOR_EE" "$GITHUB_ENV")"
 }
+
+function test_latest_tags() {
+    assert_same "17.6.1-ce.0" "$(extract_value "LATEST_CE_TAG" "$GITHUB_OUTPUT")"
+    assert_same "17.6.1-ee.0" "$(extract_value "LATEST_EE_TAG" "$GITHUB_OUTPUT")"
+}

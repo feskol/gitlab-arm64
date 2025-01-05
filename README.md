@@ -9,14 +9,14 @@
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub-tags]
 [![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub-tags]  
 [![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
-[![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
+[![Buy Me A Coffee][support-badge-buy-me-coffee]][support-buy-me-coffee]
+[![PayPal][support-badge-paypal-me]][support-paypal-me]
 
-[github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml
+[github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml?query=branch%3Amain
 
 [github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
 
-[github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml
+[github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml?query=branch%3Amain
 
 [github-actions-badge-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml/badge.svg?branch=main
 
@@ -33,6 +33,14 @@
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
 
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
+
+[support-buy-me-coffee]: https://buymeacoffee.com/feskol
+
+[support-badge-buy-me-coffee]: https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black
+
+[support-paypal-me]: https://paypal.me/feskol
+
+[support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
 
 ## 🚀 Overview
 
@@ -83,9 +91,9 @@ docker pull feskol/gitlab:ee
 
 # Specific version - replace "-ce" to "-ee" for Enterprise Edition
 docker pull feskol/gitlab:17-ce
-docker pull feskol/gitlab:17.6-ce
-docker pull feskol/gitlab:17.6.2-ce
-docker pull feskol/gitlab:17.6.2-ce.0
+docker pull feskol/gitlab:17.7-ce
+docker pull feskol/gitlab:17.7.0-ce
+docker pull feskol/gitlab:17.7.0-ce.0
 ```
 
 These images are used like GitLab’s official Docker images.  
@@ -98,14 +106,14 @@ Here’s an example setup using `docker-compose.yaml`:
 ```yaml
 services:
     gitlab:
-        image: feskol/gitlab:17.6.2-ce # change the tag to your needs
+        image: feskol/gitlab:17.7.0-ce # change the tag to your needs
         container_name: gitlab
         restart: unless-stopped
         hostname: 'gitlab.example.com'
         environment:
             GITLAB_OMNIBUS_CONFIG: |
                 # Add any other gitlab.rb configuration here, each on its own line
-                # Reduce the number of running workers in order to reduce memory usage
+                # For example: Reduce the number of running workers in order to reduce memory usage
                 puma['worker_processes'] = 2
                 sidekiq['concurrency'] = 9
         ports:
@@ -235,8 +243,7 @@ By signing the CLA, you confirm that:
 
 1. You grant us the perpetual, worldwide, non-exclusive, royalty-free, irrevocable right to use, modify, sublicense, and
    distribute your contribution as part of this project or any other project.
-2. You retain ownership of your contribution, but grant us the rights necessary to use it without restriction, including
-   for commercial purposes or in closed-source projects.
+2. You retain ownership of your contribution, but grant us the rights necessary to use it without restriction.
 3. Your contribution does not violate the rights of any third party.
 
 ### How to Sign the CLA
@@ -297,10 +304,7 @@ If you find this project helpful and would like to support my work:
 
 - 🌟 **Star the repository** to show your appreciation.
 - 💸 **Donate via**:
-    - **Buy Me a Coffe**: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/feskol)
-    - **PayPal**: [![PayPal](https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff)](https://paypal.me/feskol)
-- 💬 **Spread the word** by sharing this project with others.
+    - Buy Me a Coffe: [![Buy Me A Coffee][support-badge-buy-me-coffee]][support-buy-me-coffee]
+    - PayPal: [![PayPal][support-badge-paypal-me]][support-paypal-me]
 
 Thank you for your support!
-
-

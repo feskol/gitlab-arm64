@@ -36,7 +36,7 @@ validate_version() {
 
         return 0
     else
-        echo "Invalid version format. Expected format: (major).(minor).(patch)-(edition).0"
+        echo "Invalid version format. Expected format: (major).(minor).(patch)-(edition).0 | actual: $version"
         return 1
     fi
 }

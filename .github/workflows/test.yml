@@ -11,6 +11,14 @@ name: Test
 
 on:
   push:
+    paths-ignore:
+      - '.github/ISSUE_TEMPLATE/*'
+      - '.github/generated-files/*'
+      - '.editorconfig'
+      - '.gitignore'
+      - '*.md'
+      - 'docker-compose.yaml'
+      - 'LICENSE'
     branches-ignore:
       - 'main' # This excludes the 'main' branch
 
@@ -41,18 +49,19 @@ jobs:
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/syncversion
 
-  test-build-workflow:
-    needs: test-build-scripts
-    uses: ./.github/workflows/_shared-build.yml
-    with:
-      gitlab_release: '17.7.0-ce.0'
-      include_major_minor_tag: true
-      include_major_tag: true
-      include_latest_tags: true
-      is_test: true # This must always be true in tests!
-
   test-snycversion-workflow:
     needs: test-syncversion-scripts
     uses: ./.github/workflows/_shared-syncversion.yml
     with:
       is_test: true # This must always be true in tests!
+
+  test-build-workflow:
+    needs: [test-build-scripts, test-snycversion-workflow]
+    uses: ./.github/workflows/_shared-build.yml
+    with:
+      gitlab_release: ${{ needs.test-snycversion-workflow.outputs.latest_ce_tag }}
+      include_major_minor_tag: true
+      include_major_tag: true
+      include_latest_tags: true
+      is_test: true # This must always be true in tests!
+

@@ -22,11 +22,20 @@ on:
         description: "If true then some steps gets disabled (e.g. trigger build workflow)"
         required: false
         default: false
+    outputs:
+      latest_ce_tag:
+        description: "Latest CE tag"
+        value: ${{ jobs.check-new-release.outputs.latest_ce_tag }}
+      latest_ee_tag:
+        description: "Latest EE tag"
+        value: ${{ jobs.check-new-release.outputs.latest_ee_tag }}
 
 jobs:
   check-new-release:
     runs-on: ubuntu-latest
-
+    outputs:
+      latest_ce_tag: ${{ steps.extract-latest-tag.outputs.LATEST_CE_TAG }}
+      latest_ee_tag: ${{ steps.extract-latest-tag.outputs.LATEST_EE_TAG }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -47,11 +56,14 @@ jobs:
         run: ./scripts/workflows/syncversion/fetch_docker_tags.sh
 
       - name: Get latest MAJOR.MINOR version
+        id: extract-latest-tag
         run: ./scripts/workflows/syncversion/extract_latest_available_major_version.sh
         # GITHUB_ENV: LATEST_MAJOR_CE
         # GITHUB_ENV: LATEST_MAJOR_EE
         # GITHUB_ENV: LATEST_MAJOR_MINOR_CE
         # GITHUB_ENV: LATEST_MAJOR_MINOR_EE
+        # GITHUB_OUTPUT: LATEST_CE_TAG
+        # GITHUB_OUTPUT: LATEST_EE_TAG
 
       - name: Get latest "last_update" dates
         run: ./scripts/workflows/syncversion/extract_latest_last_update.sh
@@ -115,7 +127,6 @@ jobs:
                       include_major_minor_tag: version.is_latest_patch,
                       include_major_tag: version.is_latest_minor,
                       include_latest_tags: version.is_latest_overall,
-                      is_test: ${{ inputs.is_test }}
                     }
                   });
                 }
