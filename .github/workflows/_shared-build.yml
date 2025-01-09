@@ -33,14 +33,16 @@ on:
         default: false
       is_test:
         type: boolean
-        description: "If true then some steps gets disabled (e.g. build and push docker image)"
+        description: "If true then some steps gets disabled (e.g. push docker image)"
         required: false
         default: false
 
 jobs:
-  build-and-push:
+  validate-and-prepare:
     runs-on: ubuntu-latest
-
+    outputs:
+      gitlab_edition_suffix: ${{ steps.gitlab-edition.outputs.GITLAB_EDITION_SUFFIX }}
+      dockerhub_push_tags: ${{ steps.docker-tags.outputs.DOCKERHUB_PUSH_TAGS }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -55,10 +57,11 @@ jobs:
         run: ./scripts/workflows/build/validate_input_gitlab_release.sh
 
       - name: Extract GitLab Edition
+        id: gitlab-edition
         env:
           INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
         run: ./scripts/workflows/build/extract_gitlab_edition_suffix.sh
-        # GITHUB_ENV: GITLAB_EDITION_SUFFIX
+        # GITHUB_OUTPUT: GITLAB_EDITION_SUFFIX
 
       - name: Generate Tags
         env:
@@ -66,21 +69,33 @@ jobs:
           INPUT_INCLUDE_LATEST_TAGS: ${{ inputs.include_latest_tags }}
           INPUT_INCLUDE_MAJOR_TAG: ${{ inputs.include_major_tag }}
           INPUT_INCLUDE_MAJOR_MINOR_TAG: ${{ inputs.include_major_minor_tag }}
-          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+          GITLAB_EDITION_SUFFIX: ${{ steps.gitlab-edition.outputs.GITLAB_EDITION_SUFFIX }}
         run: ./scripts/workflows/build/generate_tags.sh
         # GITHUB_ENV: GENERATED_TAGS
 
       - name: Generate Docker tags
+        id: docker-tags
         env:
           GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: ./scripts/workflows/build/generate_docker_tags.sh
-        # GITHUB_ENV: DOCKERHUB_PUSH_TAGS
+        # GITHUB_OUTPUT: DOCKERHUB_PUSH_TAGS
+
+  build-docker-image:
+    runs-on: ubuntu-latest
+    needs: validate-and-prepare
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
 
       - name: Setup GitLab build files
         env:
           INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
-          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
+          GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
         run: ./scripts/workflows/build/setup_build_files.sh
 
       - name: Docker login to docker.io
@@ -101,22 +116,40 @@ jobs:
         with:
           context: build
           push: ${{ inputs.is_test == false }}
-          tags: ${{ env.DOCKERHUB_PUSH_TAGS }}
+          tags: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
           platforms: linux/arm64
           provenance: false
           build-args: |
             TARGETARCH=arm64
 
-      - name: Create multi-arch docker manifest
-        env:
-          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
-          DOCKERHUB_PUSH_TAGS: ${{ env.DOCKERHUB_PUSH_TAGS }}
-          GITLAB_EDITION_SUFFIX: ${{ env.GITLAB_EDITION_SUFFIX }}
-          IS_TEST: ${{ inputs.is_test }}
-        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
-
       - name: Cleanup Docker
         run: docker buildx rm
 
-      - name: Clean Up
+      - name: Clean Up build files
         run: rm -rf build
+
+  docker-manifest:
+    runs-on: ubuntu-latest
+    needs: [ validate-and-prepare, build-docker-image ]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Docker login to docker.io
+        uses: docker/login-action@v3
+        if: inputs.is_test == false
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create multi-arch docker manifest
+        env:
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
+          GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
+          IS_TEST: ${{ inputs.is_test }}
+        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
