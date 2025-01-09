@@ -5,8 +5,8 @@
 [![Docker Image][feskol-docker-image-badge]][dockerhub-link]
 [![Docker Pulls][dockerhub-badge-pulls]][dockerhub-tags]
 [![gitlab-ce-latest-arm][dockerhub-badge-latest-version-ce-arm]][dockerhub-tags]
-[![gitlab-ce-latest-arm-size][dockerhub-badge-image-size-ce-arm]][dockerhub-tags]
 [![gitlab-ee-latest-arm][dockerhub-badge-latest-version-ee-arm]][dockerhub-tags]
+[![gitlab-ce-latest-arm-size][dockerhub-badge-image-size-ce-arm]][dockerhub-tags]
 [![gitlab-ee-latest-arm-size][dockerhub-badge-image-size-ee-arm]][dockerhub-tags]  
 [![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub-link]  
 [![Buy Me A Coffee][support-badge-buy-me-coffee]][support-buy-me-coffee]
@@ -124,8 +124,8 @@ services:
 ## 🐳 Multi-Architecture Support
 
 [![gitlab-ce-latest-amd][dockerhub-badge-latest-version-ce-amd]][dockerhub-tags]
-[![gitlab-ce-latest-amd-size][dockerhub-badge-image-size-ce-amd]][dockerhub-tags]
 [![gitlab-ee-latest-amd][dockerhub-badge-latest-version-ee-amd]][dockerhub-tags]
+[![gitlab-ce-latest-amd-size][dockerhub-badge-image-size-ce-amd]][dockerhub-tags]
 [![gitlab-ee-latest-amd-size][dockerhub-badge-image-size-ee-amd]][dockerhub-tags]
 
 This repository supports multi-architecture Docker images in addition to ARM64 images. This enhancement ensures
