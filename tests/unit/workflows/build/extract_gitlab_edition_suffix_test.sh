@@ -29,7 +29,7 @@ function test_extract_ce() {
 
     runScript
 
-    assert_same "ce" "$(extract_value "GITLAB_EDITION_SUFFIX" "$GITHUB_ENV")"
+    assert_same "ce" "$(extract_value "GITLAB_EDITION_SUFFIX" "$GITHUB_OUTPUT")"
 }
 
 function test_ee_extraction() {
@@ -37,5 +37,5 @@ function test_ee_extraction() {
 
     runScript
 
-    assert_same "ee" "$(extract_value "GITLAB_EDITION_SUFFIX" "$GITHUB_ENV")"
+    assert_same "ee" "$(extract_value "GITLAB_EDITION_SUFFIX" "$GITHUB_OUTPUT")"
 }
