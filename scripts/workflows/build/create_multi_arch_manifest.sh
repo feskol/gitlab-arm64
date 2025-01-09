@@ -25,8 +25,8 @@ for tag in "${tags[@]}"; do
 
     if [ "$IS_TEST" == "false" ]; then
         # Ensure we have all metadata
-        docker pull "$tag"
-        docker pull "$gitlab_tag"
+        docker pull --platform linux/arm64 "$tag"
+        docker pull --platform linux/amd64 "$gitlab_tag"
 
         # Create the manifest
         docker manifest create "$tag" "$tag" "$gitlab_tag"
