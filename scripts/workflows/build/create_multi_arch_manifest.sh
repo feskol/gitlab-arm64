@@ -25,8 +25,7 @@ for tag in "${tags[@]}"; do
 
     if [ "$IS_TEST" == "false" ]; then
         # Create the manifest
-        docker manifest create "$tag" \
-            --amend "$tag" \
+        docker manifest create "$tag" "$tag" \
             --amend "$gitlab_tag"
 
         # Push the manifest
