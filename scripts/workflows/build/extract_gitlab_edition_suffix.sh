@@ -15,4 +15,4 @@ set -e
 
 # Extract GitLab Edition (-ce or -ee)
 EDITION_SUFFIX=$(echo "$INPUT_GITLAB_RELEASE" | sed -E 's/.*-(ce|ee).*/\1/')
-echo "GITLAB_EDITION_SUFFIX=$EDITION_SUFFIX" >> "$GITHUB_ENV"
+echo "GITLAB_EDITION_SUFFIX=$EDITION_SUFFIX" >> "$GITHUB_OUTPUT"

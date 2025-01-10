@@ -15,4 +15,4 @@ set -e
 # DOCKERHUB_USERNAME
 
 DOCKERHUB_PUSH_TAGS=$(echo "$GENERATED_TAGS" | tr ',' '\n' | xargs -I {} echo "docker.io/${DOCKERHUB_USERNAME}/gitlab:{}" | paste -sd, -)
-echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> "$GITHUB_ENV"
+echo "DOCKERHUB_PUSH_TAGS=${DOCKERHUB_PUSH_TAGS}" >> "$GITHUB_OUTPUT"
