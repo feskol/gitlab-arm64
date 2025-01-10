@@ -11,10 +11,10 @@ name: Create Docker Manifest
 
 on:
   workflow_run:
-    workflows: ["Build Docker Image"]
+    workflows: ["[SHARED] build_docker_image"]
     types: [completed]
 
-concurrency: # Making sure all create-manifest workflows run in sync
+concurrency: # Making sure all create-docker-manifest workflows run in sync
   group: create-manifest-global
 
 jobs:
