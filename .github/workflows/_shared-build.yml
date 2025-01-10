@@ -37,8 +37,12 @@ on:
         required: false
         default: false
     outputs:
-      gitlab_edition_suffix: ${{ jobs.validate-and-prepare.outputs.gitlab_edition_suffix }}
-      dockerhub_push_tags: ${{ jobs.validate-and-prepare.outputs.dockerhub_push_tags }}
+      gitlab_edition_suffix:
+        description: "GitLab Edition"
+        value: ${{ jobs.validate-and-prepare.outputs.gitlab_edition_suffix }}
+      dockerhub_push_tags:
+        description: "Created Docker-Tags for Docker-Image"
+        value: ${{ jobs.validate-and-prepare.outputs.dockerhub_push_tags }}
 
 jobs:
   validate-and-prepare:
