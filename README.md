@@ -1,46 +1,38 @@
 # GitLab (CE/EE) Docker Image for ARM64
 
-[![build-badge][github-actions-badge-build]][github-actions-build]
-[![build-badge][github-actions-badge-syncversion]][github-actions-syncversion]  
-[![DOcker Image](https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker)][dockerhub]
+[![build-github-action][github-actions-badge-build]][github-actions-build]
+[![syncversion-github-action][github-actions-badge-syncversion]][github-actions-syncversion]  
+[![Docker Image][feskol-docker-image-badge]][dockerhub-link]
 [![Docker Pulls][dockerhub-badge-pulls]][dockerhub-tags]
-[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ce]][dockerhub-tags]
-[![Docker Image Version (latest by date)][dockerhub-badge-latest-version-ee]][dockerhub-tags]
-[![Docker Image Size (tag)][dockerhub-badge-image-size-ce]][dockerhub-tags]
-[![Docker Image Size (tag)][dockerhub-badge-image-size-ee]][dockerhub-tags]  
-[![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub]  
+[![gitlab-ce-latest-arm][dockerhub-badge-latest-version-ce-arm]][dockerhub-tags]
+[![gitlab-ee-latest-arm][dockerhub-badge-latest-version-ee-arm]][dockerhub-tags]
+[![gitlab-ce-latest-arm-size][dockerhub-badge-image-size-ce-arm]][dockerhub-tags]
+[![gitlab-ee-latest-arm-size][dockerhub-badge-image-size-ee-arm]][dockerhub-tags]  
+[![Supported GitLab Versions](https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab)][dockerhub-link]  
 [![Buy Me A Coffee][support-badge-buy-me-coffee]][support-buy-me-coffee]
 [![PayPal][support-badge-paypal-me]][support-paypal-me]
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml?query=branch%3Amain
-
 [github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
-
 [github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml?query=branch%3Amain
-
 [github-actions-badge-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml/badge.svg?branch=main
-
-[dockerhub]: https://hub.docker.com/r/feskol/gitlab
-
+[feskol-docker-image-badge]: https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker
+[dockerhub-link]: https://hub.docker.com/r/feskol/gitlab
 [dockerhub-tags]: https://hub.docker.com/r/feskol/gitlab/tags
-
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
-
-[dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
-
-[dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
-
-[dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
-
-[dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
-
+[dockerhub-badge-latest-version-ce-arm]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
+[dockerhub-badge-latest-version-ee-arm]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
+[dockerhub-badge-image-size-ce-arm]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ee-arm]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 [support-buy-me-coffee]: https://buymeacoffee.com/feskol
-
 [support-badge-buy-me-coffee]: https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black
-
 [support-paypal-me]: https://paypal.me/feskol
-
 [support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
+
+[dockerhub-badge-latest-version-ce-amd]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=amd64&label=AMD64:%20gitlab-ce&logo=docker
+[dockerhub-badge-latest-version-ee-amd]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=amd64&label=AMD64:%20gitlab-ee&logo=docker
+[dockerhub-badge-image-size-ce-amd]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=amd64&label=AMD64:%20gitlab-ce&logo=docker
+[dockerhub-badge-image-size-ee-amd]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=amd64&label=AMD64:%20gitlab-ee&logo=docker
 
 ## 🚀 Overview
 
@@ -66,7 +58,7 @@ automatically builds a **Docker image** for the latest releases.
 
 - **Compatibility**:  
   These images are build for **ARM64 architecture**, making GitLab accessible to users on **ARM-based platforms**.  
-  They are also compatible with **x86_64 architecture**. For more details,
+  They are also compatible with **AMD64 architecture**. For more details,
   see [Multi-Architecture Support](#-multi-architecture-support)
 
 ## 📋 Requirements
@@ -74,7 +66,7 @@ automatically builds a **Docker image** for the latest releases.
 To use the Docker images built by this repository, you need:
 
 - **ARM64 Architecture** (e.g. Raspberry Pi 4/5, ARM64 servers)
-  or **x86_64 Architecture** (See [Multi-Architecture Support](#-multi-architecture-support))
+  or **AMD64 Architecture** (See [Multi-Architecture Support](#-multi-architecture-support))
 - **Docker** installed on your system
 
 ## 🛠️ Usage
@@ -131,13 +123,18 @@ services:
 
 ## 🐳 Multi-Architecture Support
 
+[![gitlab-ce-latest-amd][dockerhub-badge-latest-version-ce-amd]][dockerhub-tags]
+[![gitlab-ee-latest-amd][dockerhub-badge-latest-version-ee-amd]][dockerhub-tags]
+[![gitlab-ce-latest-amd-size][dockerhub-badge-image-size-ce-amd]][dockerhub-tags]
+[![gitlab-ee-latest-amd-size][dockerhub-badge-image-size-ee-amd]][dockerhub-tags]
+
 This repository supports multi-architecture Docker images in addition to ARM64 images. This enhancement ensures
-that the Docker images can run seamlessly on both x86_64 and ARM64 architectures.
+that the Docker images can run seamlessly on both AMD64 and ARM64 architectures.
 
 ### Supported Architectures
 
 - **ARM64**: Optimized for ARM64 systems.
-- **x86_64**: Uses the official GitLab Docker image.
+- **AMD64**: Uses the official GitLab Docker image.
 
 ### Benefits
 
@@ -146,7 +143,7 @@ that the Docker images can run seamlessly on both x86_64 and ARM64 architectures
 
 ### How It Works
 
-The build process creates a docker manifest for multi-arch images. For x86_64, the process leverages the official
+The build process creates a docker manifest for multi-arch images. For **AMD64**, the process leverages the official
 GitLab Docker image to ensure compatibility and reliability.
 
 ### Usage
