@@ -1,0 +1,52 @@
+#----------------------------------------------------------
+# This file is part of the gitlab-arm64 project.
+#
+# (c) Festim Kolgeci <festim.kolgei@pm.me>
+#
+# For complete copyright and license details, please refer
+# to the LICENSE file distributed with this source code.
+#----------------------------------------------------------
+
+name: Create Docker Manifest
+
+on:
+  workflow_run:
+    workflows: ["Build Docker Image"]
+    types: [completed]
+
+concurrency: # Making sure all create-manifest workflows run in sync
+  group: create-manifest-global
+
+jobs:
+  create-manifest:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Docker login to docker.io
+        uses: docker/login-action@v3
+        if: ${{ github.event.workflow_run.inputs.is_test == false }}
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: TEST VAR EXTRECTION
+        run: |
+          echo "INPUT_GITLAB_RELEASE: ${{ github.event.workflow_run.inputs.gitlab_release }}"
+          echo "DOCKERHUB_PUSH_TAGS: ${{ github.event.workflow_run.outputs.dockerhub_push_tags }}"
+          echo "GITLAB_EDITION_SUFFIX: ${{ github.event.workflow_run.outputs.gitlab_edition_suffix }}"
+          echo "IS_TEST: ${{ github.event.workflow_run.inputs.is_test }}"
+
+#      - name: Create multi-arch docker manifest
+#        env:
+#          INPUT_GITLAB_RELEASE: ${{ github.event.workflow_run.inputs.gitlab_release }}
+#          DOCKERHUB_PUSH_TAGS: ${{ github.event.workflow_run.outputs.dockerhub_push_tags }}
+#          GITLAB_EDITION_SUFFIX: ${{ github.event.workflow_run.outputs.gitlab_edition_suffix }}
+#          IS_TEST: ${{ github.event.workflow_run.inputs.is_test }}
+#        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
