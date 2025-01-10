@@ -21,6 +21,7 @@ on:
       - 'LICENSE'
     branches-ignore:
       - 'main' # This excludes the 'main' branch
+  workflow_dispatch:
 
 jobs:
   test-build-scripts:
