@@ -1,7 +1,8 @@
 # GitLab (CE/EE) Docker Image for ARM64
 
 [![build-github-action][github-actions-badge-build]][github-actions-build]
-[![syncversion-github-action][github-actions-badge-syncversion]][github-actions-syncversion]  
+[![syncversion-github-action][github-actions-badge-syncversion]][github-actions-syncversion]
+[![GitHub Discussions][github-discussions-badge]][github-discussions-link]  
 [![Docker Image][feskol-docker-image-badge]][dockerhub-link]
 [![Docker Pulls][dockerhub-badge-pulls]][dockerhub-tags]
 [![gitlab-ce-latest-arm][dockerhub-badge-latest-version-ce-arm]][dockerhub-tags]
@@ -13,43 +14,28 @@
 [![PayPal][support-badge-paypal-me]][support-paypal-me]
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml?query=branch%3Amain
-
 [github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
-
 [github-actions-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml?query=branch%3Amain
-
 [github-actions-badge-syncversion]: https://github.com/feskol/gitlab-arm64/actions/workflows/syncversion.yml/badge.svg?branch=main
-
 [feskol-docker-image-badge]: https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker
-
 [dockerhub-link]: https://hub.docker.com/r/feskol/gitlab
-
 [dockerhub-tags]: https://hub.docker.com/r/feskol/gitlab/tags
-
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
-
 [dockerhub-badge-latest-version-ce-arm]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
-
 [dockerhub-badge-latest-version-ee-arm]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
-
 [dockerhub-badge-image-size-ce-arm]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=arm64&label=gitlab-ce&logo=docker
-
 [dockerhub-badge-image-size-ee-arm]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=arm64&label=gitlab-ee&logo=docker
 
+[github-discussions-badge]: https://img.shields.io/github/discussions/feskol/gitlab-arm64?label=Discussions
+[github-discussions-link]: https://github.com/feskol/gitlab-arm64/discussions
 [support-buy-me-coffee]: https://buymeacoffee.com/feskol
-
 [support-badge-buy-me-coffee]: https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black
-
 [support-paypal-me]: https://paypal.me/feskol
-
 [support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
 
 [dockerhub-badge-latest-version-ce-amd]: https://img.shields.io/docker/v/feskol/gitlab/ce?arch=amd64&label=AMD64:%20gitlab-ce&logo=docker
-
 [dockerhub-badge-latest-version-ee-amd]: https://img.shields.io/docker/v/feskol/gitlab/ee?arch=amd64&label=AMD64:%20gitlab-ee&logo=docker
-
 [dockerhub-badge-image-size-ce-amd]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?arch=amd64&label=AMD64:%20gitlab-ce&logo=docker
-
 [dockerhub-badge-image-size-ee-amd]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?arch=amd64&label=AMD64:%20gitlab-ee&logo=docker
 
 ## 🚀 Overview
