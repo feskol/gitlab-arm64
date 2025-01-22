@@ -12,9 +12,6 @@
 [![Supported GitLab Versions][supported-gitlab-versions-badge]][dockerhub-link]  
 [![Buy Me A Coffee][support-badge-buy-me-coffee]][support-buy-me-coffee]
 [![PayPal][support-badge-paypal-me]][support-paypal-me]
-<a href="https://api.gitsponsors.com/api/badge/link?p=1MftBAufWcUIfsyU7sh2dBwsgn9QoqohgdJ99+OTuQ4r9G3yVWI0pzIYpMEMMf01cuk8eaX0JOutezCjzMfgTpq3pnY0P1renQEaiONiGyQxA5ort4VqC/4t8q/3+lpcB/bdaNEWoBGiSbkLTHZMliGG6WbuUC7btvbhobjZwG8=" id="gitsponsors-badge">
-    <img src="https://api.gitsponsors.com/api/badge/img?id=895196097" height="20">
-</a>
 
 [github-actions-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml?query=branch%3Amain
 [github-actions-badge-build]: https://github.com/feskol/gitlab-arm64/actions/workflows/build.yml/badge.svg?branch=main
