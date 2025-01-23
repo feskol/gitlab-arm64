@@ -52,6 +52,9 @@ This poses a challenge, especially when a security patch requires an immediate u
 To solve this problem, I created this repository providing a GitHub Action that checks for new releases daily and
 automatically builds a **Docker image** for the latest releases.
 
+The ARM64 Docker images are typically available on the [Docker Hub `feskol/gitlab`][dockerhub-tags] within 12 hours 
+after the official GitLab Docker images are released.
+
 ## ✨ Features
 
 - **Automated Updates**:  
@@ -185,11 +188,10 @@ system:
     - `17.6-ce` (major and minor version)
     - `17-ce` (major version only)
 
-> [!TIP]
-> Cast your vote or provide feedback on the tags in
-> the [discussion thread](https://github.com/feskol/gitlab-arm64/discussions/27).
-
 Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
+
+> [!TIP]
+> You want to share your feedback on the tags? Do it [here](https://github.com/feskol/gitlab-arm64/discussions/27)!
 
 > [!NOTE]
 > This project supports **GitLab (CE/EE)** starting from version **17 and higher**!
