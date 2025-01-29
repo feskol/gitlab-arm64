@@ -30,9 +30,6 @@ echo "Downloaded GitLab-Omnibus Docker setup files"
 RELEASE_PACKAGE="gitlab-$GITLAB_EDITION_SUFFIX"
 RELEASE_VERSION="$INPUT_GITLAB_RELEASE"
 
-mkdir -p build
-
-echo "DOWNLOAD_URL_amd64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_amd64.deb/download.deb" > build/RELEASE
 echo "DOWNLOAD_URL_arm64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/packages/ubuntu/jammy/${RELEASE_PACKAGE}_${RELEASE_VERSION}_arm64.deb/download.deb" >> build/RELEASE
 
 echo "Created RELEASE file"
