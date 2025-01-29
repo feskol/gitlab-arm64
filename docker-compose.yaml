@@ -3,6 +3,9 @@ services:
         build:
             context: "tests"
             dockerfile: "Dockerfile"
+            platforms:
+                - "linux/amd64"
+                - "linux/arm64"
         restart: "no"
         volumes:
             - .:/app  # Mount your script directory
