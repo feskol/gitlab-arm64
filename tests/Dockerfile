@@ -1,12 +1,9 @@
-# Use Ubuntu 24.04 as the base image
 FROM ubuntu:24.04
 
-# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install common packages found in GitHub's `ubuntu-latest`
-RUN apt-get update && \
-    apt-get install -y \
+RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
@@ -27,7 +24,6 @@ RUN apt-get update && \
     unzip \
     && apt-get clean
 
-
 # Optionally, add any other tools you need
 RUN npm install -g yarn
 
@@ -37,9 +33,6 @@ RUN useradd -ms /bin/bash githubuser && \
     adduser githubuser sudo
 
 USER githubuser
-
-# Set the working directory
 WORKDIR /home/githubuser
 
-# Command to run when starting the container (for example, a shell)
 CMD ["bash"]

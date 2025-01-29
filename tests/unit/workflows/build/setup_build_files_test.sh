@@ -27,6 +27,7 @@ function runScript() {
 function test_run_through() {
 
     export INPUT_GITLAB_RELEASE="17.0.1-ce.0"
+    export GITLAB_EDITION_SUFFIX="ce"
 
     runScript
 
@@ -35,6 +36,7 @@ function test_run_through() {
     assert_file_exists "build/Dockerfile"
 
     assert_file_exists "build/RELEASE"
-    assert_not_empty "$(cat build/RELEASE))"
+    assert_not_empty "$(cat build/RELEASE)"
 
+    assert_equals "DOWNLOAD_URL_arm64=https://packages.gitlab.com/gitlab/gitlab-ce/packages/ubuntu/jammy/gitlab-ce_17.0.1-ce.0_arm64.deb/download.deb" "$(cat build/RELEASE)"
 }
