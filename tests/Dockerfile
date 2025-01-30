@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     zip \
     unzip \
+    tree \
     && apt-get clean
 
 # Optionally, add any other tools you need
