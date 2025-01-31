@@ -34,3 +34,5 @@ echo "DOWNLOAD_URL_arm64=https://packages.gitlab.com/gitlab/${RELEASE_PACKAGE}/p
 
 echo "Created RELEASE file"
 cat build/RELEASE
+
+tree -ah build

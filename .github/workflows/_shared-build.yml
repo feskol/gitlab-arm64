@@ -37,6 +37,10 @@ on:
         required: false
         default: false
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: gitlab
+
 jobs:
   validate-and-prepare:
     runs-on: ubuntu-latest
@@ -116,6 +120,9 @@ jobs:
           build-args: |
             TARGETARCH=arm64
 
+      - name: Clean Up build files
+        run: rm -rf build
+
   docker-manifest:
     runs-on: ubuntu-latest
     needs: [ validate-and-prepare, build-docker-image ]
@@ -141,3 +148,34 @@ jobs:
           GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
+
+  github-registry-image:
+    runs-on: ubuntu-latest
+    needs: [ validate-and-prepare, build-docker-image, docker-manifest ]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Permissions
+        # make all scripts in scripts/workflows/build executable
+        run: chmod +x ./scripts/workflows/build/*.sh
+
+      - name: Docker login GitHubs container registry
+        uses: docker/login-action@v3
+        if: inputs.is_test == false
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy and push GitHub docker images
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          REPOSITORY: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
+          IS_TEST: ${{ inputs.is_test }}
+        run: ./scripts/workflows/build/add_to_github_registry.sh
