@@ -190,7 +190,11 @@ jobs:
           GITLAB_IMAGE="docker.io/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}/gitlab:${{ inputs.gitlab_release }}"
           
           docker pull $GITLAB_IMAGE
-          docker tag $GITLAB_IMAGE ghcr.io/your-username/gitlab:tag
+          docker tag $GITLAB_IMAGE ${{ env.OFFICIAL_GITLAB_IMAGE }}
+          
+          if [[ ${{ inputs.is_test == false }} ]]; then 
+            docker push ${{ env.OFFICIAL_GITLAB_IMAGE }}
+          fi
 
       - name: Create multi-arch docker manifest for ${{ matrix.platform }}
         env:
