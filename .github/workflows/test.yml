@@ -23,7 +23,7 @@ on:
       - 'main' # This excludes the 'main' branch
 
 jobs:
-  test-build-scripts:
+  test-scripts:
     strategy:
       fail-fast: false
       matrix:
@@ -36,31 +36,22 @@ jobs:
       - name: Set permissions
         run: chmod +x ./lib/bashunit
 
-      - name: Run tests
+      - name: Run build tests
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/build
 
-  test-syncversion-scripts:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set permissions
-        run: chmod +x ./lib/bashunit
-
-      - name: Run tests
+      - name: Run synversion tests
         working-directory: ./tests
         run: ../lib/bashunit ./unit/workflows/syncversion
 
   test-snycversion-workflow:
-    needs: test-syncversion-scripts
+    needs: test-scripts
     uses: ./.github/workflows/_shared-syncversion.yml
     with:
       is_test: true # This must always be true in tests!
 
   test-build-workflow:
-    needs: [test-build-scripts, test-snycversion-workflow]
+    needs: [test-scripts, test-snycversion-workflow]
     uses: ./.github/workflows/_shared-build.yml
     with:
       gitlab_release: ${{ needs.test-snycversion-workflow.outputs.latest_ce_tag }}
