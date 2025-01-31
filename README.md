@@ -22,6 +22,7 @@
 [feskol-docker-image-badge]: https://img.shields.io/badge/Image-feskol/gitlab-blue?logo=docker
 [dockerhub-link]: https://hub.docker.com/r/feskol/gitlab
 [dockerhub-tags]: https://hub.docker.com/r/feskol/gitlab/tags
+[github-package-gitlab]: https://github.com/feskol/gitlab-arm64/pkgs/container/gitlab
 [dockerhub-badge-pulls]: https://img.shields.io/docker/pulls/feskol/gitlab?logo=docker
 [dockerhub-badge-latest-version-ce]: https://img.shields.io/docker/v/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?label=gitlab-ee&logo=docker
@@ -45,8 +46,9 @@ This poses a challenge, especially when a security patch requires an immediate u
 To solve this problem, I created this repository providing a GitHub Action that checks for new releases daily and
 automatically builds a **Docker image** for the latest releases.
 
-The ARM64 Docker images are typically available on the [Docker Hub `feskol/gitlab`][dockerhub-tags] within 12 hours
-after the official GitLab Docker images are released.
+
+The ARM64 Docker images are typically available **within 12 hours** after the official GitLab Docker images get
+released.
 
 ## ✨ Features
 
@@ -73,6 +75,17 @@ To use the Docker images built by this repository, you need:
 
 ## 🛠️ Usage
 
+### Pull the Docker images:
+
+The Docker images are available on [Docker Hub][dockerhub-tags] and [GitHub Packages][github-package-gitlab].  
+Both registries contain identical tags.
+
+*For clarity, we use the Docker Hub image wherever a Docker image is used.  
+If you prefer to use the GitHub Packages image, simply add `ghcr.io/` as a prefix to the image name.*  
+*Example: `feskol/gitlab:latest `→ `ghcr.io/feskol/gitlab:latest`*
+
+#### Docker Hub
+
 Pull the Docker images from [Docker Hub][dockerhub-tags].
 
 ```bash
@@ -85,10 +98,31 @@ docker pull feskol/gitlab:ee
 
 # Specific version - replace "-ce" to "-ee" for Enterprise Edition
 docker pull feskol/gitlab:17-ce
-docker pull feskol/gitlab:17.7-ce
-docker pull feskol/gitlab:17.7.0-ce
-docker pull feskol/gitlab:17.7.0-ce.0
+docker pull feskol/gitlab:17.8-ce
+docker pull feskol/gitlab:17.8.1-ce
+docker pull feskol/gitlab:17.8.1-ce.0
 ```
+
+#### GitHub packages
+
+Pull the Docker images from [GitHub Packages][github-package-gitlab].
+
+```bash
+# latest GitLab Community Edition (CE)
+docker pull ghcr.io/feskol/gitlab:latest
+docker pull ghcr.io/feskol/gitlab:ce     # "ce" is same as "latest"
+
+# latest GitLab Enterprise Edition (EE)
+docker pull ghcr.io/feskol/gitlab:ee
+
+# Specific version - replace "-ce" to "-ee" for Enterprise Edition
+docker pull ghcr.io/feskol/gitlab:17-ce
+docker pull ghcr.io/feskol/gitlab:17.8-ce
+docker pull ghcr.io/feskol/gitlab:17.8.1-ce
+docker pull ghcr.io/feskol/gitlab:17.8.1-ce.0
+```
+
+### Setup instructions
 
 These images are used like GitLab’s official Docker images.  
 Refer to **GitLab's Docker** documentation for setup instructions:
