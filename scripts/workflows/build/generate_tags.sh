@@ -55,4 +55,9 @@ ALL_TAGS="$DEFAULT_TAGS"
 ALL_TAGS=$(echo "$ALL_TAGS" | tr ' ' ',')
 
 echo "GENERATED_TAGS=$ALL_TAGS" >> "$GITHUB_ENV"
-echo "Parsed tags: $ALL_TAGS"
+echo "Gernerated tags: $ALL_TAGS"
+
+# Define docker image tag for arm64 image
+DOCKER_IMAGE_TAG="$INPUT_GITLAB_RELEASE-arm64"
+echo "ARM64_IMAGE_TAG=$DOCKER_IMAGE_TAG" >> "$GITHUB_ENV"
+echo "ARM64 image tag: $DOCKER_IMAGE_TAG"

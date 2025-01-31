@@ -46,7 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gitlab_edition_suffix: ${{ steps.gitlab-edition.outputs.GITLAB_EDITION_SUFFIX }}
-      dockerhub_push_tags: ${{ steps.docker-tags.outputs.DOCKERHUB_PUSH_TAGS }}
+      dockerhub_arm64_image_tag: ${{ steps.docker-tags.outputs.DOCKERHUB_ARM64_IMAGE_TAG }}
+      dockerhub_manifest_tags: ${{ steps.docker-tags.outputs.DOCKERHUB_MANIFEST_TAGS }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -76,14 +77,17 @@ jobs:
           GITLAB_EDITION_SUFFIX: ${{ steps.gitlab-edition.outputs.GITLAB_EDITION_SUFFIX }}
         run: ./scripts/workflows/build/generate_tags.sh
         # GITHUB_ENV: GENERATED_TAGS
+        # GITHUB_ENV: ARM64_IMAGE_TAG
 
       - name: Generate Docker tags
         id: docker-tags
         env:
           GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
+          ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: ./scripts/workflows/build/generate_docker_tags.sh
-        # GITHUB_OUTPUT: DOCKERHUB_PUSH_TAGS
+        # GITHUB_OUTPUT: DOCKERHUB_MANIFEST_TAGS
+        # GITHUB_OUTPUT: DOCKERHUB_ARM64_IMAGE_TAG
 
   build-docker-image:
     runs-on: ubuntu-24.04-arm
@@ -114,7 +118,7 @@ jobs:
         with:
           context: build
           push: ${{ inputs.is_test == false }}
-          tags: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
+          tags: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}
           platforms: linux/arm64
           provenance: false
           build-args: |
@@ -144,7 +148,8 @@ jobs:
       - name: Create multi-arch docker manifest
         env:
           INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
-          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
+          DOCKERHUB_ARM64_IMAGE_TAG: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}
+          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}
           GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
@@ -176,6 +181,6 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           REPOSITORY: ${{ github.repository_owner }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_push_tags }}
+          ALL_DOCKERHUB_TAGS: "${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }},${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}"
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/add_to_github_registry.sh

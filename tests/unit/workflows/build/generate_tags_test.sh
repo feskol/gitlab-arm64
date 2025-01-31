@@ -34,6 +34,8 @@ function test_generate_default() {
     runScript
 
     assert_same "17.6.1-ce.0,17.6.1-ce" "$(extract_value "GENERATED_TAGS" "$GITHUB_ENV")"
+
+    assert_same "17.6.1-ce.0-arm64" "$(extract_value "ARM64_IMAGE_TAG" "$GITHUB_ENV")"
 }
 
 function test_generate_including_major_minor_tag() {
