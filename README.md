@@ -1,10 +1,3 @@
-> [!NOTE]
-> The build-proccess is marked as `failing`.
-> This is just temporary!  
-> A recent update, specifically the addition of the Docker images in the GitHub Container Registry, caused my "pull rate
-> limit" to be exceeded because I'm rebuilding all the images.  
-> I think I will have all images rebuilt by the end of this weekend (Feb. 2, 2025).
-
 # GitLab (CE/EE) Docker Image for ARM64
 
 [![build-github-action][github-actions-badge-build]][github-actions-build]
