@@ -32,7 +32,8 @@ jobs:
             feskol_url=$(echo "$response" | jq -r '.next // empty')
           done
           
-          cat own_tags.txt
+          tac own_tags.txt > own_tags_reversed.txt
+          cat own_tags_reversed.txt
 
       - name: Docker login GitHubs container registry
         uses: docker/login-action@v3
@@ -51,4 +52,4 @@ jobs:
             echo "$ghcr_image"
           
             docker buildx imagetools create --tag "$ghcr_image" "$docker_image"  
-          done < "own_tags.txt"
+          done < "own_tags_reversed.txt"
