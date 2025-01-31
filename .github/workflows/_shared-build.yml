@@ -166,12 +166,14 @@ jobs:
             echo "PASSWORD=${{ secrets.DOCKERHUB_TOKEN }}" >> $GITHUB_ENV
             echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}" >> $GITHUB_ENV
             echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}" >> $GITHUB_ENV
+            echo "OFFICIAL_GITLAB_IMAGE=docker.io/gitlab/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}:${{ inputs.gitlab_release }}" >> $GITHUB_ENV
           elif [[ "${{ matrix.platform }}" == "GITHUB" ]]; then
             echo "REGISTRY=${{ env.GITHUB_REGISTRY }}" >> $GITHUB_ENV
             echo "USERNAME=${{ github.actor }}" >> $GITHUB_ENV
             echo "PASSWORD=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
             echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.github_manifest_tags }}" >> $GITHUB_ENV
             echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.github_arm64_image_tag }}" >> $GITHUB_ENV
+            echo "OFFICIAL_GITLAB_IMAGE=${{ env.GITHUB_IMAGE }}:${{ inputs.gitlab_release }}-amd64" >> $GITHUB_ENV
           fi
 
       - name: Docker login to ${{ matrix.platform }}
@@ -182,11 +184,18 @@ jobs:
           username: ${{ env.USERNAME }}
           password: ${{ env.PASSWORD }}
 
+      - name: Download official GitLab docker image for amd64
+        if: "${{ matrix.platform }}" == "GITHUB"
+        run: |
+          GITLAB_IMAGE="docker.io/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}/gitlab:${{ inputs.gitlab_release }}"
+          
+          docker pull $GITLAB_IMAGE
+          docker tag $GITLAB_IMAGE ghcr.io/your-username/gitlab:tag
+
       - name: Create multi-arch docker manifest for ${{ matrix.platform }}
         env:
-          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
-          GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
           ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
           MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
+          OFFICIAL_GITLAB_IMAGE: ${{ env.OFFICIAL_GITLAB_IMAGE }}
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh

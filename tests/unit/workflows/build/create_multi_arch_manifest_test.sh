@@ -32,10 +32,9 @@ function test_gitlab_tag_building() {
     local tag5="docker.io/randomusername/gitlab:ce"
     local tag6="docker.io/randomusername/gitlab:latest"
 
-    export INPUT_GITLAB_RELEASE="17.6.1-ce.0"
     export MANIFEST_TAGS="$tag1,$tag2,$tag3,$tag4,$tag5,$tag6"
     export ARM64_IMAGE_TAG="docker.io/randomusername/gitlab:17.6.1-ce.0-arm64"
-    export GITLAB_EDITION_SUFFIX="ce"
+    export OFFICIAL_GITLAB_IMAGE="docker.io/gitlab/gitlab-ce:17.6.1-ce.0"
     export IS_TEST="true"
 
     response=$(runScript)
