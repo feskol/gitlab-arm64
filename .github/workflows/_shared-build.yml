@@ -148,19 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: "DOCKERHUB"
-            registry: ${{ env.DOCKER_REGISTRY }}
-            username: ${{ vars.DOCKERHUB_USERNAME }}
-            password: ${{ secrets.DOCKERHUB_TOKEN }}
-            manifest_tags: ${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}
-            arm64_image_tag: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}
-          - platform: "GITHUB"
-            registry: ${{ env.GITHUB_REGISTRY }}
-            username: ${{ github.actor }}
-            password: ${{ secrets.GITHUB_TOKEN }}
-            manifest_tags: ${{ needs.validate-and-prepare.outputs.github_manifest_tags }}
-            arm64_image_tag: ${{ needs.validate-and-prepare.outputs.github_arm64_image_tag }}
+        platform: ["DOCKERHUB", "GITHUB"]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -169,19 +157,35 @@ jobs:
         # make all scripts in scripts/workflows/build executable
         run: chmod +x ./scripts/workflows/build/*.sh
 
+      - name: Set environment variables for ${{ matrix.platform }}
+        run: |
+          if [[ "${{ matrix.platform }}" == "DOCKERHUB" ]]; then
+            echo "REGISTRY=${{ env.DOCKER_REGISTRY }}" >> $GITHUB_ENV
+            echo "USERNAME=${{ vars.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+            echo "PASSWORD=${{ secrets.DOCKERHUB_TOKEN }}" >> $GITHUB_ENV
+            echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}" >> $GITHUB_ENV
+            echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}" >> $GITHUB_ENV
+          elif [[ "${{ matrix.platform }}" == "GITHUB" ]]; then
+            echo "REGISTRY=${{ env.GITHUB_REGISTRY }}" >> $GITHUB_ENV
+            echo "USERNAME=${{ github.actor }}" >> $GITHUB_ENV
+            echo "PASSWORD=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+            echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.github_manifest_tags }}" >> $GITHUB_ENV
+            echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.github_arm64_image_tag }}" >> $GITHUB_ENV
+          fi
+
       - name: Docker login to ${{ matrix.platform }}
         uses: docker/login-action@v3
         if: inputs.is_test == false
         with:
-          registry: ${{ matrix.registry }}
-          username: ${{ matrix.username }}
-          password: ${{ matrix.password }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ env.PASSWORD }}
 
       - name: Create multi-arch docker manifest for ${{ matrix.platform }}
         env:
           INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
           GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
-          ARM64_IMAGE_TAG: ${{ matrix.arm64_image_tag }}
-          MANIFEST_TAGS: ${{ matrix.manifest_tags }}
+          ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
+          MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
