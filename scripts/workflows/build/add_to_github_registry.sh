@@ -14,11 +14,11 @@ set -e
 # REGISTRY
 # REPOSITORY
 # IMAGE_NAME
-# DOCKERHUB_PUSH_TAGS
+# ALL_DOCKERHUB_TAGS
 # IS_TEST
 
 # Convert comma-separated string into an array
-IFS=',' read -ra images <<< "$DOCKERHUB_PUSH_TAGS"
+IFS=',' read -ra images <<< "$ALL_DOCKERHUB_TAGS"
 
 for docker_image in "${images[@]}"; do
     tag="${docker_image##*:}" # Extracts the tag (everything after the last ':')

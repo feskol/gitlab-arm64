@@ -37,5 +37,5 @@ function test_generate_docker_tags() {
     local tag5="docker.io/randomtestusername/gitlab:ce"
     local tag6="docker.io/randomtestusername/gitlab:latest"
 
-    assert_same "$tag1,$tag2,$tag3,$tag4,$tag5,$tag6" "$(extract_value "DOCKERHUB_PUSH_TAGS" "$GITHUB_OUTPUT")"
+    assert_same "$tag1,$tag2,$tag3,$tag4,$tag5,$tag6" "$(extract_value "DOCKERHUB_MANIFEST_TAGS" "$GITHUB_OUTPUT")"
 }

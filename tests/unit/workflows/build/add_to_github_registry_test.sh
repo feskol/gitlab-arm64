@@ -25,6 +25,7 @@ function runScript() {
 }
 
 function test_github_tag_building() {
+    local tag0="docker.io/randomusername/gitlab:17.6.1-ce.0-arm64"
     local tag1="docker.io/randomusername/gitlab:17.6.1-ce.0"
     local tag2="docker.io/randomusername/gitlab:17.6.1-ce"
     local tag3="docker.io/randomusername/gitlab:17.6-ce"
@@ -35,11 +36,12 @@ function test_github_tag_building() {
     export REGISTRY="ghcr.io"
     export REPOSITORY="mygithubuser"
     export IMAGE_NAME="mycustomimagename"
-    export DOCKERHUB_PUSH_TAGS="$tag1,$tag2,$tag3,$tag4,$tag5,$tag6"
+    export ALL_DOCKERHUB_TAGS="$tag0,$tag1,$tag2,$tag3,$tag4,$tag5,$tag6"
     export IS_TEST="true"
 
     response=$(runScript)
 
+    assert_contains "ghcr.io/mygithubuser/mycustomimagename:17.6.1-ce.0-arm64" "$response"
     assert_contains "ghcr.io/mygithubuser/mycustomimagename:17.6.1-ce.0" "$response"
     assert_contains "ghcr.io/mygithubuser/mycustomimagename:17.6.1-ce" "$response"
     assert_contains "ghcr.io/mygithubuser/mycustomimagename:17.6-ce" "$response"
