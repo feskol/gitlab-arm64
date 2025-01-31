@@ -33,6 +33,6 @@ for tag in "${tags[@]}"; do
         # Push the manifest
         docker manifest push -p "$tag"
     else
-        echo "[TEST] Create manifest for $tag using arm64-image $DOCKERHUB_ARM64_IMAGE_TAG and the official Gitlab tag $gitlab_tag"
+        echo "[TEST] Create manifest for $tag using arm64-image $ARM64_IMAGE_TAG and the official Gitlab tag $gitlab_tag"
     fi
 done
