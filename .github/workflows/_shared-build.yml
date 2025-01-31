@@ -177,7 +177,7 @@ jobs:
           fi
 
       - name: GitHub Container Registry manifest fix 1/2 (Docker login to docker.io)
-        if: matrix.platform == 'GITHUB'
+        if: inputs.is_test == false && matrix.platform == 'GITHUB'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
@@ -185,16 +185,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: GitHub Container Registry manifest fix 2/2 (Download official GitLab docker image for amd64)
-        if: matrix.platform == 'GITHUB'
+        if: inputs.is_test == false && matrix.platform == 'GITHUB'
         run: |
           GITLAB_IMAGE="docker.io/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}/gitlab:${{ inputs.gitlab_release }}"
 
           docker pull $GITLAB_IMAGE
           docker tag $GITLAB_IMAGE ${{ env.OFFICIAL_GITLAB_IMAGE }}
-
-          if [[ ${{ inputs.is_test == false }} ]]; then 
-            docker push ${{ env.OFFICIAL_GITLAB_IMAGE }}
-          fi
+          docker push ${{ env.OFFICIAL_GITLAB_IMAGE }}
 
       - name: Docker login to ${{ matrix.platform }}
         uses: docker/login-action@v3
