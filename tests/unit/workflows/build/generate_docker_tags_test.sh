@@ -26,7 +26,9 @@ function runScript() {
 
 function test_generate_docker_tags() {
     export GENERATED_TAGS="17.6.1-ce.0,17.6.1-ce,17.6-ce,17-ce,ce,latest"
-    export DOCKERHUB_USERNAME="randomtestusername"
+    export ARM64_IMAGE_TAG="17.6.1-ce.0-arm64"
+    export DOCKER_IMAGE="docker.io/randomtestusername/gitlab"
+    export GITHUB_IMAGE="ghcr.io/mygithubuser/gitlab"
 
     runScript
 
@@ -38,4 +40,7 @@ function test_generate_docker_tags() {
     local tag6="docker.io/randomtestusername/gitlab:latest"
 
     assert_same "$tag1,$tag2,$tag3,$tag4,$tag5,$tag6" "$(extract_value "DOCKERHUB_MANIFEST_TAGS" "$GITHUB_OUTPUT")"
+
+    assert_same "docker.io/randomtestusername/gitlab:17.6.1-ce.0-arm64" "$(extract_value "DOCKERHUB_ARM64_IMAGE_TAG" "$GITHUB_OUTPUT")"
+    assert_same "ghcr.io/mygithubuser/gitlab:17.6.1-ce.0-arm64" "$(extract_value "GITHUB_ARM64_IMAGE_TAG" "$GITHUB_OUTPUT")"
 }
