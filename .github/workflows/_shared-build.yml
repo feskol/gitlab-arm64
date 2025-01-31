@@ -185,7 +185,7 @@ jobs:
           password: ${{ env.PASSWORD }}
 
       - name: Download official GitLab docker image for amd64
-        if: "${{ matrix.platform }}" == "GITHUB"
+        if: matrix.platform == 'GITHUB'
         run: |
           GITLAB_IMAGE="docker.io/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}/gitlab:${{ inputs.gitlab_release }}"
           
