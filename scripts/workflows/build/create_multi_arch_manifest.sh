@@ -12,13 +12,13 @@ set -e
 
 ### ENVIRONMENT_VARIABLES: ###
 # INPUT_GITLAB_RELEASE
-# DOCKERHUB_ARM64_IMAGE_TAG
-# DOCKERHUB_PUSH_TAGS
 # GITLAB_EDITION_SUFFIX
+# ARM64_IMAGE_TAG
+# MANIFEST_TAGS
 # IS_TEST
 
 # Split the DOCKERHUB_PUSH_TAGS into an array
-IFS=',' read -r -a tags <<<"$DOCKERHUB_PUSH_TAGS"
+IFS=',' read -r -a tags <<<"$MANIFEST_TAGS"
 
 # Loop through each tag and create and push the manifest
 for tag in "${tags[@]}"; do
@@ -27,12 +27,12 @@ for tag in "${tags[@]}"; do
     if [ "$IS_TEST" == "false" ]; then
         # Create the manifest
         docker manifest create "$tag" \
-            --amend "$DOCKERHUB_ARM64_IMAGE_TAG" \
+            --amend "$ARM64_IMAGE_TAG" \
             --amend "$gitlab_tag"
 
         # Push the manifest
         docker manifest push -p "$tag"
     else
-        echo "[TEST] Create manifest for $tag using arm64-image $DOCKERHUB_ARM64_IMAGE_TAG and the official Gitlab tag $gitlab_tag"
+        echo "[TEST] Create manifest for $tag using arm64-image $ARM64_IMAGE_TAG and the official Gitlab tag $gitlab_tag"
     fi
 done

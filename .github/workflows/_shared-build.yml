@@ -38,16 +38,20 @@ on:
         default: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: gitlab
+  DOCKER_REGISTRY: docker.io
+  GITHUB_REGISTRY: ghcr.io
+  DOCKER_IMAGE:  docker.io/${{ vars.DOCKERHUB_USERNAME }}/gitlab
+  GITHUB_IMAGE: ghcr.io/${{ github.repository_owner }}/gitlab
 
 jobs:
   validate-and-prepare:
     runs-on: ubuntu-latest
     outputs:
       gitlab_edition_suffix: ${{ steps.gitlab-edition.outputs.GITLAB_EDITION_SUFFIX }}
-      dockerhub_arm64_image_tag: ${{ steps.docker-tags.outputs.DOCKERHUB_ARM64_IMAGE_TAG }}
       dockerhub_manifest_tags: ${{ steps.docker-tags.outputs.DOCKERHUB_MANIFEST_TAGS }}
+      dockerhub_arm64_image_tag: ${{ steps.docker-tags.outputs.DOCKERHUB_ARM64_IMAGE_TAG }}
+      github_manifest_tags: ${{ steps.docker-tags.outputs.GITHUB_MANIFEST_TAGS }}
+      github_arm64_image_tag: ${{ steps.docker-tags.outputs.GITHUB_ARM64_IMAGE_TAG }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -84,10 +88,13 @@ jobs:
         env:
           GENERATED_TAGS: ${{ env.GENERATED_TAGS }}
           ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
-          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          GITHUB_IMAGE: ${{ env.GITHUB_IMAGE }}
         run: ./scripts/workflows/build/generate_docker_tags.sh
         # GITHUB_OUTPUT: DOCKERHUB_MANIFEST_TAGS
         # GITHUB_OUTPUT: DOCKERHUB_ARM64_IMAGE_TAG
+        # GITHUB_OUTPUT: GITHUB_MANIFEST_TAGS
+        # GITHUB_OUTPUT: GITHUB_ARM64_IMAGE_TAG
 
   build-docker-image:
     runs-on: ubuntu-24.04-arm
@@ -110,15 +117,24 @@ jobs:
         uses: docker/login-action@v3
         if: inputs.is_test == false
         with:
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker login GitHubs container registry
+        uses: docker/login-action@v3
+        if: inputs.is_test == false
+        with:
+          registry: ${{ env.GITHUB_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v6
         with:
           context: build
           push: ${{ inputs.is_test == false }}
-          tags: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}
+          tags: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }},${{ needs.validate-and-prepare.outputs.github_arm64_image_tag }}
           platforms: linux/arm64
           provenance: false
           build-args: |
@@ -127,9 +143,13 @@ jobs:
       - name: Clean Up build files
         run: rm -rf build
 
-  docker-manifest:
+  create-manifest:
     runs-on: ubuntu-latest
     needs: [ validate-and-prepare, build-docker-image ]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ["DOCKERHUB", "GITHUB"]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -138,49 +158,35 @@ jobs:
         # make all scripts in scripts/workflows/build executable
         run: chmod +x ./scripts/workflows/build/*.sh
 
-      - name: Docker login to docker.io
-        uses: docker/login-action@v3
-        if: inputs.is_test == false
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set environment variables for ${{ matrix.platform }}
+        run: |
+          if [[ "${{ matrix.platform }}" == "DOCKERHUB" ]]; then
+            echo "REGISTRY=${{ env.DOCKER_REGISTRY }}" >> $GITHUB_ENV
+            echo "USERNAME=${{ vars.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+            echo "PASSWORD=${{ secrets.DOCKERHUB_TOKEN }}" >> $GITHUB_ENV
+            echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}" >> $GITHUB_ENV
+            echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}" >> $GITHUB_ENV
+          elif [[ "${{ matrix.platform }}" == "GITHUB" ]]; then
+            echo "REGISTRY=${{ env.GITHUB_REGISTRY }}" >> $GITHUB_ENV
+            echo "USERNAME=${{ github.actor }}" >> $GITHUB_ENV
+            echo "PASSWORD=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+            echo "MANIFEST_TAGS=${{ needs.validate-and-prepare.outputs.github_manifest_tags }}" >> $GITHUB_ENV
+            echo "ARM64_IMAGE_TAG=${{ needs.validate-and-prepare.outputs.github_arm64_image_tag }}" >> $GITHUB_ENV
+          fi
 
-      - name: Create multi-arch docker manifest
-        env:
-          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
-          DOCKERHUB_ARM64_IMAGE_TAG: ${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }}
-          DOCKERHUB_PUSH_TAGS: ${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}
-          GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
-          IS_TEST: ${{ inputs.is_test }}
-        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
-
-  github-registry-image:
-    runs-on: ubuntu-latest
-    needs: [ validate-and-prepare, build-docker-image, docker-manifest ]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set Permissions
-        # make all scripts in scripts/workflows/build executable
-        run: chmod +x ./scripts/workflows/build/*.sh
-
-      - name: Docker login GitHubs container registry
+      - name: Docker login to ${{ matrix.platform }}
         uses: docker/login-action@v3
         if: inputs.is_test == false
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ env.USERNAME }}
+          password: ${{ env.PASSWORD }}
 
-      - name: Copy and push GitHub docker images
+      - name: Create multi-arch docker manifest for ${{ matrix.platform }}
         env:
-          REGISTRY: ${{ env.REGISTRY }}
-          REPOSITORY: ${{ github.repository_owner }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          ALL_DOCKERHUB_TAGS: "${{ needs.validate-and-prepare.outputs.dockerhub_arm64_image_tag }},${{ needs.validate-and-prepare.outputs.dockerhub_manifest_tags }}"
+          INPUT_GITLAB_RELEASE: ${{ inputs.gitlab_release }}
+          GITLAB_EDITION_SUFFIX: ${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}
+          ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
+          MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
           IS_TEST: ${{ inputs.is_test }}
-        run: ./scripts/workflows/build/add_to_github_registry.sh
+        run: ./scripts/workflows/build/create_multi_arch_manifest.sh
