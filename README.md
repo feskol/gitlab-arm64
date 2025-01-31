@@ -127,7 +127,7 @@ docker pull ghcr.io/feskol/gitlab:17.8.1-ce.0
 These images are used like GitLab’s official Docker images.  
 Refer to **GitLab's Docker** documentation for setup instructions:
 
-- https://docs.gitlab.com/ee/install/docker/installation.html
+- [https://docs.gitlab.com/ee/install/docker/installation.html](https://docs.gitlab.com/ee/install/docker/installation.html)
 
 Here’s an example setup using `docker-compose.yaml`:
 
@@ -212,10 +212,7 @@ system:
 
 Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
 
-> [!TIP]
-> You want to share your feedback on the tags? Do it [here](https://github.com/feskol/gitlab-arm64/discussions/27)!
-
-> [!NOTE]
+> [!NOTE]  
 > This project supports **GitLab (CE/EE)** starting from version **17 and higher**!
 
 ## 🔄 Update
