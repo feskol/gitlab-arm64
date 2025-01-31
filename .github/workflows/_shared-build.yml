@@ -40,9 +40,8 @@ on:
 env:
   GITHUB_REGISTRY: ghcr.io
   DOCKER_REGISTRY: docker.io
-  IMAGE_NAME: gitlab
-  DOCKER_IMAGE:  ${{ env.DOCKER_REGISTRY }}/${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-  GITHUB_IMAGE: ${{ env.GITHUB_REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+  DOCKER_IMAGE:  docker.io/${{ vars.DOCKERHUB_USERNAME }}/gitlab
+  GITHUB_IMAGE: ghcr.io/${{ github.repository_owner }}/gitlab
 
 jobs:
   validate-and-prepare:
