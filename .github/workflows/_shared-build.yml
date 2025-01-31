@@ -187,7 +187,7 @@ jobs:
       - name: GitHub Container Registry manifest fix 2/2 (Download official GitLab docker image for amd64)
         if: inputs.is_test == false && matrix.platform == 'GITHUB'
         run: |
-          GITLAB_IMAGE="docker.io/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}/gitlab:${{ inputs.gitlab_release }}"
+          GITLAB_IMAGE="docker.io/gitlab/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}:${{ inputs.gitlab_release }}"
 
           docker pull $GITLAB_IMAGE
           docker tag $GITLAB_IMAGE ${{ env.OFFICIAL_GITLAB_IMAGE }}
