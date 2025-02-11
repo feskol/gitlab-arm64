@@ -10,20 +10,22 @@
 
 set -e
 
-# Get the most recent 'last_updated' for valid release tags
-LATEST_CE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .last_updated' gitlab_tags_ce.json | sort -V | tail -n 1)
-LATEST_EE_LAST_UPDATE=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .last_updated' gitlab_tags_ee.json | sort -V | tail -n 1)
+extract_latest_last_update() {
+    local edition=$1
+    local json_file=$2
+    local editionUpperCase="${edition^^}"
+    local latest_last_update
 
-# Check if jq or the pipeline failed
-if [[ $? -ne 0 || -z "$LATEST_CE_LAST_UPDATE" ]]; then
-  exit 1
-fi
-if [[ $? -ne 0 || -z "$LATEST_EE_LAST_UPDATE" ]]; then
-  exit 1
-fi
+    # Get the most recent 'last_updated' for valid release tags
+    latest_last_update=$(jq -r ".[] | select(.name | test(\"^[0-9]+\\\\.[0-9]+\\\\.[0-9]+-${edition}\\\\.0$\")) | .last_updated" "$json_file" | sort -V | tail -n 1)
+    if [[ -z "$latest_last_update" ]]; then
+        echo "Error: Could not find the most recent 'last_updated' tag for $editionUpperCase in $json_file"
+        exit 1
+    fi
 
-echo "LATEST_CE_LAST_UPDATE=$LATEST_CE_LAST_UPDATE" >> "$GITHUB_ENV"
-echo "LATEST_EE_LAST_UPDATE=$LATEST_EE_LAST_UPDATE" >> "$GITHUB_ENV"
+    echo "LATEST_${editionUpperCase}_LAST_UPDATE=$latest_last_update" >> "$GITHUB_ENV"
+    echo "Latest ${editionUpperCase} last_update: $latest_last_update"
+}
 
-echo "Latest CE last_update: $LATEST_CE_LAST_UPDATE"
-echo "Latest EE last_update: $LATEST_EE_LAST_UPDATE"
+extract_latest_last_update "ce" gitlab_tags_ce.json
+extract_latest_last_update "ee" gitlab_tags_ee.json
