@@ -10,13 +10,28 @@
 
 set -e
 
-new_ce_last_modified_date="$LATEST_CE_LAST_UPDATE"
-new_ee_last_modified_date="$LATEST_EE_LAST_UPDATE"
+### ENVIRONMENT_VARIABLES: ###
+# LATEST_CE_LAST_UPDATE
+# LATEST_EE_LAST_UPDATE
 
-mkdir -p .github/generated-files/
+override_last_update_date_from_file() {
+    local edition=$1
+    local folder=$2
+    local file=$3
+    local filePath="${folder}/${file}"
+    local new_last_modified_date
 
-echo "${new_ce_last_modified_date}" > .github/generated-files/last_modified_ce_date.txt
-echo "${new_ee_last_modified_date}" > .github/generated-files/last_modified_ee_date.txt
+    if [ "$edition" = "ce" ]; then
+        new_last_modified_date="$LATEST_CE_LAST_UPDATE"
+    elif [ "$edition" = "ee" ]; then
+        new_last_modified_date="$LATEST_EE_LAST_UPDATE"
+    fi
 
-echo "Overridden CE file with new date: ${new_ce_last_modified_date}"
-echo "Overridden EE file with new date: ${new_ee_last_modified_date}"
+    mkdir -p "$folder"
+
+    echo "${new_last_modified_date}" > "$filePath"
+    echo "Overridden ${edition^^} file with new date: ${new_last_modified_date}"
+}
+
+override_last_update_date_from_file "ce" ".github/generated-files" "last_modified_ce_date.txt"
+override_last_update_date_from_file "ee" ".github/generated-files" "last_modified_ee_date.txt"

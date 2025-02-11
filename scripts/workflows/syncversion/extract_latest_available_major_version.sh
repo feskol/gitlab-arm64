@@ -10,48 +10,37 @@
 
 set -e
 
-# Extract the tags from the JSON data, filter based on the pattern, and sort them by version number (major, minor, patch).
-latest_ce_tag=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ce\\.0$")) | .name' gitlab_tags_ce.json | sort -V | tail -n 1)
-latest_ee_tag=$(jq -r '.[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+-ee\\.0$")) | .name' gitlab_tags_ee.json | sort -V | tail -n 1)
+extract_tag(){
+    local edition=$1
+    local json_file=$2
+    local editionUpperCase="${edition^^}"
+    local latest_tag base_tag latest_major latest_major_minor
 
-# Check if jq or the pipeline failed
-if [[ $? -ne 0 || -z "$latest_ce_tag" ]]; then
-  exit 1
-fi
-if [[ $? -ne 0 || -z "$latest_ee_tag" ]]; then
-  exit 1
-fi
+    latest_tag=$(jq -r ".[] | select(.name | test(\"^[0-9]+\\\\.[0-9]+\\\\.[0-9]+-${edition}\\\\.0$\")) | .name" "$json_file" | sort -V | tail -n 1)
+    if [[ -z "$latest_tag" ]]; then
+        echo "Error: No tag found for $editionUpperCase in $json_file"
+        exit 1
+    fi
 
-# Strip version-specific parts to generate base tags
-BASE_TAG_CE=$(echo "$latest_ce_tag" | sed -E "s/-ce.0$//")
-BASE_TAG_EE=$(echo "$latest_ee_tag" | sed -E "s/-ee.0$//")
+    # Output latest ce/ee tags
+    echo "Latest ${editionUpperCase} tag: $latest_tag"
+    echo "LATEST_${editionUpperCase}_TAG=$latest_tag" >> "$GITHUB_OUTPUT"
 
-# Read the highest version tag
-LATEST_MAJOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1)
-LATEST_MAJOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1)
+    # Strip version-specific parts to generate base tags
+    base_tag=$(echo "$latest_tag" | sed -E "s/-${edition}.0$//")
 
-echo "LATEST_MAJOR_CE=$LATEST_MAJOR_CE" >> "$GITHUB_ENV"
-echo "LATEST_MAJOR_EE=$LATEST_MAJOR_EE" >> "$GITHUB_ENV"
+    # Read the highest version tag
+    latest_major=$(echo "$base_tag" | cut -d. -f1)
 
-# Output major
-echo "CE latest major: $LATEST_MAJOR_CE"
-echo "EE latest major: $LATEST_MAJOR_EE"
+    echo "LATEST_MAJOR_${editionUpperCase}=$latest_major" >> "$GITHUB_ENV"
+    echo "${editionUpperCase} latest major: $latest_major"
 
-# Read the highest major.minor
-LATEST_MAJOR_MINOR_CE=$(echo "$BASE_TAG_CE" | cut -d. -f1-2)
-LATEST_MAJOR_MINOR_EE=$(echo "$BASE_TAG_EE" | cut -d. -f1-2)
+    # Read the highest major.minor
+    latest_major_minor=$(echo "$base_tag" | cut -d. -f1-2)
 
-echo "LATEST_MAJOR_MINOR_CE=$LATEST_MAJOR_MINOR_CE" >> "$GITHUB_ENV"
-echo "LATEST_MAJOR_MINOR_EE=$LATEST_MAJOR_MINOR_EE" >> "$GITHUB_ENV"
+    echo "LATEST_MAJOR_MINOR_${editionUpperCase}=$latest_major_minor" >> "$GITHUB_ENV"
+    echo "${editionUpperCase} latest major.minor: $latest_major_minor"
+}
 
-# Output major.minor
-echo "CE latest major.minor: $LATEST_MAJOR_MINOR_CE"
-echo "EE latest major.minor: $LATEST_MAJOR_MINOR_EE"
-
-# Output latest ce/ee tags
-echo "Latest CE tag: $latest_ce_tag"
-echo "Latest EE tag: $latest_ee_tag"
-
-# add latest CE- & EE-Tags to GitHub Output
-echo "LATEST_CE_TAG=$latest_ce_tag" >> "$GITHUB_OUTPUT"
-echo "LATEST_EE_TAG=$latest_ee_tag" >> "$GITHUB_OUTPUT"
+extract_tag "ce" gitlab_tags_ce.json
+extract_tag "ee" gitlab_tags_ee.json

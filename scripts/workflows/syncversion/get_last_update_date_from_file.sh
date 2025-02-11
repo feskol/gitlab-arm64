@@ -10,27 +10,40 @@
 
 set -e
 
-# Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
-saved_ce_last_modified_date=$(cat .github/generated-files/last_modified_ce_date.txt || echo "")
-saved_ee_last_modified_date=$(cat .github/generated-files/last_modified_ee_date.txt || echo "")
+### ENVIRONMENT_VARIABLES: ###
+# LATEST_CE_LAST_UPDATE
+# LATEST_EE_LAST_UPDATE
 
-echo "Last saved modified date for gitlab-ce: $saved_ce_last_modified_date"
-echo "Last saved modified date for gitlab-ee: $saved_ee_last_modified_date"
+get_last_update_date_from_file(){
+    local edition=$1
+    local folder=$2
+    local file=$3
+    local filePath="$folder/$file"
+    local saved_last_modified_date latest_update
 
-# If this is the first run, we don't have a saved date, so save the current one
-if [ -z "$saved_ce_last_modified_date" ]; then
-    saved_ce_last_modified_date="$LATEST_CE_LAST_UPDATE"
-    echo "First run for gitlab-ce, saving last modified date: $saved_ce_last_modified_date"
-    mkdir -p .github/generated-files
-    echo "$saved_ce_last_modified_date" > .github/generated-files/last_modified_ce_date.txt
-fi
+    # Fetch the last saved last modified date for gitlab-ce and gitlab-ee from the file
+    saved_last_modified_date=$(cat "$filePath" || echo "")
 
-if [ -z "$saved_ee_last_modified_date" ]; then
-    saved_ee_last_modified_date="$LATEST_EE_LAST_UPDATE"
-    echo "First run for gitlab-ee, saving last modified date: $saved_ee_last_modified_date"
-    mkdir -p .github/generated-files
-    echo "$saved_ee_last_modified_date" > .github/generated-files/last_modified_ee_date.txt
-fi
+    echo "Last saved modified date for gitlab-$edition: $saved_last_modified_date"
 
-echo "SAVED_CE_LAST_MODIFIED_DATE=$saved_ce_last_modified_date" >> "$GITHUB_ENV"
-echo "SAVED_EE_LAST_MODIFIED_DATE=$saved_ee_last_modified_date" >> "$GITHUB_ENV"
+    # If this is the first run, we don't have a saved date, so save the current one
+    if [ -z "$saved_last_modified_date" ]; then
+
+        if [ "$edition" = "ce" ]; then
+            latest_update="$LATEST_CE_LAST_UPDATE"
+        elif [ "$edition" = "ee" ]; then
+            latest_update="$LATEST_EE_LAST_UPDATE"
+        fi
+
+        saved_last_modified_date="$latest_update"
+
+        echo "First run for gitlab-$edition, saving last modified date: $saved_last_modified_date"
+        mkdir -p "$folder"
+        echo "$saved_last_modified_date" > "$filePath"
+    fi
+
+    echo "SAVED_${edition^^}_LAST_MODIFIED_DATE=$saved_last_modified_date" >> "$GITHUB_ENV"
+}
+
+get_last_update_date_from_file "ce" ".github/generated-files" "last_modified_ce_date.txt"
+get_last_update_date_from_file "ee" ".github/generated-files" "last_modified_ee_date.txt"
