@@ -22,7 +22,7 @@ mkdir -p build
 
 # Download original GitLab-Omnibus Docker setup files
 omnibus_link="https://gitlab.com/gitlab-org/omnibus-gitlab/-/archive/${GITLAB_OMNIBUS_RELEASE}/omnibus-gitlab-${GITLAB_OMNIBUS_RELEASE}.tar.gz"
-curl -sL "$omnibus_link" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_OMNIBUS_RELEASE}/docker"
+curl -Ls --retry 5 --retry-delay 2 "$omnibus_link" | tar xz --strip-components=2 -C build "omnibus-gitlab-${GITLAB_OMNIBUS_RELEASE}/docker"
 
 echo "Downloaded GitLab-Omnibus Docker setup files"
 
