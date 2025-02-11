@@ -17,8 +17,14 @@ echo "" >own_tags.txt #creates the empty file
 
 # Loop through all pages
 while [[ -n "$feskol_url" ]]; do
+    echo "URL: $feskol_url"
     # Fetch data from the current URL
-    response=$(curl -s "$feskol_url")
+    response=$(curl -Ls --retry 5 --retry-delay 2 --retry-connrefused "$feskol_url")
+    if [[ -z "$response" ]]; then
+        echo "Error: Empty API-Response. Ending Script for feskol/gitlab."
+        echo "Given URL: [ $feskol_url ]"
+        exit 1
+    fi
 
     # Extract tags and append to file (only full image needed - with "ce.0" suffix)
     echo "$response" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" >>own_tags.txt
@@ -36,11 +42,12 @@ fetch_tags() {
     local last_updated_file=$3
     local gitlab_url="https://hub.docker.com/v2/namespaces/gitlab/repositories/${repo_name}/tags?page_size=100"
 
+    echo "Fetching tags for: gitlab/$repo_name"
+
     # Read the last updated timestamp from the file
-    if [ -f "$last_updated_file" ]; then
+    last_saved_date="1970-01-01T00:00:00.000Z"
+    if [[ -f "$last_updated_file" ]]; then
         last_saved_date=$(cat "$last_updated_file")
-    else
-        last_saved_date="1970-01-01T00:00:00.000Z"
     fi
 
     # Initialize an empty array to store all tags
@@ -51,7 +58,11 @@ fetch_tags() {
         echo "Fetching: $gitlab_url"
 
         # Fetch the data
-        response=$(curl -s "$gitlab_url")
+        response=$(curl -Ls --retry 5 --retry-delay 2 --retry-connrefused "$gitlab_url")
+        if [[ -z "$response" ]]; then
+            echo "Error: Empty API-Response. Ending Script for $repo_name."
+            exit 1
+        fi
 
         # Extract tags and append to the JSON array
         new_tags=$(echo "$response" | jq -c '.results | map({name: .name, last_updated: .last_updated})')
@@ -62,20 +73,16 @@ fetch_tags() {
 
         # Compare the oldest date with the last saved date
         if [[ "$oldest_date" < "$last_saved_date" ]]; then
-            echo "All remaining tags are older than $last_saved_date. Stopping fetch."
+            echo "All remaining tags are older than $last_saved_date. Stopping fetch for $repo_name."
             break
         fi
 
         # Get the next URL
-        gitlab_url=$(echo "$response" | jq -r '.next')
-
-        # Stop if there's no next page
-        [ "$gitlab_url" == "null" ] && gitlab_url=""
+        gitlab_url=$(echo "$response" | jq -r '.next // empty')
     done
 
     # Save the result to a JSON file
     echo "$tags" | jq '.' > "$output_file"
-
     echo "Fetched 'gitlab/$repo_name' tags. Tags saved to $output_file"
 }
 
