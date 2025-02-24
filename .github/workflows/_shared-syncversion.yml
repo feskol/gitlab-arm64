@@ -121,7 +121,7 @@ jobs:
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     workflow_id: "build.yml",
-                    ref: ${{ inputs.is_test }} ? context.ref : "main",
+                    ref: ${{ inputs.is_test }} ? (context.payload.pull_request ? context.payload.pull_request.head.ref : context.ref) : "main",
                     inputs: {
                       gitlab_release: version.tag_name,
                       include_major_minor_tag: version.is_latest_patch,
