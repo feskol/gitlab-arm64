@@ -207,7 +207,9 @@ function log() {
     *) set -- "$level $@"; level="INFO" ;;
   esac
 
-  echo "$(current_timestamp) [$level]: $@" >> "$BASHUNIT_DEV_LOG"
+  local GRAY='\033[1;30m'
+  local RESET='\033[0m'
+  echo -e "$(current_timestamp) [$level]: $@ ${GRAY}#${BASH_SOURCE[1]}:${BASH_LINENO[0]}${RESET}" >> "$BASHUNIT_DEV_LOG"
 }
 
 # dependencies.sh
@@ -428,11 +430,19 @@ function env::is_show_execution_time_enabled() {
 }
 
 function env::is_dev_mode_enabled() {
-  [[ -f "$BASHUNIT_DEV_LOG" ]]
+  [[ -n "$BASHUNIT_DEV_LOG" ]]
 }
 
 function env::is_verbose_enabled() {
   [[ "$BASHUNIT_VERBOSE" == "true" ]]
+}
+
+function env::active_internet_connection() {
+  if ping -c 1 -W 3 google.com &> /dev/null; then
+    return 0
+  fi
+
+  return 1
 }
 
 function env::find_terminal_width() {
@@ -462,7 +472,6 @@ function env::print_verbose() {
     "BASHUNIT_SIMPLE_OUTPUT"
     "BASHUNIT_STOP_ON_FAILURE"
     "BASHUNIT_SHOW_EXECUTION_TIME"
-    "BASHUNIT_DEV_MODE"
     "BASHUNIT_VERBOSE"
   )
 
@@ -575,6 +584,7 @@ _DUPLICATED_FUNCTION_NAMES=""
 _FILE_WITH_DUPLICATED_FUNCTION_NAMES=""
 _DUPLICATED_TEST_FUNCTIONS_FOUND=false
 _TEST_OUTPUT=""
+_TEST_EXIT_CODE=0
 
 function state::get_tests_passed() {
   echo "$_TESTS_PASSED"
@@ -684,6 +694,14 @@ function state::add_test_output() {
   _TEST_OUTPUT+="$1"
 }
 
+function state::get_test_exit_code() {
+  echo "$_TEST_EXIT_CODE"
+}
+
+function state::set_test_exit_code() {
+  _TEST_EXIT_CODE="$1"
+}
+
 function state::set_duplicated_functions_merged() {
   state::set_duplicated_test_functions_found
   state::set_file_with_duplicated_function_names "$1"
@@ -716,6 +734,7 @@ function state::export_subshell_context() {
 ##ASSERTIONS_SKIPPED=$_ASSERTIONS_SKIPPED\
 ##ASSERTIONS_INCOMPLETE=$_ASSERTIONS_INCOMPLETE\
 ##ASSERTIONS_SNAPSHOT=$_ASSERTIONS_SNAPSHOT\
+##TEST_EXIT_CODE=$_TEST_EXIT_CODE\
 ##TEST_OUTPUT=$encoded_test_output\
 ##
 EOF
@@ -927,7 +946,9 @@ function console_results::render_result() {
     return 1
   fi
 
-  echo ""
+  if env::is_simple_output_enabled; then
+    printf "\n\n"
+  fi
 
   local total_tests=0
   ((total_tests += $(state::get_tests_passed))) || true
@@ -1177,7 +1198,10 @@ function console_results::print_failing_tests_and_reset() {
     local total_failed
     total_failed=$(state::get_tests_failed)
 
-    echo ""
+    if env::is_simple_output_enabled; then
+      printf "\n\n"
+    fi
+
     if [[ "$total_failed" -eq 1 ]]; then
       echo -e "${_COLOR_BOLD}There was 1 failure:${_COLOR_DEFAULT}\n"
     else
@@ -1186,6 +1210,8 @@ function console_results::print_failing_tests_and_reset() {
 
     sed '${/^$/d;}' "$FAILURES_OUTPUT_PATH" | sed 's/^/|/'
     rm "$FAILURES_OUTPUT_PATH"
+
+    echo ""
   fi
 }
 
@@ -1202,12 +1228,14 @@ function helper::normalize_test_function_name() {
   local original_function_name="${1-}"
   local result
 
-  # Remove "test_" prefix
+  # Remove the first "test_" prefix, if present
   result="${original_function_name#test_}"
+  # If no "test_" was removed (e.g., "testFoo"), remove the "test" prefix
+  if [[ "$result" == "$original_function_name" ]]; then
+    result="${original_function_name#test}"
+  fi
   # Replace underscores with spaces
   result="${result//_/ }"
-  # Remove "test" prefix
-  result="${result#test}"
   # Capitalize the first letter
   result="$(tr '[:lower:]' '[:upper:]' <<< "${result:0:1}")${result:1}"
 
@@ -1221,7 +1249,15 @@ function helper::check_duplicate_functions() {
   filtered_lines=$(grep -E '^[[:space:]]*(function[[:space:]]+)?test[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{' "$script")
 
   local function_names
-  function_names=$(echo "$filtered_lines" | awk '{gsub(/\(|\)/, ""); print $2}')
+  function_names=$(echo "$filtered_lines" | awk '{
+    for (i=1; i<=NF; i++) {
+      if ($i ~ /^test[a-zA-Z_][a-zA-Z0-9_]*\(\)$/) {
+        gsub(/\(\)/, "", $i)
+        print $i
+        break
+      }
+    }
+  }')
 
   local duplicates
   duplicates=$(echo "$function_names" | sort | uniq -d)
@@ -1229,6 +1265,7 @@ function helper::check_duplicate_functions() {
     state::set_duplicated_functions_merged "$script" "$duplicates"
     return 1
   fi
+  return 0
 }
 
 #
@@ -2620,6 +2657,10 @@ function runner::call_test_functions() {
     done
     unset function_name
   done
+
+  if ! env::is_simple_output_enabled; then
+    echo ""
+  fi
 }
 
 function runner::render_running_file_header() {
@@ -2657,6 +2698,12 @@ function runner::run_test() {
   exec 3>&1
 
   local test_execution_result=$(
+    trap '
+      state::set_test_exit_code $?
+      runner::run_tear_down
+      runner::clear_mocks
+      state::export_subshell_context
+    ' EXIT
     state::initialize_assertions_count
     runner::run_set_up
 
@@ -2664,9 +2711,6 @@ function runner::run_test() {
     # points to the original std-output.
     "$function_name" "$@" 2>&1
 
-    runner::run_tear_down
-    runner::clear_mocks
-    state::export_subshell_context
   )
 
   # Closes FD 3, which was used temporarily to hold the original stdout.
@@ -2698,6 +2742,12 @@ function runner::run_test() {
     local type="${subshell_output%%]*}" # Remove everything after "]"
     type="${type#[}"                    # Remove the leading "["
     local line="${subshell_output#*]}"  # Remove everything before and including "]"
+
+    # Replace [type] with a newline to split the messages
+    line=$(echo "$line" | sed -e 's/\[failed\]/\n/g' \
+                              -e 's/\[skipped\]/\n/g' \
+                              -e 's/\[incomplete\]/\n/g')
+
     state::print_line "$type" "$line"
 
     subshell_output=$line
@@ -2721,8 +2771,9 @@ function runner::run_test() {
   runner::parse_result "$function_name" "$test_execution_result" "$@"
 
   local total_assertions="$(state::calculate_total_assertions "$test_execution_result")"
+  local test_exit_code="$(state::get_test_exit_code)"
 
-  if [[ -n $runtime_error ]]; then
+  if [[ -n $runtime_error || $test_exit_code -ne 0 ]]; then
     state::add_tests_failed
     console_results::print_error_test "$function_name" "$runtime_error"
     reports::add_test_failed "$test_file" "$function_name" "$duration" "$total_assertions"
@@ -2865,6 +2916,12 @@ function runner::parse_result_sync() {
     sed -E -e 's/.*##ASSERTIONS_SNAPSHOT=([0-9]*)##.*/\1/g'\
   )
 
+  local test_exit_code=$(\
+    echo "$execution_result" |\
+    tail -n 1 |\
+    sed -E -e 's/.*##TEST_EXIT_CODE=([0-9]*)##.*/\1/g'\
+  )
+
   log "debug" "[SYNC]" "function_name:$function_name" "execution_result:$execution_result"
 
   ((_ASSERTIONS_PASSED += assertions_passed)) || true
@@ -2872,6 +2929,7 @@ function runner::parse_result_sync() {
   ((_ASSERTIONS_SKIPPED += assertions_skipped)) || true
   ((_ASSERTIONS_INCOMPLETE += assertions_incomplete)) || true
   ((_ASSERTIONS_SNAPSHOT += assertions_snapshot)) || true
+  ((_TEST_EXIT_CODE += test_exit_code)) || true
 }
 
 function runner::write_failure_result_output() {
@@ -3107,7 +3165,7 @@ function main::handle_assert_exit_code() {
 set -euo pipefail
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.18.0"
+declare -r BASHUNIT_VERSION="0.19.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
