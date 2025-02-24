@@ -19,7 +19,7 @@ on:
     inputs:
       is_test:
         type: boolean
-        description: "If true then some steps gets disabled (e.g. trigger build workflow)"
+        description: "If true then some steps gets disabled (e.g. Create Test-Data)"
         required: false
         default: false
     outputs:
@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
 
         # Copy fixtures for test-run
-      - name: Create Test-Data
+      - name: [TEST] Create Test-Data
         if: inputs.is_test == true
         run: |
           mkdir -p .github/generated-files/
