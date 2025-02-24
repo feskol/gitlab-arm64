@@ -28,7 +28,8 @@ function test_new_build_tags_available() {
     export NEW_BUILD_CE_VERSIONS="$(fixture_path "new_ce_versions.json" | cat)"
     export NEW_BUILD_EE_VERSIONS="$(fixture_path "new_ee_versions.json" | cat)"
 
-    echo "$NEW_BUILD_CE_VERSIONS"
+    echo "CE: $NEW_BUILD_CE_VERSIONS"
+    echo "EE: $NEW_BUILD_EE_VERSIONS"
 
     runScript
 

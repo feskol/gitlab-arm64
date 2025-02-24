@@ -24,7 +24,7 @@ function tear_down() {
     cleanup
 }
 
-function test_() {
+function test_override() {
     export LATEST_CE_LAST_UPDATE="2001-01-01T00:00:00.000000Z"
     export LATEST_EE_LAST_UPDATE="2001-01-01T00:00:00.000000Z"
 
