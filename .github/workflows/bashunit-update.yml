@@ -18,7 +18,9 @@ jobs:
   update-bashunit:
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'feskol' && github.ref == 'refs/heads/main' }} # Only on the main branch and exclude forked repositories
-
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -80,8 +82,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         if: ${{ env.bashunit_updated == 'true' }}
         with:
-          token: ${{ secrets.GH_PR_TOKEN }}
-          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          sign-commits: true
           base: main
           branch: bashunit/update/version-${{ env.tag_name }}
           commit-message: "bashunit update to version ${{ env.tag_name }}"
@@ -99,6 +100,5 @@ jobs:
         if: ${{ env.bashunit_updated == 'true' }}
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
-          token: ${{ secrets.GH_PR_TOKEN }}
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
           merge-method: squash
