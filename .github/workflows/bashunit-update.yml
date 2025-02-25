@@ -23,16 +23,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Install pandoc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc
-
       - name: Get latest release from GitHub API
         id: get_latest_release
         run: |
@@ -42,16 +32,20 @@ jobs:
           DOWNLOAD_URL=$(echo $RELEASE_INFO | jq -r '.assets[0].browser_download_url')
           RELEASE_NOTES=$(echo $RELEASE_INFO | jq -r '.body')
           
-          # Convert Markdown to HTML using pandoc
-          RELEASE_NOTES_HTML=$(echo "$RELEASE_NOTES" | pandoc -f markdown -t html | tr -d '\r\n')
-          
+          # Show infos
           echo "Latest tag: $TAG_NAME"
           echo "Download URL: $DOWNLOAD_URL"
-          echo "Release Notes HTML: $RELEASE_NOTES_HTML"
+          echo "Release Notes HTML:"
+          echo "$RELEASE_NOTES"
           
+          # GITHUB_ENV
           echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
           echo "download_url=$DOWNLOAD_URL" >> $GITHUB_ENV
-          echo "release_notes_html=$RELEASE_NOTES_HTML" >> "$GITHUB_ENV"
+          
+          echo "release_notes<<EOF" >> $GITHUB_ENV
+          echo "$RELEASE_NOTES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
 
       - name: Fetch and compare latest bashunit
         id: download_and_update
@@ -75,12 +69,10 @@ jobs:
             mv $TEMP_FILE $LOCAL_FILE
           
             echo "bashunit_updated=true" >> $GITHUB_ENV
-            exit 0
           else
             echo "bashunit is already up to date."
           
             echo "bashunit_updated=false" >> $GITHUB_ENV
-            exit 0
           fi
 
       - name: Create Pull Request
@@ -99,7 +91,7 @@ jobs:
 
             <details>
               <summary>Release Notes:</summary>
-              ${{ env.release_notes_html }}
+              ${{ env.release_notes }}
             </details>
           labels: dependencies
 

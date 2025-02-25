@@ -21,9 +21,29 @@ fi
 
 # Function to extract the value from $GITHUB_OUTPUT or GITHUB_ENV files
 extract_value() {
-    local name=$1
-    local file=$2
+    local var_name="$1"
+    local file="$2"
 
-    # Extract the value from the file, using grep and cut to get the value
-    grep -E "^$name=" "$file" | tail -n 1 | cut -d '=' -f2-
+    awk -v var="$var_name" '
+        BEGIN { found = 0; result = "" }
+        $0 ~ "^" var "=" {
+            # Single-line case: var=value
+            found = 1
+            sub("^" var "=", "", $0)
+            print $0
+            exit
+        }
+        $0 == var "<<EOF" {
+            # Multiline case: var<<EOF ... EOF
+            found = 2
+            next
+        }
+        found == 2 && $0 == "EOF" {
+            print result
+            exit
+        }
+        found == 2 {
+            result = result $0 "\n"
+        }
+    ' "$file"
 }
