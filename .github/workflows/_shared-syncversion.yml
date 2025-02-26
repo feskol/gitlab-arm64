@@ -9,11 +9,6 @@
 
 name: "[SHARED] gitlab_release_checker"
 
-# Ensure Proper Permissions for the Workflow Token
-permissions:
-  contents: write
-  actions: write
-
 on:
   workflow_call:
     inputs:
@@ -29,6 +24,10 @@ on:
       latest_ee_tag:
         description: "Latest EE tag"
         value: ${{ jobs.check-new-release.outputs.latest_ee_tag }}
+
+permissions:
+  contents: write
+  actions: write
 
 jobs:
   check-new-release:
