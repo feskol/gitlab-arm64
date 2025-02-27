@@ -11,8 +11,8 @@
 set -e
 
 # Define the array of supported versions
-SUPPORTED_GITLAB_VERSIONS=("17")
-echo "Supported GitLab Versions: ${SUPPORTED_GITLAB_VERSIONS[@]}"
+SUPPORTED_GITLAB_VERSIONS_START=17
+echo "Supported GitLab Version start: ${SUPPORTED_GITLAB_VERSIONS_START}"
 
 # Function to process tags
 extract_new_build_tags() {
@@ -33,7 +33,7 @@ extract_new_build_tags() {
         TAG_MAJOR_MINOR=$(echo "$BASE_TAG" | cut -d. -f1-2)
         TAG_MAJOR_MINOR_PATCH=$(echo "$BASE_TAG" | cut -d. -f1-3)
 
-        if [[ " ${SUPPORTED_GITLAB_VERSIONS[@]} " =~ " ${TAG_MAJOR} " ]] && \
+        if (( TAG_MAJOR >= SUPPORTED_GITLAB_VERSIONS_START )) && \
            [[ "$tag_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+-${suffix}\.0$ ]] && \
            [[ "$tag_last_updated" > "$saved_date" ]]; then
 

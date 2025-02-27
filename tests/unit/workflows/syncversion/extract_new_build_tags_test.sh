@@ -59,3 +59,28 @@ function test_no_new_builds() {
     assert_same "[]" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
     assert_same "[]" "$(extract_value "NEW_BUILD_EE_VERSIONS" "$GITHUB_ENV")"
 }
+
+function test_check_support_for_gitlab_version_starting_from_17() {
+    export LATEST_MAJOR_CE="19"
+    export LATEST_MAJOR_MINOR_CE="19.0"
+    export LATEST_MAJOR_EE="19"
+    export LATEST_MAJOR_MINOR_EE="19.0"
+
+    cp "$(fixture_path "extract_new_build_tags/gitlab_tags_ce.json")" ./
+    cp "$(fixture_path "extract_new_build_tags/gitlab_tags_ee.json")" ./
+
+    export SAVED_CE_LAST_MODIFIED_DATE="2000-01-01T00:00:00.000000Z"
+    export SAVED_EE_LAST_MODIFIED_DATE="2000-01-01T00:00:00.000000Z"
+
+    runScript
+
+    assert_not_contains "16.0.0-ce.0" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_not_contains "15.0.0-ce.0" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+
+    assert_contains "17.0.0-ce.0" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_contains "18.0.0-ce.0" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+    assert_contains "19.0.0-ce.0" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+
+    expected="$(fixture_path "extract_new_build_tags/expected_values.json")"
+    assert_same "$(jq -c . "$expected")" "$(extract_value "NEW_BUILD_CE_VERSIONS" "$GITHUB_ENV")"
+}
