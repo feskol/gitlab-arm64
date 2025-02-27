@@ -10,6 +10,12 @@
 
 set -e
 
+# Check if jq is installed
+if ! command -v jq &>/dev/null; then
+  echo "Error: jq is not installed. Install it and try again." >&2
+  exit 1
+fi
+
 # Fetch own docker tags
 feskol_url="https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100"
 
@@ -26,8 +32,19 @@ while [[ -n "$feskol_url" ]]; do
         exit 1
     fi
 
-    # Extract tags and append to file (only full image needed - with "ce.0" suffix)
-    echo "$response" | jq -r '.results[].name' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$" >>own_tags.txt
+    # Check if response is valid JSON
+    if ! echo "$response" | jq empty 2>/dev/null; then
+      echo "Error: Response is not valid JSON." >&2
+      exit 1
+    fi
+
+    release_version_filter="^[0-9]+\.[0-9]+\.[0-9]+-(ce|ee)\.0$"
+    if echo "$response" | jq -r '.results[].name' | grep -qE "$release_version_filter"; then
+        filtered_names=$(echo "$response" | jq -r '.results[].name' | grep -E "$release_version_filter")
+        echo "$filtered_names" >> own_tags.txt
+    else
+        echo "No matching versions found."
+    fi
 
     # Get the next page URL (or empty if no next page)
     feskol_url=$(echo "$response" | jq -r '.next // empty')
@@ -43,6 +60,7 @@ fetch_tags() {
     local gitlab_url="https://hub.docker.com/v2/namespaces/gitlab/repositories/${repo_name}/tags?page_size=100"
 
     echo "Fetching tags for: gitlab/$repo_name"
+    echo "URL: $gitlab_url"
 
     # Read the last updated timestamp from the file
     last_saved_date="1970-01-01T00:00:00.000Z"
@@ -62,6 +80,12 @@ fetch_tags() {
         if [[ -z "$response" ]]; then
             echo "Error: Empty API-Response. Ending Script for $repo_name."
             exit 1
+        fi
+
+         # Check if response is valid JSON
+        if ! echo "$response" | jq empty 2>/dev/null; then
+          echo "Error: Response is not valid JSON." >&2
+          exit 1
         fi
 
         # Extract tags and append to the JSON array
