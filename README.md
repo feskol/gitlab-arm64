@@ -28,7 +28,7 @@
 [dockerhub-badge-latest-version-ee]: https://img.shields.io/docker/v/feskol/gitlab/ee?label=gitlab-ee&logo=docker
 [dockerhub-badge-image-size-ce]: https://img.shields.io/docker/image-size/feskol/gitlab/ce?label=gitlab-ce&logo=docker
 [dockerhub-badge-image-size-ee]: https://img.shields.io/docker/image-size/feskol/gitlab/ee?label=gitlab-ee&logo=docker
-[supported-gitlab-versions-badge]: https://img.shields.io/badge/Supported_GitLab_Versions-^17-orange?logo=gitlab
+[supported-gitlab-versions-badge]: https://img.shields.io/badge/Supported_GitLab_Versions-^17_|_^18-orange?logo=gitlab
 [support-buy-me-coffee]: https://buymeacoffee.com/feskol
 [support-badge-buy-me-coffee]: https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black
 [support-paypal-me]: https://paypal.me/feskol
