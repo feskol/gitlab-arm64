@@ -96,6 +96,7 @@ jobs:
               ${{ env.release_notes }}
             </details>
           labels: dependencies
+          token: ${{ secrets.GH_PR_TOKEN }}
 
       - name: Enable Pull Request Automerge
         if: ${{ env.bashunit_updated == 'true' }}
@@ -103,3 +104,4 @@ jobs:
         with:
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
           merge-method: squash
+          token: ${{ secrets.GH_PR_TOKEN }}
