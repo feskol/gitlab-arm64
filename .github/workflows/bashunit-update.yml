@@ -105,3 +105,9 @@ jobs:
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
           merge-method: squash
           token: ${{ secrets.GH_PR_TOKEN }}
+          
+      - name: Auto approve
+        if: steps.cpr.outputs.pull-request-operation == 'created'
+        run: gh pr review --approve "${{ steps.cpr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ secrets.GH_PR_TOKEN }}
