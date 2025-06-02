@@ -11,7 +11,7 @@ name: Check for Bashunit Updates
 
 on:
   schedule:
-    - cron: '0 0 * * 1' # Weekly check
+    - cron: '47 2 * * 1' # Weekly check
   workflow_dispatch:
 
 permissions:
@@ -86,8 +86,9 @@ jobs:
           sign-commits: true
           base: main
           branch: bashunit/update/version-${{ env.tag_name }}
-          commit-message: "bashunit update to version ${{ env.tag_name }}"
-          title: "bashunit update to version ${{ env.tag_name }}"
+          committer: GitHub Actions Bot <github-actions[bot]@users.noreply.github.com>
+          commit-message: "[BOT] Bump bashunit to version ${{ env.tag_name }}"
+          title: "[BOT] Bump bashunit to version ${{ env.tag_name }}"
           body: |
             Update bashunit to version [${{ env.tag_name }}](https://github.com/TypedDevs/bashunit/releases/tag/${{ env.tag_name }}).
 
