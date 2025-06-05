@@ -232,7 +232,7 @@ jobs:
           IS_TEST: ${{ inputs.is_test }}
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
 
-      - name: Create multi-arch docker manifest for DOCKERHUB
+      - name: Create multi-arch docker manifest with official docker images for DOCKERHUB
         if: inputs.skip_build == true && matrix.platform != 'GITHUB'
         env:
           MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
