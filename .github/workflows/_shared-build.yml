@@ -36,9 +36,9 @@ on:
         description: "If true then some steps gets disabled (e.g. push docker image)"
         required: false
         default: false
-      skip_build:
+      use_gitlab_official_arm64_image:
         type: boolean
-        description: "Skips the build process since GitLab 18.1 supports own arm64 images"
+        description: "Use GitLabs official arm64 image since version 18.1"
         required: false
         default: false
 
@@ -104,7 +104,7 @@ jobs:
   build-docker-image:
     runs-on: ubuntu-24.04-arm
     needs: validate-and-prepare
-    if: inputs.skip_build == false
+    if: inputs.use_gitlab_official_arm64_image == false
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -215,7 +215,7 @@ jobs:
           docker push ${{ env.OFFICIAL_GITLAB_IMAGE }}
 
       - name: GitHub Container Registry manifest fix 3/3 (Download official Gitlab docker image for arm64)
-        if: inputs.is_test == false && matrix.platform == 'GITHUB' && inputs.skip_build == true
+        if: inputs.is_test == false && matrix.platform == 'GITHUB' && inputs.use_gitlab_official_arm64_image == true
         run: |
           GITLAB_IMAGE="docker.io/gitlab/gitlab-${{ needs.validate-and-prepare.outputs.gitlab_edition_suffix }}:${{ inputs.gitlab_release }}"
 
@@ -224,7 +224,7 @@ jobs:
           docker push ${{ env.ARM64_IMAGE_TAG }}
 
       - name: Create multi-arch docker manifest for ${{ matrix.platform }}
-        if: inputs.skip_build == false || matrix.platform == 'GITHUB'
+        if: inputs.use_gitlab_official_arm64_image == false || matrix.platform == 'GITHUB'
         env:
           ARM64_IMAGE_TAG: ${{ env.ARM64_IMAGE_TAG }}
           MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
@@ -233,7 +233,7 @@ jobs:
         run: ./scripts/workflows/build/create_multi_arch_manifest.sh
 
       - name: Create multi-arch docker manifest with official docker images for DOCKERHUB
-        if: inputs.skip_build == true && matrix.platform != 'GITHUB'
+        if: inputs.use_gitlab_official_arm64_image == true && matrix.platform != 'GITHUB'
         env:
           MANIFEST_TAGS: ${{ env.MANIFEST_TAGS }}
           OFFICIAL_GITLAB_IMAGE: ${{ env.OFFICIAL_GITLAB_IMAGE }}

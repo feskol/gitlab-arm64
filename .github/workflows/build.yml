@@ -31,9 +31,9 @@ on:
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
-      skip_build:
+      use_gitlab_official_arm64_image:
         type: boolean
-        description: "Skips the build process since GitLab 18.1 supports own arm64 images"
+        description: "Use GitLabs official arm64 image since version 18.1"
         required: false
         default: false
 
@@ -48,5 +48,5 @@ jobs:
       include_major_minor_tag: ${{ fromJson(github.event.inputs.include_major_minor_tag) }}
       include_major_tag: ${{ fromJson(github.event.inputs.include_major_tag) }}
       include_latest_tags: ${{ fromJson(github.event.inputs.include_latest_tags) }}
-      skip_build: ${{ fromJson(github.event.inputs.skip_build) }}
+      use_gitlab_official_arm64_image: ${{ fromJson(github.event.inputs.use_gitlab_official_arm64_image) }}
       is_test: false

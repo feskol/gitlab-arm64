@@ -69,6 +69,18 @@ jobs:
       include_latest_tags: true
       is_test: true # This must always be true in tests!
 
+  test-build-workflow-with-feskols-own-arm64-image:
+    needs: [test-scripts]
+    uses: ./.github/workflows/_shared-build.yml
+    with:
+      gitlab_release: 17.11.3-ce.0
+      include_major_minor_tag: true
+      include_major_tag: true
+      include_latest_tags: true
+      skip_build: false
+      is_test: true # This must always be true in tests!
+
+
   test-build-workflow-with-gitlabs-own-arm64-image:
     needs: [test-scripts]
     uses: ./.github/workflows/_shared-build.yml
