@@ -31,6 +31,12 @@ on:
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
+      skip_build:
+        type: boolean
+        description: "Skips the build process since GitLab 18.1 supports own arm64 images"
+        required: false
+        default: false
+
 
 jobs:
   call-build-workflow:
@@ -42,4 +48,5 @@ jobs:
       include_major_minor_tag: ${{ fromJson(github.event.inputs.include_major_minor_tag) }}
       include_major_tag: ${{ fromJson(github.event.inputs.include_major_tag) }}
       include_latest_tags: ${{ fromJson(github.event.inputs.include_latest_tags) }}
+      skip_build: ${{ fromJson(github.event.inputs.skip_build) }}
       is_test: false

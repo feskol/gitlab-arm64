@@ -104,6 +104,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            function isArm64Version(versionStr) {
+              const parts = versionStr.split('.');
+              
+              const major = Number(parts[0]);
+              const minor = Number(parts[1]);
+              
+              const minMajor = 18;
+              const minMinor = 1;
+              
+              return major > minMajor || (major === minMajor && minor >= minMinor);
+            }
+            
             const triggerBuilds = (versionType, new_version_json) => {
               let newVersions = JSON.parse(new_version_json);
             
@@ -126,6 +138,7 @@ jobs:
                       include_major_minor_tag: version.is_latest_patch,
                       include_major_tag: version.is_latest_minor,
                       include_latest_tags: version.is_latest_overall,
+                      skip_build: isArm64Version(version.tag_name)
                     }
                   });
                 }
