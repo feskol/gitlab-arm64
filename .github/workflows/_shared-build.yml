@@ -155,6 +155,10 @@ jobs:
   create-manifest:
     runs-on: ubuntu-latest
     needs: [ validate-and-prepare, build-docker-image ]
+    if: |
+      always() &&
+      needs.validate-and-prepare.result == 'success' &&
+      (needs.build-docker-image.result == 'success' || needs.build-docker-image.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
