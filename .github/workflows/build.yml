@@ -31,6 +31,12 @@ on:
         description: "Only for newest release 'edition' (e.g. ce), and 'latest'"
         required: false
         default: false
+      use_gitlab_official_arm64_image:
+        type: boolean
+        description: "Use GitLabs official arm64 image since version 18.1"
+        required: false
+        default: false
+
 
 jobs:
   call-build-workflow:
@@ -42,4 +48,5 @@ jobs:
       include_major_minor_tag: ${{ fromJson(github.event.inputs.include_major_minor_tag) }}
       include_major_tag: ${{ fromJson(github.event.inputs.include_major_tag) }}
       include_latest_tags: ${{ fromJson(github.event.inputs.include_latest_tags) }}
+      use_gitlab_official_arm64_image: ${{ fromJson(github.event.inputs.use_gitlab_official_arm64_image) }}
       is_test: false

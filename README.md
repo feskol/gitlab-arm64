@@ -34,20 +34,29 @@
 [support-paypal-me]: https://paypal.me/feskol
 [support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
 
+> [!NOTE]  
+> Starting with GitLab version `18.1`, GitLab now provides **official ARM64 Docker images**.
+> 
+> This repository will continue to be maintained for users who prefer our custom tags or need more time to transition to the official images.  
+> From now on, all new GitLab versions that support official ARM64 images will use those images when creating our tags, ensuring compatibility and reliability.  
+> Essentially, you'll be using GitLab’s official images — just with the added flexibility of our tagging system.
+> 
+> If you’d like to switch directly to the official Docker images:
+>  - [Official Gitlab CE tags](https://hub.docker.com/r/gitlab/gitlab-ce/tags)
+>  - [Official Gitlab EE tags](https://hub.docker.com/r/gitlab/gitlab-ee/tags)
+
 ## 🚀 Overview
 
-This repository provides **GitLab Docker images for ARM64 architecture**.
+This repository provides **GitLab Docker images for the ARM64 architecture**.
 
-GitLab does not officially support ARM64 yet.
-As a result, GitLab does not provide **Docker images for ARM64**.
-While there are some repositories that attempt to address this issue, they often take time to release updates.
-This poses a challenge, especially when a security patch requires an immediate update.
+**GitLab** has officially supported **ARM64 images** since version `18.1`.
+This repository was originally created before **official ARM64 Docker** images were available.
+It is now maintained to support custom tags and to give users time to transition to the **official GitLab images** — if they choose to do so.
 
-To solve this problem, I created this repository providing a GitHub Action that checks for new releases daily and
-automatically builds a **Docker image** for the latest releases.
+This repository provides a GitHub Action that checks for new releases daily and
+automatically builds the custom **Docker image** tags using the official GitLab images.
 
-
-The ARM64 Docker images are typically available **within 12 hours** after the official GitLab Docker images get
+The custom Docker image tags are typically available **within 12 hours** after the official GitLab Docker images get
 released.
 
 ## ✨ Features
@@ -97,10 +106,10 @@ docker pull feskol/gitlab:ce     # "ce" is same as "latest"
 docker pull feskol/gitlab:ee
 
 # Specific version - replace "-ce" to "-ee" for Enterprise Edition
-docker pull feskol/gitlab:17-ce
-docker pull feskol/gitlab:17.8-ce
-docker pull feskol/gitlab:17.8.1-ce
-docker pull feskol/gitlab:17.8.1-ce.0
+docker pull feskol/gitlab:18-ce
+docker pull feskol/gitlab:18.0-ce
+docker pull feskol/gitlab:18.0.1-ce
+docker pull feskol/gitlab:18.0.1-ce.0
 ```
 
 #### GitHub packages
@@ -116,10 +125,10 @@ docker pull ghcr.io/feskol/gitlab:ce     # "ce" is same as "latest"
 docker pull ghcr.io/feskol/gitlab:ee
 
 # Specific version - replace "-ce" to "-ee" for Enterprise Edition
-docker pull ghcr.io/feskol/gitlab:17-ce
-docker pull ghcr.io/feskol/gitlab:17.8-ce
-docker pull ghcr.io/feskol/gitlab:17.8.1-ce
-docker pull ghcr.io/feskol/gitlab:17.8.1-ce.0
+docker pull ghcr.io/feskol/gitlab:18-ce
+docker pull ghcr.io/feskol/gitlab:18.0-ce
+docker pull ghcr.io/feskol/gitlab:18.0.1-ce
+docker pull ghcr.io/feskol/gitlab:18.0.1-ce.0
 ```
 
 ### Setup instructions
@@ -134,7 +143,7 @@ Here’s an example setup using `docker-compose.yaml`:
 ```yaml
 services:
     gitlab:
-        image: feskol/gitlab:17.7.0-ce # change the tag to your needs
+        image: feskol/gitlab:18.0.1-ce # change the tag to your needs
         container_name: gitlab
         restart: unless-stopped
         hostname: 'gitlab.example.com'
@@ -241,7 +250,7 @@ services:
 ...
 ```
 
-3. Restart the container:
+3. Start the container:
 
 ````bash
 docker compose up -d
