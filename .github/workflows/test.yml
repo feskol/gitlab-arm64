@@ -77,7 +77,7 @@ jobs:
       include_major_minor_tag: true
       include_major_tag: true
       include_latest_tags: true
-      skip_build: false
+      use_gitlab_official_arm64_image: false
       is_test: true # This must always be true in tests!
 
 
@@ -89,5 +89,5 @@ jobs:
       include_major_minor_tag: true
       include_major_tag: true
       include_latest_tags: true
-      skip_build: true
+      use_gitlab_official_arm64_image: true
       is_test: true # This must always be true in tests!
