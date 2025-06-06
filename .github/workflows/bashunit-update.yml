@@ -94,6 +94,7 @@ jobs:
 
             <details>
               <summary>Release Notes:</summary>
+
               ${{ env.release_notes }}
             </details>
           labels: dependencies
