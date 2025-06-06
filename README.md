@@ -39,7 +39,7 @@
 > 
 > This repository will continue to be maintained for users who prefer our custom tags or need more time to transition to the official images.  
 > From now on, all new GitLab versions that support official ARM64 images will use those images when creating our tags, ensuring compatibility and reliability.  
-> Essentially, you'll be using GitLab’s official images—just with the added flexibility of our tagging system.
+> Essentially, you'll be using GitLab’s official images — just with the added flexibility of our tagging system.
 > 
 > If you’d like to switch directly to the official Docker images:
 >  - [Official Gitlab CE tags](https://hub.docker.com/r/gitlab/gitlab-ce/tags)
@@ -51,10 +51,10 @@ This repository provides **GitLab Docker images for the ARM64 architecture**.
 
 **GitLab** has officially supported **ARM64 images** since version `18.1`.
 This repository was originally created before **official ARM64 Docker** images were available.
-It is now maintained to support custom tags and to give current users time to transition to the **official GitLab images** — if they choose to do so.
+It is now maintained to support custom tags and to give users time to transition to the **official GitLab images** — if they choose to do so.
 
 This repository provides a GitHub Action that checks for new releases daily and
-automatically builds the custom **Docker image** tags with the official GitLab images for the latest releases.
+automatically builds the custom **Docker image** tags using the official GitLab images.
 
 The custom Docker image tags are typically available **within 12 hours** after the official GitLab Docker images get
 released.
