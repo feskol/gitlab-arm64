@@ -35,7 +35,7 @@
 [support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
 
 > [!NOTE]  
-> Starting with GitLab version `18.1`, GitLab now provides **official ARM64 Docker images**.
+> Starting with GitLab version `18.1`, GitLab will provide **official ARM64 Docker images**.
 > 
 > This repository will continue to be maintained for users who prefer our custom tags or need more time to transition to the official images.  
 > From now on, all new GitLab versions that support official ARM64 images will use those images when creating our tags, ensuring compatibility and reliability.  
@@ -49,7 +49,7 @@
 
 This repository provides **GitLab Docker images for the ARM64 architecture**.
 
-**GitLab** has officially supported **ARM64 images** since version `18.1`.
+**GitLab** officially supports **ARM64 images** since version `18.1`.
 This repository was originally created before **official ARM64 Docker** images were available.
 It is now maintained to support custom tags and to give users time to transition to the **official GitLab images** — if they choose to do so.
 
