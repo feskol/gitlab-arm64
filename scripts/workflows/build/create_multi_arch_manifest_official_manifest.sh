@@ -21,12 +21,10 @@ IFS=',' read -r -a tags <<<"$MANIFEST_TAGS"
 # Loop through each tag and create and push the manifest
 for tag in "${tags[@]}"; do
     if [ "$IS_TEST" == "false" ]; then
-        # Create the manifest
-        docker manifest create "$tag" \
-            --amend "$OFFICIAL_GITLAB_IMAGE"
-
-        # Push the manifest
-        docker manifest push -p "$tag"
+        # Create + push the custom tag using the official Gitlab-Image manifest
+        docker buildx imagetools create \
+            --tag "$tag" \
+            "$OFFICIAL_GITLAB_IMAGE"
     else
         echo "[TEST] Create manifest for $tag using arm64-image $ARM64_IMAGE_TAG and the official Gitlab tag $OFFICIAL_GITLAB_IMAGE"
     fi
