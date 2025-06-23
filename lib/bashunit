@@ -42,7 +42,14 @@ function check_os::is_macos() {
 }
 
 function check_os::is_windows() {
-  [[ "$(uname)" == *"MINGW"* ]]
+  case "$(uname)" in
+    *MINGW*|*MSYS*|*CYGWIN*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 function check_os::is_busybox() {
@@ -224,6 +231,12 @@ function log() {
   echo -e "$(current_timestamp) [$level]: $@ ${GRAY}#${BASH_SOURCE[1]}:${BASH_LINENO[0]}${RESET}" >> "$BASHUNIT_DEV_LOG"
 }
 
+function print_line() {
+  local length="${1:-70}"   # Default to 70 if not passed
+  local char="${2:--}"      # Default to '-' if not passed
+  printf '%*s\n' "$length" '' | tr ' ' "$char"
+}
+
 # dependencies.sh
 set -euo pipefail
 
@@ -257,6 +270,14 @@ function dependencies::has_curl() {
 
 function dependencies::has_wget() {
   command -v wget >/dev/null 2>&1
+}
+
+function dependencies::has_python() {
+  command -v python >/dev/null 2>&1
+}
+
+function dependencies::has_node() {
+  command -v node >/dev/null 2>&1
 }
 
 # io.sh
@@ -322,6 +343,9 @@ function parallel::aggregate_test_results() {
       local snapshot="${result_line##*##ASSERTIONS_SNAPSHOT=}"
       snapshot="${snapshot%%##*}"; snapshot=${snapshot:-0}
 
+      local exit_code="${result_line##*##TEST_EXIT_CODE=}"
+      exit_code="${exit_code%%##*}"; exit_code=${exit_code:-0}
+
       # Add to the total counts
       total_failed=$((total_failed + failed))
       total_passed=$((total_passed + passed))
@@ -330,6 +354,11 @@ function parallel::aggregate_test_results() {
       total_snapshot=$((total_snapshot + snapshot))
 
       if [ "${failed:-0}" -gt 0 ]; then
+        state::add_tests_failed
+        continue
+      fi
+
+      if [ "${exit_code:-0}" -ne 0 ]; then
         state::add_tests_failed
         continue
       fi
@@ -371,6 +400,7 @@ function parallel::must_stop_on_failure() {
 function parallel::reset() {
   # shellcheck disable=SC2153
   rm -rf "$TEMP_DIR_PARALLEL_TEST_SUITE"
+  mkdir -p "$TEMP_DIR_PARALLEL_TEST_SUITE"
   [ -f "$TEMP_FILE_PARALLEL_STOP_ON_FAILURE" ] && rm "$TEMP_FILE_PARALLEL_STOP_ON_FAILURE"
 }
 
@@ -411,6 +441,7 @@ _DEFAULT_SIMPLE_OUTPUT="false"
 _DEFAULT_STOP_ON_FAILURE="false"
 _DEFAULT_SHOW_EXECUTION_TIME="true"
 _DEFAULT_VERBOSE="false"
+_DEFAULT_BENCH_MODE="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_SHOW_HEADER:=${SHOW_HEADER:=$_DEFAULT_SHOW_HEADER}}"
@@ -419,6 +450,7 @@ _DEFAULT_VERBOSE="false"
 : "${BASHUNIT_STOP_ON_FAILURE:=${STOP_ON_FAILURE:=$_DEFAULT_STOP_ON_FAILURE}}"
 : "${BASHUNIT_SHOW_EXECUTION_TIME:=${SHOW_EXECUTION_TIME:=$_DEFAULT_SHOW_EXECUTION_TIME}}"
 : "${BASHUNIT_VERBOSE:=${VERBOSE:=$_DEFAULT_VERBOSE}}"
+: "${BASHUNIT_BENCH_MODE:=${BENCH_MODE:=$_DEFAULT_BENCH_MODE}}"
 
 function env::is_parallel_run_enabled() {
   [[ "$BASHUNIT_PARALLEL_RUN" == "true" ]]
@@ -450,6 +482,10 @@ function env::is_dev_mode_enabled() {
 
 function env::is_verbose_enabled() {
   [[ "$BASHUNIT_VERBOSE" == "true" ]]
+}
+
+function env::is_bench_mode_enabled() {
+  [[ "$BASHUNIT_BENCH_MODE" == "true" ]]
 }
 
 function env::active_internet_connection() {
@@ -504,7 +540,9 @@ function env::print_verbose() {
 }
 
 EXIT_CODE_STOP_ON_FAILURE=4
-TEMP_DIR_PARALLEL_TEST_SUITE="/tmp/bashunit/parallel/${_OS:-Unknown}"
+# Use a unique directory per run to avoid conflicts when bashunit is invoked
+# recursively or multiple instances are executed in parallel.
+TEMP_DIR_PARALLEL_TEST_SUITE="/tmp/bashunit/parallel/${_OS:-Unknown}/$(random_str 8)"
 TEMP_FILE_PARALLEL_STOP_ON_FAILURE="$TEMP_DIR_PARALLEL_TEST_SUITE/.stop-on-failure"
 TERMINAL_WIDTH="$(env::find_terminal_width)"
 FAILURES_OUTPUT_PATH=$(mktemp)
@@ -513,67 +551,88 @@ CAT="$(which cat)"
 # clock.sh
 
 function clock::now() {
-  if dependencies::has_perl && perl -MTime::HiRes -e "" > /dev/null 2>&1; then
-    if perl -MTime::HiRes -e 'printf("%.0f\n",Time::HiRes::time()*1000000000)'; then
-        return 0
-    fi
+  local shell_time
+  local attempts=()
+
+  # 1. Try using native shell EPOCHREALTIME (if available)
+  attempts+=("EPOCHREALTIME")
+  if shell_time="$(clock::shell_time)"; then
+    local seconds="${shell_time%%.*}"
+    local microseconds="${shell_time#*.}"
+    math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
+    return 0
   fi
 
+  # 2. Try Perl with Time::HiRes
+  attempts+=("Perl")
+  if dependencies::has_perl && perl -MTime::HiRes -e "" &>/dev/null; then
+    perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000000000)' && return 0
+  fi
+
+  # 3. Try Python 3 with time module
+  attempts+=("Python")
+  if dependencies::has_python; then
+    python - <<'EOF'
+import time, sys
+sys.stdout.write(str(int(time.time() * 1_000_000_000)))
+EOF
+    return 0
+  fi
+
+  # 4. Try Node.js
+  attempts+=("Node")
+  if dependencies::has_node; then
+    node -e 'process.stdout.write((BigInt(Date.now()) * 1000000n).toString())' && return 0
+  fi
+  # 5. Windows fallback with PowerShell
+  attempts+=("PowerShell")
   if check_os::is_windows && dependencies::has_powershell; then
-      powershell -Command "
-              \$unixEpoch = [DateTime]'1970-01-01 00:00:00';
-              \$now = [DateTime]::UtcNow;
-              \$ticksSinceEpoch = (\$now - \$unixEpoch).Ticks;
-              \$nanosecondsSinceEpoch = \$ticksSinceEpoch * 100;
-              Write-Output \$nanosecondsSinceEpoch
-              "
-      return 0
+    powershell -Command "
+      \$unixEpoch = [DateTime]'1970-01-01 00:00:00';
+      \$now = [DateTime]::UtcNow;
+      \$ticksSinceEpoch = (\$now - \$unixEpoch).Ticks;
+      \$nanosecondsSinceEpoch = \$ticksSinceEpoch * 100;
+      Write-Output \$nanosecondsSinceEpoch
+    " && return 0
   fi
 
+  # 6. Unix fallback using `date +%s%N` (if not macOS or Alpine)
+  attempts+=("date")
   if ! check_os::is_macos && ! check_os::is_alpine; then
     local result
-    result=$(date +%s%N)
-    if [[ "$result" != *N ]] && [[ "$result" -gt 0 ]]; then
+    result=$(date +%s%N 2>/dev/null)
+    if [[ "$result" != *N && "$result" =~ ^[0-9]+$ ]]; then
       echo "$result"
       return 0
     fi
   fi
 
-  local shell_time has_shell_time
-  shell_time="$(clock::shell_time)"
-  has_shell_time="$?"
-  if [[ "$has_shell_time" -eq 0 ]]; then
-    local  seconds microseconds
-    seconds=$(echo "$shell_time" | cut -f 1 -d '.')
-    microseconds=$(echo "$shell_time" | cut -f 2 -d '.')
-
-    math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
-    return 0
-  fi
-
+  # 7. All methods failed
+  printf "clock::now implementations tried: %s\n" "${attempts[*]}" >&2
   echo ""
   return 1
 }
 
 function clock::shell_time() {
-  # Get time directly from the shell rather than a program.
+  # Get time directly from the shell variable EPOCHREALTIME (Bash 5+)
   [[ -n ${EPOCHREALTIME+x} && -n "$EPOCHREALTIME" ]] && LC_ALL=C echo "$EPOCHREALTIME"
 }
 
-
 function clock::total_runtime_in_milliseconds() {
+  local end_time
   end_time=$(clock::now)
   if [[ -n $end_time ]]; then
-    math::calculate "($end_time-$_START_TIME)/1000000"
+    math::calculate "($end_time - $_START_TIME) / 1000000"
   else
     echo ""
   fi
 }
 
 function clock::total_runtime_in_nanoseconds() {
+  local end_time
   end_time=$(clock::now)
   if [[ -n $end_time ]]; then
-    math::calculate "($end_time-$_START_TIME)"
+    math::calculate "$end_time - $_START_TIME"
   else
     echo ""
   fi
@@ -879,7 +938,7 @@ EOF
     if [ "$total_tests" -eq 0 ]; then
       printf "%s\n" "$BASHUNIT_VERSION"
     else
-      printf "%s | Tests: ~%s\n" "$BASHUNIT_VERSION" "$total_tests"
+      printf "%s | Tests: %s\n" "$BASHUNIT_VERSION" "$total_tests"
     fi
     return
   fi
@@ -887,7 +946,7 @@ EOF
   if [ "$total_tests" -eq 0 ]; then
     printf "${_COLOR_BOLD}${_COLOR_PASSED}bashunit${_COLOR_DEFAULT} - %s\n" "$BASHUNIT_VERSION"
   else
-    printf "${_COLOR_BOLD}${_COLOR_PASSED}bashunit${_COLOR_DEFAULT} - %s | Tests: ~%s\n"\
+    printf "${_COLOR_BOLD}${_COLOR_PASSED}bashunit${_COLOR_DEFAULT} - %s | Tests: %s\n"\
       "$BASHUNIT_VERSION"\
       "$total_tests"
   fi
@@ -1357,11 +1416,12 @@ function helper::unset_if_exists() {
 function helper::find_files_recursive() {
   ## Remove trailing slash using parameter expansion
   local path="${1%%/}"
+  local pattern="${2:-*[tT]est.sh}"
 
   if [[ "$path" == *"*"* ]]; then
-    eval find "$path" -type f -name '*[tT]est.sh' | sort -u
+    eval find "$path" -type f -name "$pattern" | sort -u
   elif [[ -d "$path" ]]; then
-    find "$path" -type f -name '*[tT]est.sh' | sort -u
+    find "$path" -type f -name "$pattern" | sort -u
   else
     echo "$path"
   fi
@@ -1428,12 +1488,49 @@ function helpers::find_total_tests() {
         return
     fi
 
-    local pattern='^\s*function\s+test'
-    if [[ -n "$filter" ]]; then
-        pattern+=".*$filter"
-    fi
+    local total_count=0
+    local file
 
-    grep -r -E "$pattern" --include="*[tT]est.sh" "${files[@]}" 2>/dev/null | wc -l | xargs
+    for file in "${files[@]}"; do
+        if [[ ! -f "$file" ]]; then
+            continue
+        fi
+
+        local file_count
+        file_count=$( (
+            # shellcheck source=/dev/null
+            source "$file"
+            local all_fn_names
+            all_fn_names=$(declare -F | awk '{print $3}')
+            local filtered_functions
+            filtered_functions=$(helper::get_functions_to_run "test" "$filter" "$all_fn_names") || true
+
+            local count=0
+            if [[ -n "$filtered_functions" ]]; then
+                # shellcheck disable=SC2206
+                # shellcheck disable=SC2207
+                local functions_to_run=($filtered_functions)
+                for fn_name in "${functions_to_run[@]}"; do
+                    local provider_data=()
+                    while IFS=" " read -r line; do
+                        provider_data+=("$line")
+                    done <<< "$(helper::get_provider_data "$fn_name" "$file")"
+
+                    if [[ "${#provider_data[@]}" -eq 0 ]]; then
+                        count=$((count + 1))
+                    else
+                        count=$((count + ${#provider_data[@]}))
+                    fi
+                done
+            fi
+
+            echo "$count"
+        ) )
+
+        total_count=$((total_count + file_count))
+    done
+
+    echo "$total_count"
 }
 
 function helper::load_test_files() {
@@ -1453,6 +1550,25 @@ function helper::load_test_files() {
   fi
 
   printf "%s\n" "${test_files[@]}"
+}
+
+function helper::load_bench_files() {
+  local filter=$1
+  local files=("${@:2}")
+
+  local bench_files=()
+
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    if [[ -n "${BASHUNIT_DEFAULT_PATH}" ]]; then
+      while IFS='' read -r line; do
+        bench_files+=("$line")
+      done < <(helper::find_files_recursive "$BASHUNIT_DEFAULT_PATH" '*[bB]ench.sh')
+    fi
+  else
+    bench_files=("${files[@]}")
+  fi
+
+  printf "%s\n" "${bench_files[@]}"
 }
 
 # upgrade.sh
@@ -2242,6 +2358,40 @@ function assert_is_directory_not_writable() {
 
 # assert_snapshot.sh
 
+function snapshot::match_with_placeholder() {
+  local actual="$1"
+  local snapshot="$2"
+  local placeholder="${BASHUNIT_SNAPSHOT_PLACEHOLDER:-::ignore::}"
+  local token="__BASHUNIT_IGNORE__"
+
+  local sanitized_snapshot="${snapshot//$placeholder/$token}"
+  local regex
+  regex=$(printf '%s' "$sanitized_snapshot" | sed -e 's/[.[\\^$*+?{}()|]/\\&/g')
+  regex="${regex//$token/(.|\\n)*}"
+  regex="^${regex}$"
+
+  if command -v perl >/dev/null 2>&1; then
+    if REGEX="$regex" perl -0 -e 'my $r=$ENV{REGEX}; exit((join("",<>)) =~ /$r/s ? 0 : 1);' <<< "$actual"; then
+      return 0
+    else
+      return 1
+    fi
+  else
+    # fallback: only supports single-line ignores
+    local fallback_pattern
+    fallback_pattern=$(printf '%s' "$snapshot" | sed "s|$placeholder|.*|g")
+    # escape other special regex chars
+    fallback_pattern=$(printf '%s' "$fallback_pattern" | sed -e 's/[][\.^$*+?{}|()]/\\&/g')
+    fallback_pattern="^${fallback_pattern}$"
+
+    if printf '%s\n' "$actual" | grep -Eq "$fallback_pattern"; then
+      return 0
+    else
+      return 1
+    fi
+  fi
+}
+
 function assert_match_snapshot() {
   local actual
   actual=$(echo -n "$1" | tr -d '\r')
@@ -2265,7 +2415,7 @@ function assert_match_snapshot() {
   local snapshot
   snapshot=$(tr -d '\r' < "$snapshot_file")
 
-  if [[ "$actual" != "$snapshot" ]]; then
+  if ! snapshot::match_with_placeholder "$actual" "$snapshot"; then
     local label
     label=$(helper::normalize_test_function_name "${FUNCNAME[1]}")
 
@@ -2302,7 +2452,7 @@ function assert_match_snapshot_ignore_colors() {
   local snapshot
   snapshot=$(tr -d '\r' < "$snapshot_file")
 
-  if [[ "$actual" != "$snapshot" ]]; then
+  if ! snapshot::match_with_placeholder "$actual" "$snapshot"; then
     local label
     label=$(helper::normalize_test_function_name "${FUNCNAME[1]}")
 
@@ -2415,7 +2565,7 @@ function assert_have_been_called() {
 
   if [[ $times -eq 0 ]]; then
     state::add_assertions_failed
-    console_results::print_failed_test "${label}" "${command}" "to has been called" "once"
+    console_results::print_failed_test "${label}" "${command}" "to have been called" "once"
     return
   fi
 
@@ -2473,7 +2623,7 @@ function assert_have_been_called_times() {
   if [[ $times -ne $expected ]]; then
     state::add_assertions_failed
     console_results::print_failed_test "${label}" "${command}" \
-      "to has been called" "${expected} times" \
+      "to have been called" "${expected} times" \
       "actual" "${times} times"
     return
   fi
@@ -2716,6 +2866,22 @@ function runner::load_test_files() {
   fi
 }
 
+function runner::load_bench_files() {
+  local filter=$1
+  shift
+  local files=("${@}")
+
+  for bench_file in "${files[@]}"; do
+    [[ -f $bench_file ]] || continue
+    # shellcheck source=/dev/null
+    source "$bench_file"
+    runner::run_set_up_before_script
+    runner::call_bench_functions "$bench_file" "$filter"
+    runner::run_tear_down_after_script
+    runner::clean_set_up_and_tear_down_after_script
+  done
+}
+
 function runner::spinner() {
   if env::is_simple_output_enabled; then
     printf "\n"
@@ -2788,6 +2954,35 @@ function runner::call_test_functions() {
         runner::run_test "$script" "$fn_name" "$data"
       fi
     done
+    unset fn_name
+  done
+
+  if ! env::is_simple_output_enabled; then
+    echo ""
+  fi
+}
+
+function runner::call_bench_functions() {
+  local script="$1"
+  local filter="$2"
+  local prefix="bench"
+
+  local all_fn_names=$(declare -F | awk '{print $3}')
+  local filtered_functions=$(helper::get_functions_to_run "$prefix" "$filter" "$all_fn_names")
+  # shellcheck disable=SC2207
+  local functions_to_run=($(runner::functions_for_script "$script" "$filtered_functions"))
+
+  if [[ "${#functions_to_run[@]}" -le 0 ]]; then
+    return
+  fi
+
+  if env::is_bench_mode_enabled; then
+    runner::render_running_file_header "$script"
+  fi
+
+  for fn_name in "${functions_to_run[@]}"; do
+    read -r revs its max_ms <<< "$(benchmark::parse_annotations "$fn_name" "$script")"
+    benchmark::run_function "$fn_name" "$revs" "$its" "$max_ms"
     unset fn_name
   done
 
@@ -3014,13 +3209,19 @@ function runner::parse_result_parallel() {
   sanitized_args=$(echo "${args[*]}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//')
   local template
   if [[ -z "$sanitized_args" ]]; then
-    template="${fn_name}.XXXXXX.result"
+    template="${fn_name}.XXXXXX"
   else
-    template="${fn_name}-${sanitized_args}.XXXXXX.result"
+    template="${fn_name}-${sanitized_args}.XXXXXX"
   fi
 
   local unique_test_result_file
-  unique_test_result_file=$(mktemp -p "$test_suite_dir" "$template")
+  if unique_test_result_file=$(mktemp -p "$test_suite_dir" "$template" 2>/dev/null); then
+    true
+  else
+    unique_test_result_file=$(mktemp "$test_suite_dir/$template")
+  fi
+  mv "$unique_test_result_file" "${unique_test_result_file}.result"
+  unique_test_result_file="${unique_test_result_file}.result"
 
   log "debug" "[PARA]" "fn_name:$fn_name" "execution_result:$execution_result"
 
@@ -3208,6 +3409,30 @@ function main::exec_tests() {
   exit $exit_code
 }
 
+function main::exec_benchmarks() {
+  local filter=$1
+  local files=("${@:2}")
+
+  local bench_files=()
+  while IFS= read -r line; do
+    bench_files+=("$line")
+  done < <(helper::load_bench_files "$filter" "${files[@]}")
+
+  if [[ ${#bench_files[@]} -eq 0 || -z "${bench_files[0]}" ]]; then
+    printf "%sError: At least one file path is required.%s\n" "${_COLOR_FAILED}" "${_COLOR_DEFAULT}"
+    console_header::print_help
+    exit 1
+  fi
+
+  console_header::print_version_with_env "$filter" "${bench_files[@]}"
+
+  runner::load_bench_files "$filter" "${bench_files[@]}"
+
+  benchmark::print_results
+
+  cleanup_temp_files
+}
+
 function main::cleanup() {
   printf "%sCaught Ctrl-C, killing all child processes...%s\n"  "${_COLOR_SKIPPED}" "${_COLOR_DEFAULT}"
   # Kill all child processes of this script
@@ -3304,7 +3529,7 @@ function main::handle_assert_exit_code() {
 set -euo pipefail
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.20.0"
+declare -r BASHUNIT_VERSION="0.21.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
@@ -3313,14 +3538,16 @@ export BASHUNIT_ROOT_DIR
 
 _ASSERT_FN=""
 _FILTER=""
+_RAW_ARGS=()
 _ARGS=()
+_BENCH_MODE=false
 
 check_os::init
 clock::init
 
+# Argument parsing
 while [[ $# -gt 0 ]]; do
-  argument="$1"
-  case $argument in
+  case "$1" in
     -a|--assert)
       _ASSERT_FN="$2"
       shift
@@ -3337,10 +3564,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --debug)
       OUTPUT_FILE="${2:-}"
-      if [[ -n $OUTPUT_FILE ]]; then
+      if [[ -n "$OUTPUT_FILE" ]]; then
         exec > "$OUTPUT_FILE" 2>&1
       fi
       set -x
+      ;;
+    -b|--bench)
+      _BENCH_MODE=true
+      export BASHUNIT_BENCH_MODE=true
+      source "$BASHUNIT_ROOT_DIR/src/benchmark.sh"
       ;;
     -S|--stop-on-failure)
       export BASHUNIT_STOP_ON_FAILURE=true
@@ -3357,11 +3589,11 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -l|--log-junit)
-      export BASHUNIT_LOG_JUNIT="$2";
+      export BASHUNIT_LOG_JUNIT="$2"
       shift
       ;;
     -r|--report-html)
-      export BASHUNIT_REPORT_HTML="$2";
+      export BASHUNIT_REPORT_HTML="$2"
       shift
       ;;
     -vvv|--verbose)
@@ -3380,21 +3612,36 @@ while [[ $# -gt 0 ]]; do
       trap '' EXIT && exit 0
       ;;
     *)
-      while IFS='' read -r line; do
-        _ARGS+=("$line");
-      done < <(helper::find_files_recursive "$argument")
+      _RAW_ARGS+=("$1")
       ;;
   esac
   shift
 done
 
+# Expand positional arguments after all options have been processed
+if [[ ${#_RAW_ARGS[@]} -gt 0 ]]; then
+  pattern='*[tT]est.sh'
+  [[ "$_BENCH_MODE" == true ]] && pattern='*[bB]ench.sh'
+  for arg in "${_RAW_ARGS[@]}"; do
+    while IFS= read -r file; do
+      _ARGS+=("$file")
+    done < <(helper::find_files_recursive "$arg" "$pattern")
+  done
+fi
+
+# Optional bootstrap
 # shellcheck disable=SC1090
-[[ -f "$BASHUNIT_BOOTSTRAP" ]] && source "$BASHUNIT_BOOTSTRAP"
+[[ -f "${BASHUNIT_BOOTSTRAP:-}" ]] && source "$BASHUNIT_BOOTSTRAP"
 
 set +eu
 
+#################
+# Main execution
+#################
 if [[ -n "$_ASSERT_FN" ]]; then
   main::exec_assert "$_ASSERT_FN" "${_ARGS[@]}"
+elif [[ "$_BENCH_MODE" == true ]]; then
+  main::exec_benchmarks "$_FILTER" "${_ARGS[@]}"
 else
   main::exec_tests "$_FILTER" "${_ARGS[@]}"
 fi
