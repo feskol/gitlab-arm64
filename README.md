@@ -34,17 +34,6 @@
 [support-paypal-me]: https://paypal.me/feskol
 [support-badge-paypal-me]: https://img.shields.io/badge/PayPal_Me-003087?logo=paypal&logoColor=fff
 
-> [!NOTE]  
-> Starting with GitLab version `18.1`, GitLab will provide **official ARM64 Docker images**.
-> 
-> This repository will continue to be maintained for users who prefer our custom tags or need more time to transition to the official images.  
-> From now on, all new GitLab versions that support official ARM64 images will use those images when creating our tags, ensuring compatibility and reliability.  
-> Essentially, you'll be using GitLab’s official images — just with the added flexibility of our tagging system.
-> 
-> If you’d like to switch directly to the official Docker images:
->  - [Official Gitlab CE tags](https://hub.docker.com/r/gitlab/gitlab-ce/tags)
->  - [Official Gitlab EE tags](https://hub.docker.com/r/gitlab/gitlab-ee/tags)
-
 ## 🚀 Overview
 
 This repository provides **GitLab Docker images for the ARM64 architecture**.
