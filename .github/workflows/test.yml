@@ -11,25 +11,9 @@ name: Test
 
 on:
   push:
-    paths-ignore:
-      - '.github/ISSUE_TEMPLATE/*'
-      - '.github/generated-files/*'
-      - '.editorconfig'
-      - '.gitignore'
-      - '*.md'
-      - 'docker-compose.yaml'
-      - 'LICENSE'
     branches-ignore:
       - 'main' # This excludes the 'main' branch
   pull_request:
-    paths-ignore:
-      - '.github/ISSUE_TEMPLATE/*'
-      - '.github/generated-files/*'
-      - '.editorconfig'
-      - '.gitignore'
-      - '*.md'
-      - 'docker-compose.yaml'
-      - 'LICENSE'
 
 jobs:
   test-scripts:
