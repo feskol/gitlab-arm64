@@ -162,7 +162,7 @@ that the Docker images can run seamlessly on both AMD64 and ARM64 architectures.
 
 ### Supported Architectures
 
-- **ARM64**: Optimized for ARM64 systems.
+- **ARM64**: Optimized for ARM64 systems. (Since `>= 18.1` also using the official GitLab Docker image)
 - **AMD64**: Uses the official GitLab Docker image.
 
 ### Benefits
@@ -172,7 +172,7 @@ that the Docker images can run seamlessly on both AMD64 and ARM64 architectures.
 
 ### How It Works
 
-The build process creates a docker manifest for multi-arch images. For **AMD64**, the process leverages the official
+The build process creates a docker manifest for multi-arch images. For **AMD64** and **ARM64** (since version `>= 18.1`), the process leverages the official
 GitLab Docker image to ensure compatibility and reliability.
 
 ### Usage
@@ -294,7 +294,7 @@ docker compose run --rm test
 docker compose run --rm test ../lib/bashunit ./unit/workflows/build
 ```
 
-If you encounter errors, try using the `--verbose` option for more details.
+If you encounter errors, try using the `--verbose` option for more details:
 
 ```bash
 docker compose run --rm test ../lib/bashunit --verbose ./unit
