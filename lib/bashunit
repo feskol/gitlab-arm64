@@ -442,6 +442,7 @@ _DEFAULT_STOP_ON_FAILURE="false"
 _DEFAULT_SHOW_EXECUTION_TIME="true"
 _DEFAULT_VERBOSE="false"
 _DEFAULT_BENCH_MODE="false"
+_DEFAULT_NO_OUTPUT="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_SHOW_HEADER:=${SHOW_HEADER:=$_DEFAULT_SHOW_HEADER}}"
@@ -451,6 +452,7 @@ _DEFAULT_BENCH_MODE="false"
 : "${BASHUNIT_SHOW_EXECUTION_TIME:=${SHOW_EXECUTION_TIME:=$_DEFAULT_SHOW_EXECUTION_TIME}}"
 : "${BASHUNIT_VERBOSE:=${VERBOSE:=$_DEFAULT_VERBOSE}}"
 : "${BASHUNIT_BENCH_MODE:=${BENCH_MODE:=$_DEFAULT_BENCH_MODE}}"
+: "${BASHUNIT_NO_OUTPUT:=${NO_OUTPUT:=$_DEFAULT_NO_OUTPUT}}"
 
 function env::is_parallel_run_enabled() {
   [[ "$BASHUNIT_PARALLEL_RUN" == "true" ]]
@@ -488,6 +490,10 @@ function env::is_bench_mode_enabled() {
   [[ "$BASHUNIT_BENCH_MODE" == "true" ]]
 }
 
+function env::is_no_output_enabled() {
+  [[ "$BASHUNIT_NO_OUTPUT" == "true" ]]
+}
+
 function env::active_internet_connection() {
   if ping -c 1 -W 3 google.com &> /dev/null; then
     return 0
@@ -499,10 +505,11 @@ function env::active_internet_connection() {
 function env::find_terminal_width() {
   local cols=""
 
-  if [[ -z "$cols" ]] && command -v stty > /dev/null; then
+  if [[ -z "$cols" ]] && command -v tput > /dev/null; then
     cols=$(tput cols 2>/dev/null)
   fi
-  if [[ -n "$TERM" ]] && command -v tput > /dev/null; then
+
+  if [[ -z "$cols" ]] && command -v stty > /dev/null; then
     cols=$(stty size 2>/dev/null | cut -d' ' -f2)
   fi
 
@@ -550,67 +557,105 @@ CAT="$(which cat)"
 
 # clock.sh
 
-function clock::now() {
+_CLOCK_NOW_IMPL=""
+
+function clock::_choose_impl() {
   local shell_time
   local attempts=()
 
-  # 1. Try using native shell EPOCHREALTIME (if available)
-  attempts+=("EPOCHREALTIME")
-  if shell_time="$(clock::shell_time)"; then
-    local seconds="${shell_time%%.*}"
-    local microseconds="${shell_time#*.}"
-    math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
-    return 0
-  fi
-
-  # 2. Try Perl with Time::HiRes
+  # 1. Try Perl with Time::HiRes
   attempts+=("Perl")
   if dependencies::has_perl && perl -MTime::HiRes -e "" &>/dev/null; then
-    perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000000000)' && return 0
-  fi
-
-  # 3. Try Python 3 with time module
-  attempts+=("Python")
-  if dependencies::has_python; then
-    python - <<'EOF'
-import time, sys
-sys.stdout.write(str(int(time.time() * 1_000_000_000)))
-EOF
+    _CLOCK_NOW_IMPL="perl"
     return 0
   fi
 
-  # 4. Try Node.js
-  attempts+=("Node")
-  if dependencies::has_node; then
-    node -e 'process.stdout.write((BigInt(Date.now()) * 1000000n).toString())' && return 0
-  fi
-  # 5. Windows fallback with PowerShell
-  attempts+=("PowerShell")
-  if check_os::is_windows && dependencies::has_powershell; then
-    powershell -Command "
-      \$unixEpoch = [DateTime]'1970-01-01 00:00:00';
-      \$now = [DateTime]::UtcNow;
-      \$ticksSinceEpoch = (\$now - \$unixEpoch).Ticks;
-      \$nanosecondsSinceEpoch = \$ticksSinceEpoch * 100;
-      Write-Output \$nanosecondsSinceEpoch
-    " && return 0
+  # 2. Try Python 3 with time module
+  attempts+=("Python")
+  if dependencies::has_python; then
+    _CLOCK_NOW_IMPL="python"
+    return 0
   fi
 
-  # 6. Unix fallback using `date +%s%N` (if not macOS or Alpine)
+  # 3. Try Node.js
+  attempts+=("Node")
+  if dependencies::has_node; then
+    _CLOCK_NOW_IMPL="node"
+    return 0
+  fi
+  # 4. Windows fallback with PowerShell
+  attempts+=("PowerShell")
+  if check_os::is_windows && dependencies::has_powershell; then
+    _CLOCK_NOW_IMPL="powershell"
+    return 0
+  fi
+
+  # 5. Unix fallback using `date +%s%N` (if not macOS or Alpine)
   attempts+=("date")
   if ! check_os::is_macos && ! check_os::is_alpine; then
     local result
     result=$(date +%s%N 2>/dev/null)
     if [[ "$result" != *N && "$result" =~ ^[0-9]+$ ]]; then
-      echo "$result"
+      _CLOCK_NOW_IMPL="date"
       return 0
     fi
+  fi
+
+  # 6. Try using native shell EPOCHREALTIME (if available)
+  attempts+=("EPOCHREALTIME")
+  if shell_time="$(clock::shell_time)"; then
+    _CLOCK_NOW_IMPL="shell"
+    return 0
   fi
 
   # 7. All methods failed
   printf "clock::now implementations tried: %s\n" "${attempts[*]}" >&2
   echo ""
   return 1
+}
+
+function clock::now() {
+  if [[ -z "$_CLOCK_NOW_IMPL" ]]; then
+    clock::_choose_impl || return 1
+  fi
+
+  case "$_CLOCK_NOW_IMPL" in
+    perl)
+      perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000000000)'
+      ;;
+    python)
+      python - <<'EOF'
+import time, sys
+sys.stdout.write(str(int(time.time() * 1_000_000_000)))
+EOF
+      ;;
+    node)
+      node -e 'process.stdout.write((BigInt(Date.now()) * 1000000n).toString())'
+      ;;
+    powershell)
+      powershell -Command "\
+        \$unixEpoch = [DateTime]'1970-01-01 00:00:00';\
+        \$now = [DateTime]::UtcNow;\
+        \$ticksSinceEpoch = (\$now - \$unixEpoch).Ticks;\
+        \$nanosecondsSinceEpoch = \$ticksSinceEpoch * 100;\
+        Write-Output \$nanosecondsSinceEpoch\
+      "
+      ;;
+    date)
+      date +%s%N
+      ;;
+    shell)
+      # shellcheck disable=SC2155
+      local shell_time="$(clock::shell_time)"
+      local seconds="${shell_time%%.*}"
+      local microseconds="${shell_time#*.}"
+      math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
+      ;;
+    *)
+      clock::_choose_impl || return 1
+      clock::now
+      ;;
+  esac
 }
 
 function clock::shell_time() {
@@ -954,55 +999,63 @@ EOF
 
 function console_header::print_help() {
     cat <<EOF
-bashunit [arguments] [options]
+Usage:
+  bashunit [PATH] [OPTIONS]
 
 Arguments:
-  Specifies the directory or file containing the tests to run.
-  If a directory is specified, it will execute the tests within files ending with test.sh.
-  If you use wildcards, bashunit will run any tests it finds.
+  PATH                      File or directory containing tests.
+                            - Directories: runs all '*test.sh' files.
+                            - Wildcards: supported to match multiple test files.
+                            - Default search path is 'tests'
 
 Options:
-  -a, --assert <function ...args>
-    Run a core assert function standalone without a test context.
+  -a, --assert <function args>
+                            Run a core assert function standalone (outside test context).
 
-  -e, --env, --boot <file-path>
-    Load a custom file, overriding the existing .env variables or loading a file with global functions.
+  -b, --bench [file]
+                            Run benchmark functions from file or '*.bench.sh' under
+                            BASHUNIT_DEFAULT_PATH when no file is provided.
 
-  -f, --filter <filter>
-    Filters the tests to run based on the test name.
+  --debug [file]
+                            Enable shell debug mode. Logs to file if provided.
 
-  -l, --log-junit <out.xml>
-    Create a report JUnit XML file that contains information about the test results.
+  -e, --env, --boot <file>
+                            Load a custom env/bootstrap file to override .env or define globals.
 
-  -p, --parallel || --no-parallel [default]
-    Run each test in child process, randomizing the tests execution order.
-
-  -r, --report-html <out.html>
-    Create a report HTML file that contains information about the test results.
-
-  -s, --simple || --detailed [default]
-    Enables simple or detailed output to the console.
-
-  -S, --stop-on-failure
-    Force to stop the runner right after encountering one failing test.
-
-  --debug <?file-path>
-    Print all executed shell commands to the terminal.
-    If a file-path is passed, it will redirect the output to that file.
-
-  -vvv, --verbose
-    Display internal details for each test.
-
-  --version
-    Displays the current version of bashunit.
-
-  --upgrade
-    Upgrade to latest version of bashunit.
+  -f, --filter <name>
+                            Only run tests matching the given name.
 
   -h, --help
-    This message.
+                            Show this help message.
 
-See more: https://bashunit.typeddevs.com/command-line
+  --init [dir]
+                            Generate a sample test suite in current or specified directory.
+
+  -l, --log-junit <file>
+                            Write test results as JUnit XML report.
+
+  -p, --parallel | --no-parallel
+                            Run tests in parallel (default: enabled). Random execution order.
+
+  -r, --report-html <file>
+                            Write test results as an HTML report.
+
+  -s, --simple | --detailed
+                            Choose console output style (default: detailed).
+
+  -S, --stop-on-failure
+                            Stop execution immediately on the first failing test.
+
+  --upgrade
+                            Upgrade bashunit to the latest version.
+
+  -vvv, --verbose
+                            Show internal execution details per test.
+
+  --version
+                            Display the current version of bashunit.
+
+More info: https://bashunit.typeddevs.com/command-line
 EOF
 }
 
@@ -3313,6 +3366,54 @@ function runner::clean_set_up_and_tear_down_after_script() {
   helper::unset_if_exists 'tear_down_after_script'
 }
 
+# init.sh
+
+function init::project() {
+  local tests_dir="${1:-$BASHUNIT_DEFAULT_PATH}"
+  mkdir -p "$tests_dir"
+
+  local bootstrap_file="$tests_dir/bootstrap.sh"
+  if [[ ! -f "$bootstrap_file" ]]; then
+    cat >"$bootstrap_file" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+# Place your common test setup here
+SH
+    chmod +x "$bootstrap_file"
+    echo "> Created $bootstrap_file"
+  fi
+
+  local example_test="$tests_dir/example_test.sh"
+  if [[ ! -f "$example_test" ]]; then
+    cat >"$example_test" <<'SH'
+#!/usr/bin/env bash
+
+function test_bashunit_is_installed() {
+  assert_same "bashunit is installed" "bashunit is installed"
+}
+SH
+    chmod +x "$example_test"
+    echo "> Created $example_test"
+  fi
+
+  local env_file=".env"
+  local env_line="BASHUNIT_BOOTSTRAP=$bootstrap_file"
+  if [[ -f "$env_file" ]]; then
+    if grep -q "^BASHUNIT_BOOTSTRAP=" "$env_file"; then
+      if check_os::is_macos; then
+        sed -i '' -e "s/^BASHUNIT_BOOTSTRAP=/#&/" "$env_file"
+      else
+        sed -i -e "s/^BASHUNIT_BOOTSTRAP=/#&/" "$env_file"
+      fi
+    fi
+    echo "$env_line" >> "$env_file"
+  else
+    echo "$env_line" > "$env_file"
+  fi
+
+  echo "> bashunit initialized in $tests_dir"
+}
+
 # bashunit.sh
 
 # This file provides a facade to developers who wants
@@ -3529,7 +3630,7 @@ function main::handle_assert_exit_code() {
 set -euo pipefail
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.21.0"
+declare -r BASHUNIT_VERSION="0.22.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
@@ -3596,6 +3697,9 @@ while [[ $# -gt 0 ]]; do
       export BASHUNIT_REPORT_HTML="$2"
       shift
       ;;
+    --no-output)
+      export BASHUNIT_NO_OUTPUT=true
+      ;;
     -vvv|--verbose)
       export BASHUNIT_VERBOSE=true
       ;;
@@ -3605,6 +3709,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --upgrade)
       upgrade::upgrade
+      trap '' EXIT && exit 0
+      ;;
+    --init)
+      if [[ -n ${2:-} && ${2:0:1} != "-" ]]; then
+        init::project "$2"
+        shift
+      else
+        init::project
+      fi
       trap '' EXIT && exit 0
       ;;
     -h|--help)
@@ -3632,6 +3745,10 @@ fi
 # Optional bootstrap
 # shellcheck disable=SC1090
 [[ -f "${BASHUNIT_BOOTSTRAP:-}" ]] && source "$BASHUNIT_BOOTSTRAP"
+
+if [[ "${BASHUNIT_NO_OUTPUT:-false}" == true ]]; then
+  exec >/dev/null 2>&1
+fi
 
 set +eu
 
