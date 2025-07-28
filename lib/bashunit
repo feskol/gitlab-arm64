@@ -12,6 +12,8 @@ function check_os::init() {
       _DISTRO="Ubuntu"
     elif check_os::is_alpine; then
       _DISTRO="Alpine"
+    elif check_os::is_nixos; then
+      _DISTRO="NixOS"
     else
       _DISTRO="Other"
     fi
@@ -31,6 +33,11 @@ function check_os::is_ubuntu() {
 
 function check_os::is_alpine() {
   command -v apk > /dev/null
+}
+
+function check_os::is_nixos() {
+  [[ -f /etc/NIXOS ]] && return 0
+  grep -q '^ID=nixos' /etc/os-release 2>/dev/null
 }
 
 function check_os::is_linux() {
@@ -72,6 +79,7 @@ export _DISTRO
 export -f check_os::is_alpine
 export -f check_os::is_busybox
 export -f check_os::is_ubuntu
+export -f check_os::is_nixos
 
 # str.sh
 
@@ -81,6 +89,9 @@ function str::rpad() {
   local width_padding="${3:-$TERMINAL_WIDTH}"
   # Subtract 1 more to account for the extra space
   local padding=$((width_padding - ${#right_word} - 1))
+  if (( padding < 0 )); then
+    padding=0
+  fi
 
   # Remove ANSI escape sequences (non-visible characters) for length calculation
   # shellcheck disable=SC2155
@@ -89,7 +100,7 @@ function str::rpad() {
   local is_truncated=false
   # If the visible left text exceeds the padding, truncate it and add "..."
   if [[ ${#clean_left_text} -gt $padding ]]; then
-    local truncation_length=$((padding - 3))  # Subtract 3 for "..."
+    local truncation_length=$((padding < 3 ? 0 : padding - 3))
     clean_left_text="${clean_left_text:0:$truncation_length}"
     is_truncated=true
   fi
@@ -182,29 +193,32 @@ function random_str() {
 
 function temp_file() {
   local prefix=${1:-bashunit}
-  mkdir -p /tmp/bashunit/tmp && chmod -R 777 /tmp/bashunit/tmp
+  local base_dir="${TMPDIR:-/tmp}/bashunit/tmp"
+  mkdir -p "$base_dir" && chmod -R 777 "$base_dir"
   local test_prefix=""
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
     test_prefix="${BASHUNIT_CURRENT_TEST_ID}_"
   fi
-  mktemp /tmp/bashunit/tmp/"${test_prefix}${prefix}".XXXXXXX
+  mktemp "$base_dir/${test_prefix}${prefix}.XXXXXXX"
 }
 
 function temp_dir() {
   local prefix=${1:-bashunit}
-  mkdir -p /tmp/bashunit/tmp && chmod -R 777 /tmp/bashunit/tmp
+  local base_dir="${TMPDIR:-/tmp}/bashunit/tmp"
+  mkdir -p "$base_dir" && chmod -R 777 "$base_dir"
   local test_prefix=""
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
     test_prefix="${BASHUNIT_CURRENT_TEST_ID}_"
   fi
-  mktemp -d /tmp/bashunit/tmp/"${test_prefix}${prefix}".XXXXXXX
+  mktemp -d "$base_dir/${test_prefix}${prefix}.XXXXXXX"
 }
 
 function cleanup_temp_files() {
+  internal_log "cleanup_temp_files"
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
-    rm -rf /tmp/bashunit/tmp/"${BASHUNIT_CURRENT_TEST_ID}"_*
+    rm -rf "${TMPDIR:-/tmp}/bashunit/tmp/${BASHUNIT_CURRENT_TEST_ID}"_*
   else
-    rm -rf /tmp/bashunit/tmp/*
+    rm -rf "${TMPDIR:-/tmp}/bashunit/tmp"/*
   fi
 }
 
@@ -226,9 +240,15 @@ function log() {
     *) set -- "$level $@"; level="INFO" ;;
   esac
 
-  local GRAY='\033[1;30m'
-  local RESET='\033[0m'
-  echo -e "$(current_timestamp) [$level]: $@ ${GRAY}#${BASH_SOURCE[1]}:${BASH_LINENO[0]}${RESET}" >> "$BASHUNIT_DEV_LOG"
+  echo "$(current_timestamp) [$level]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >> "$BASHUNIT_DEV_LOG"
+}
+
+function internal_log() {
+  if ! env::is_dev_mode_enabled || ! env::is_internal_log_enabled; then
+    return
+  fi
+
+  echo "$(current_timestamp) [INTERNAL]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >> "$BASHUNIT_DEV_LOG"
 }
 
 function print_line() {
@@ -296,21 +316,36 @@ function io::download_to() {
 
 # math.sh
 
-if dependencies::has_bc; then
-  # bc is better than awk because bc has no integer limits.
-  function math::calculate() {
-    echo "$*" | bc
-  }
-elif dependencies::has_awk; then
-  function math::calculate() {
-    awk "BEGIN { print ""$*"" }"
-  }
-fi
+function math::calculate() {
+  local expr="$*"
+
+  if dependencies::has_bc; then
+    echo "$expr" | bc
+    return
+  fi
+
+  if [[ "$expr" == *.* ]]; then
+    if dependencies::has_awk; then
+      awk "BEGIN { print ($expr) }"
+      return
+    fi
+    # Downgrade to integer math by stripping decimals
+    expr=$(echo "$expr" | sed -E 's/([0-9]+)\.[0-9]+/\1/g')
+  fi
+
+  # Remove leading zeros from integers
+  expr=$(echo "$expr" | sed -E 's/\b0*([1-9][0-9]*)/\1/g')
+
+  local result=$(( expr ))
+  echo "$result"
+}
 
 # parallel.sh
 
 function parallel::aggregate_test_results() {
   local temp_dir_parallel_test_suite=$1
+
+  internal_log "aggregate_test_results" "dir:$temp_dir_parallel_test_suite"
 
   local total_failed=0
   local total_passed=0
@@ -319,12 +354,16 @@ function parallel::aggregate_test_results() {
   local total_snapshot=0
 
   for script_dir in "$temp_dir_parallel_test_suite"/*; do
-    if ! compgen -G "$script_dir"/*.result > /dev/null; then
+    shopt -s nullglob
+    local result_files=("$script_dir"/*.result)
+    shopt -u nullglob
+
+    if [ ${#result_files[@]} -eq 0 ]; then
       printf "%sNo tests found%s" "$_COLOR_SKIPPED" "$_COLOR_DEFAULT"
       continue
     fi
 
-    for result_file in "$script_dir"/*.result; do
+    for result_file in "${result_files[@]}"; do
       local result_line
       result_line=$(tail -n 1 "$result_file")
 
@@ -387,6 +426,13 @@ function parallel::aggregate_test_results() {
   export _ASSERTIONS_SKIPPED=$total_skipped
   export _ASSERTIONS_INCOMPLETE=$total_incomplete
   export _ASSERTIONS_SNAPSHOT=$total_snapshot
+
+  internal_log "aggregate_totals" \
+    "failed:$total_failed" \
+    "passed:$total_passed" \
+    "skipped:$total_skipped" \
+    "incomplete:$total_incomplete" \
+    "snapshot:$total_snapshot"
 }
 
 function parallel::mark_stop_on_failure() {
@@ -405,6 +451,8 @@ function parallel::reset() {
 }
 
 function parallel::is_enabled() {
+  internal_log "parallel::is_enabled" "requested:$BASHUNIT_PARALLEL_RUN" "os:${_OS:-Unknown}"
+
   if env::is_parallel_run_enabled && \
     (check_os::is_macos || check_os::is_ubuntu || check_os::is_windows); then
     return 0
@@ -418,7 +466,7 @@ function parallel::is_enabled() {
 
 set -o allexport
 # shellcheck source=/dev/null
-[[ -f ".env" ]] && source .env set
+[[ -f ".env" ]] && source .env
 set +o allexport
 
 _DEFAULT_DEFAULT_PATH="tests"
@@ -443,6 +491,7 @@ _DEFAULT_SHOW_EXECUTION_TIME="true"
 _DEFAULT_VERBOSE="false"
 _DEFAULT_BENCH_MODE="false"
 _DEFAULT_NO_OUTPUT="false"
+_DEFAULT_INTERNAL_LOG="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_SHOW_HEADER:=${SHOW_HEADER:=$_DEFAULT_SHOW_HEADER}}"
@@ -453,6 +502,7 @@ _DEFAULT_NO_OUTPUT="false"
 : "${BASHUNIT_VERBOSE:=${VERBOSE:=$_DEFAULT_VERBOSE}}"
 : "${BASHUNIT_BENCH_MODE:=${BENCH_MODE:=$_DEFAULT_BENCH_MODE}}"
 : "${BASHUNIT_NO_OUTPUT:=${NO_OUTPUT:=$_DEFAULT_NO_OUTPUT}}"
+: "${BASHUNIT_INTERNAL_LOG:=${INTERNAL_LOG:=$_DEFAULT_INTERNAL_LOG}}"
 
 function env::is_parallel_run_enabled() {
   [[ "$BASHUNIT_PARALLEL_RUN" == "true" ]]
@@ -482,6 +532,10 @@ function env::is_dev_mode_enabled() {
   [[ -n "$BASHUNIT_DEV_LOG" ]]
 }
 
+function env::is_internal_log_enabled() {
+  [[ "$BASHUNIT_INTERNAL_LOG" == "true" ]]
+}
+
 function env::is_verbose_enabled() {
   [[ "$BASHUNIT_VERBOSE" == "true" ]]
 }
@@ -495,6 +549,16 @@ function env::is_no_output_enabled() {
 }
 
 function env::active_internet_connection() {
+  if [[ "${BASHUNIT_NO_NETWORK:-}" == "true" ]]; then
+    return 1
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -sfI https://github.com >/dev/null 2>&1 && return 0
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q --spider https://github.com && return 0
+  fi
+
   if ping -c 1 -W 3 google.com &> /dev/null; then
     return 0
   fi
@@ -518,6 +582,7 @@ function env::find_terminal_width() {
 }
 
 function env::print_verbose() {
+  internal_log "Printing verbose environment variables"
   local keys=(
     "BASHUNIT_DEFAULT_PATH"
     "BASHUNIT_DEV_LOG"
@@ -542,6 +607,7 @@ function env::print_verbose() {
   done
 
   for key in "${keys[@]}"; do
+    internal_log "$key=${!key}"
     printf "%s:%*s%s\n" "$key" $((max_length - ${#key} + 1)) "" "${!key}"
   done
 }
@@ -549,11 +615,15 @@ function env::print_verbose() {
 EXIT_CODE_STOP_ON_FAILURE=4
 # Use a unique directory per run to avoid conflicts when bashunit is invoked
 # recursively or multiple instances are executed in parallel.
-TEMP_DIR_PARALLEL_TEST_SUITE="/tmp/bashunit/parallel/${_OS:-Unknown}/$(random_str 8)"
+TEMP_DIR_PARALLEL_TEST_SUITE="${TMPDIR:-/tmp}/bashunit/parallel/${_OS:-Unknown}/$(random_str 8)"
 TEMP_FILE_PARALLEL_STOP_ON_FAILURE="$TEMP_DIR_PARALLEL_TEST_SUITE/.stop-on-failure"
 TERMINAL_WIDTH="$(env::find_terminal_width)"
 FAILURES_OUTPUT_PATH=$(mktemp)
-CAT="$(which cat)"
+CAT="$(command -v cat)"
+
+if env::is_dev_mode_enabled; then
+  internal_log "info" "Dev log enabled" "file:$BASHUNIT_DEV_LOG"
+fi
 
 # clock.sh
 
@@ -956,6 +1026,10 @@ function console_header::print_version_with_env() {
   fi
 
   console_header::print_version "$filter" "${files[@]}"
+
+  if env::is_dev_mode_enabled; then
+    printf "%sDev log:%s %s\n" "${_COLOR_INCOMPLETE}" "${_COLOR_DEFAULT}" "$BASHUNIT_DEV_LOG"
+  fi
 }
 
 function console_header::print_version() {
@@ -1246,6 +1320,7 @@ ${_COLOR_FAILED}✗ Failed${_COLOR_DEFAULT}: %s
 function console_results::print_failed_snapshot_test() {
   local function_name=$1
   local snapshot_file=$2
+  local actual_content=${3-}
 
   local line
   line="$(printf "${_COLOR_FAILED}✗ Failed${_COLOR_DEFAULT}: %s
@@ -1253,7 +1328,7 @@ function console_results::print_failed_snapshot_test() {
 
   if dependencies::has_git; then
     local actual_file="${snapshot_file}.tmp"
-    echo "$actual" > "$actual_file"
+    echo "$actual_content" > "$actual_file"
 
     local git_diff_output
     git_diff_output="$(git diff --no-index --word-diff --color=always \
@@ -1525,6 +1600,10 @@ function helper::trim() {
 }
 
 function helpers::get_latest_tag() {
+  if ! dependencies::has_git; then
+    return 1
+  fi
+
   git ls-remote --tags "$BASHUNIT_GIT_REPO" |
     awk '{print $2}' |
     sed 's|^refs/tags/||' |
@@ -1622,6 +1701,21 @@ function helper::load_bench_files() {
   fi
 
   printf "%s\n" "${bench_files[@]}"
+}
+
+#
+# @param $1 string function name
+# @return number line number of the function in the source file
+#
+function helper::get_function_line_number() {
+  local fn_name=$1
+
+  shopt -s extdebug
+  local line_number
+  line_number=$(declare -F "$fn_name" | awk '{print $2}')
+  shopt -u extdebug
+
+  echo "$line_number"
 }
 
 # upgrade.sh
@@ -1987,7 +2081,7 @@ function assert_string_starts_with() {
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
-  if ! [[ $actual =~ ^"$expected"* ]]; then
+  if [[ $actual != "$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
     state::add_assertions_failed
@@ -2002,7 +2096,7 @@ function assert_string_not_starts_with() {
   local expected="$1"
   local actual="$2"
 
-  if [[ $actual =~ ^"$expected"* ]]; then
+  if [[ $actual == "$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
     state::add_assertions_failed
@@ -2019,7 +2113,7 @@ function assert_string_ends_with() {
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
-  if ! [[ $actual =~ .*"$expected"$ ]]; then
+  if [[ $actual != *"$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
     state::add_assertions_failed
@@ -2036,7 +2130,7 @@ function assert_string_not_ends_with() {
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
-  if [[ $actual =~ .*"$expected"$ ]]; then
+  if [[ $actual == *"$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
     state::add_assertions_failed
@@ -2118,6 +2212,7 @@ function assert_line_count() {
   else
     local actual
     actual=$(echo "$input_str" | wc -l | tr -d '[:blank:]')
+    local additional_new_lines
     additional_new_lines=$(grep -o '\\n' <<< "$input_str" | wc -l | tr -d '[:blank:]')
     ((actual+=additional_new_lines))
   fi
@@ -2410,6 +2505,31 @@ function assert_is_directory_not_writable() {
 }
 
 # assert_snapshot.sh
+# shellcheck disable=SC2155
+
+function assert_match_snapshot() {
+  local actual=$(echo -n "$1" | tr -d '\r')
+  local snapshot_file=$(snapshot::resolve_file "${2:-}" "${FUNCNAME[1]}")
+
+  if [[ ! -f "$snapshot_file" ]]; then
+    snapshot::initialize "$snapshot_file" "$actual"
+    return
+  fi
+
+  snapshot::compare "$actual" "$snapshot_file" "${FUNCNAME[1]}"
+}
+
+function assert_match_snapshot_ignore_colors() {
+  local actual=$(echo -n "$1" | sed 's/\x1B\[[0-9;]*[mK]//g' | tr -d '\r')
+  local snapshot_file=$(snapshot::resolve_file "${2:-}" "${FUNCNAME[1]}")
+
+  if [[ ! -f "$snapshot_file" ]]; then
+    snapshot::initialize "$snapshot_file" "$actual"
+    return
+  fi
+
+  snapshot::compare "$actual" "$snapshot_file" "${FUNCNAME[1]}"
+}
 
 function snapshot::match_with_placeholder() {
   local actual="$1"
@@ -2417,102 +2537,58 @@ function snapshot::match_with_placeholder() {
   local placeholder="${BASHUNIT_SNAPSHOT_PLACEHOLDER:-::ignore::}"
   local token="__BASHUNIT_IGNORE__"
 
-  local sanitized_snapshot="${snapshot//$placeholder/$token}"
-  local regex
-  regex=$(printf '%s' "$sanitized_snapshot" | sed -e 's/[.[\\^$*+?{}()|]/\\&/g')
-  regex="${regex//$token/(.|\\n)*}"
-  regex="^${regex}$"
+  local sanitized="${snapshot//$placeholder/$token}"
+  local escaped=$(printf '%s' "$sanitized" | sed -e 's/[.[\\^$*+?{}()|]/\\&/g')
+  local regex="^${escaped//$token/(.|\\n)*}$"
 
   if command -v perl >/dev/null 2>&1; then
-    if REGEX="$regex" perl -0 -e 'my $r=$ENV{REGEX}; exit((join("",<>)) =~ /$r/s ? 0 : 1);' <<< "$actual"; then
-      return 0
-    else
-      return 1
-    fi
+    echo "$actual" | REGEX="$regex" perl -0 -e '
+      my $r = $ENV{REGEX};
+      my $input = join("", <STDIN>);
+      exit($input =~ /$r/s ? 0 : 1);
+    ' && return 0 || return 1
   else
-    # fallback: only supports single-line ignores
-    local fallback_pattern
-    fallback_pattern=$(printf '%s' "$snapshot" | sed "s|$placeholder|.*|g")
-    # escape other special regex chars
-    fallback_pattern=$(printf '%s' "$fallback_pattern" | sed -e 's/[][\.^$*+?{}|()]/\\&/g')
-    fallback_pattern="^${fallback_pattern}$"
-
-    if printf '%s\n' "$actual" | grep -Eq "$fallback_pattern"; then
-      return 0
-    else
-      return 1
-    fi
+    local fallback=$(printf '%s' "$snapshot" | sed -e "s|$placeholder|.*|g" -e 's/[][\.^$*+?{}|()]/\\&/g')
+    fallback="^${fallback}$"
+    echo "$actual" | grep -Eq "$fallback" && return 0 || return 1
   fi
 }
 
-function assert_match_snapshot() {
-  local actual
-  actual=$(echo -n "$1" | tr -d '\r')
-  local directory
-  directory="./$(dirname "${BASH_SOURCE[1]}")/snapshots"
-  local test_file
-  test_file="$(helper::normalize_variable_name "$(basename "${BASH_SOURCE[1]}")")"
-  local snapshot_name
-  snapshot_name="$(helper::normalize_variable_name "${FUNCNAME[1]}").snapshot"
-  local snapshot_file
-  snapshot_file="${directory}/${test_file}.${snapshot_name}"
+function snapshot::resolve_file() {
+  local file_hint="$1"
+  local func_name="$2"
 
-  if [[ ! -f "$snapshot_file" ]]; then
-    mkdir -p "$directory"
-    echo "$actual" > "$snapshot_file"
-
-    state::add_assertions_snapshot
-    return
+  if [[ -n "$file_hint" ]]; then
+    echo "$file_hint"
+  else
+    local dir="./$(dirname "${BASH_SOURCE[2]}")/snapshots"
+    local test_file="$(helper::normalize_variable_name "$(basename "${BASH_SOURCE[2]}")")"
+    local name="$(helper::normalize_variable_name "$func_name").snapshot"
+    echo "${dir}/${test_file}.${name}"
   fi
-
-  local snapshot
-  snapshot=$(tr -d '\r' < "$snapshot_file")
-
-  if ! snapshot::match_with_placeholder "$actual" "$snapshot"; then
-    local label
-    label=$(helper::normalize_test_function_name "${FUNCNAME[1]}")
-
-    state::add_assertions_failed
-    console_results::print_failed_snapshot_test "$label" "$snapshot_file"
-
-    return
-  fi
-
-  state::add_assertions_passed
 }
 
-function assert_match_snapshot_ignore_colors() {
-  local actual
-  actual=$(echo -n "$1" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | tr -d '\r')
+function snapshot::initialize() {
+  local path="$1"
+  local content="$2"
+  mkdir -p "$(dirname "$path")"
+  echo "$content" > "$path"
+  state::add_assertions_snapshot
+}
 
-  local directory
-  directory="./$(dirname "${BASH_SOURCE[1]}")/snapshots"
-  local test_file
-  test_file="$(helper::normalize_variable_name "$(basename "${BASH_SOURCE[1]}")")"
-  local snapshot_name
-  snapshot_name="$(helper::normalize_variable_name "${FUNCNAME[1]}").snapshot"
-  local snapshot_file
-  snapshot_file="${directory}/${test_file}.${snapshot_name}"
-
-  if [[ ! -f "$snapshot_file" ]]; then
-    mkdir -p "$directory"
-    echo "$actual" > "$snapshot_file"
-
-    state::add_assertions_snapshot
-    return
-  fi
+function snapshot::compare() {
+  local actual="$1"
+  local snapshot_path="$2"
+  local func_name="$3"
 
   local snapshot
-  snapshot=$(tr -d '\r' < "$snapshot_file")
+  snapshot=$(tr -d '\r' < "$snapshot_path")
 
   if ! snapshot::match_with_placeholder "$actual" "$snapshot"; then
-    local label
-    label=$(helper::normalize_test_function_name "${FUNCNAME[1]}")
-
+    local label=$(helper::normalize_test_function_name "$func_name")
     state::add_assertions_failed
-    console_results::print_failed_snapshot_test "$label" "$snapshot_file"
-
-    return
+    console_results::print_failed_snapshot_test "$label" "$snapshot_path" "$actual"
+    return 1
   fi
 
   state::add_assertions_passed
@@ -2896,6 +2972,7 @@ function runner::load_test_files() {
     if [[ ! -f $test_file ]]; then
       continue
     fi
+    internal_log "Loading file" "$test_file"
     # shellcheck source=/dev/null
     source "$test_file"
     runner::run_set_up_before_script
@@ -2906,6 +2983,7 @@ function runner::load_test_files() {
     fi
     runner::run_tear_down_after_script
     runner::clean_set_up_and_tear_down_after_script
+    internal_log "Finished file" "$test_file"
   done
 
   if parallel::is_enabled; then
@@ -2978,7 +3056,7 @@ function runner::call_test_functions() {
     return
   fi
 
-  runner::render_running_file_header
+  runner::render_running_file_header "$script"
   helper::check_duplicate_functions "$script" || true
 
   for fn_name in "${functions_to_run[@]}"; do
@@ -3045,6 +3123,10 @@ function runner::call_bench_functions() {
 }
 
 function runner::render_running_file_header() {
+  local script="$1"
+
+  internal_log "Running file" "$script"
+
   if parallel::is_enabled; then
     return
   fi
@@ -3074,6 +3156,7 @@ function runner::run_test() {
   # race conditions when running tests in parallel.
   local sanitized_fn_name
   sanitized_fn_name="$(helper::normalize_variable_name "$fn_name")"
+  internal_log "Running test" "$fn_name" "$*"
   if env::is_parallel_run_enabled; then
     export BASHUNIT_CURRENT_TEST_ID="${sanitized_fn_name}_$$_$(random_str 6)"
   else
@@ -3092,8 +3175,11 @@ function runner::run_test() {
   exec 3>&1
 
   local test_execution_result=$(
+    # shellcheck disable=SC2154
     trap '
-      state::set_test_exit_code $?
+      exit_code=$?
+      set +e
+      state::set_test_exit_code "$exit_code"
       runner::run_tear_down
       runner::clear_mocks
       state::export_subshell_context
@@ -3111,8 +3197,8 @@ function runner::run_test() {
   exec 3>&-
 
   local end_time=$(clock::now)
-  local duration_ns=$(math::calculate "($end_time - $start_time) ")
-  local duration=$(math::calculate "$duration_ns / 1000000")
+  local duration_ns=$((end_time - start_time))
+  local duration=$((duration_ns / 1000000))
 
   if env::is_verbose_enabled; then
     if env::is_simple_output_enabled; then
@@ -3171,14 +3257,17 @@ function runner::run_test() {
     state::add_tests_failed
     console_results::print_error_test "$fn_name" "$runtime_error"
     reports::add_test_failed "$test_file" "$fn_name" "$duration" "$total_assertions"
-    runner::write_failure_result_output "$test_file" "$runtime_error"
+    runner::write_failure_result_output "$test_file" "$fn_name" "$runtime_error"
+    internal_log "Test error" "$fn_name" "$runtime_error"
     return
   fi
 
   if [[ "$current_assertions_failed" != "$(state::get_assertions_failed)" ]]; then
     state::add_tests_failed
     reports::add_test_failed "$test_file" "$fn_name" "$duration" "$total_assertions"
-    runner::write_failure_result_output "$test_file" "$subshell_output"
+    runner::write_failure_result_output "$test_file" "$fn_name" "$subshell_output"
+
+    internal_log "Test failed" "$fn_name"
 
     if env::is_stop_on_failure_enabled; then
       if parallel::is_enabled; then
@@ -3194,18 +3283,21 @@ function runner::run_test() {
     state::add_tests_snapshot
     console_results::print_snapshot_test "$fn_name"
     reports::add_test_snapshot "$test_file" "$fn_name" "$duration" "$total_assertions"
+    internal_log "Test snapshot" "$fn_name"
     return
   fi
 
   if [[ "$current_assertions_incomplete" != "$(state::get_assertions_incomplete)" ]]; then
     state::add_tests_incomplete
     reports::add_test_incomplete "$test_file" "$fn_name" "$duration" "$total_assertions"
+    internal_log "Test incomplete" "$fn_name"
     return
   fi
 
   if [[ "$current_assertions_skipped" != "$(state::get_assertions_skipped)" ]]; then
     state::add_tests_skipped
     reports::add_test_skipped "$test_file" "$fn_name" "$duration" "$total_assertions"
+    internal_log "Test skipped" "$fn_name"
     return
   fi
 
@@ -3218,6 +3310,7 @@ function runner::run_test() {
   fi
   state::add_tests_passed
   reports::add_test_passed "$test_file" "$fn_name" "$duration" "$total_assertions"
+  internal_log "Test passed" "$fn_name"
 }
 
 function runner::decode_subshell_output() {
@@ -3276,7 +3369,7 @@ function runner::parse_result_parallel() {
   mv "$unique_test_result_file" "${unique_test_result_file}.result"
   unique_test_result_file="${unique_test_result_file}.result"
 
-  log "debug" "[PARA]" "fn_name:$fn_name" "execution_result:$execution_result"
+  internal_log "[PARA]" "fn_name:$fn_name" "execution_result:$execution_result"
 
   runner::parse_result_sync "$fn_name" "$execution_result"
 
@@ -3315,7 +3408,7 @@ function runner::parse_result_sync() {
     test_exit_code="${BASH_REMATCH[6]}"
   fi
 
-  log "debug" "[SYNC]" "fn_name:$fn_name" "execution_result:$execution_result"
+  internal_log "[SYNC]" "fn_name:$fn_name" "execution_result:$execution_result"
 
   ((_ASSERTIONS_PASSED += assertions_passed)) || true
   ((_ASSERTIONS_FAILED += assertions_failed)) || true
@@ -3323,29 +3416,44 @@ function runner::parse_result_sync() {
   ((_ASSERTIONS_INCOMPLETE += assertions_incomplete)) || true
   ((_ASSERTIONS_SNAPSHOT += assertions_snapshot)) || true
   ((_TEST_EXIT_CODE += test_exit_code)) || true
+
+  internal_log "result_summary" \
+    "failed:$assertions_failed" \
+    "passed:$assertions_passed" \
+    "skipped:$assertions_skipped" \
+    "incomplete:$assertions_incomplete" \
+    "snapshot:$assertions_snapshot" \
+    "exit_code:$test_exit_code"
 }
 
 function runner::write_failure_result_output() {
   local test_file=$1
-  local error_msg=$2
+  local fn_name=$2
+  local error_msg=$3
+
+  local line_number
+  line_number=$(helper::get_function_line_number "$fn_name")
 
   local test_nr="*"
   if ! parallel::is_enabled; then
     test_nr=$(state::get_tests_failed)
   fi
 
-  echo -e "$test_nr) $test_file\n$error_msg" >> "$FAILURES_OUTPUT_PATH"
+  echo -e "$test_nr) $test_file:$line_number\n$error_msg" >> "$FAILURES_OUTPUT_PATH"
 }
 
 function runner::run_set_up() {
+  internal_log "run_set_up"
   helper::execute_function_if_exists 'set_up'
 }
 
 function runner::run_set_up_before_script() {
+  internal_log "run_set_up_before_script"
   helper::execute_function_if_exists 'set_up_before_script'
 }
 
 function runner::run_tear_down() {
+  internal_log "run_tear_down"
   helper::execute_function_if_exists 'tear_down'
 }
 
@@ -3356,10 +3464,12 @@ function runner::clear_mocks() {
 }
 
 function runner::run_tear_down_after_script() {
+  internal_log "run_tear_down_after_script"
   helper::execute_function_if_exists 'tear_down_after_script'
 }
 
 function runner::clean_set_up_and_tear_down_after_script() {
+  internal_log "clean_set_up_and_tear_down_after_script"
   helper::unset_if_exists 'set_up'
   helper::unset_if_exists 'tear_down'
   helper::unset_if_exists 'set_up_before_script'
@@ -3447,6 +3557,8 @@ function main::exec_tests() {
     test_files+=("$line")
   done < <(helper::load_test_files "$filter" "${files[@]}")
 
+  internal_log "exec_tests" "filter:$filter" "files:${test_files[*]}"
+
   if [[ ${#test_files[@]} -eq 0 || -z "${test_files[0]}" ]]; then
     printf "%sError: At least one file path is required.%s\n" "${_COLOR_FAILED}" "${_COLOR_DEFAULT}"
     console_header::print_help
@@ -3507,6 +3619,7 @@ function main::exec_tests() {
   fi
 
   cleanup_temp_files
+  internal_log "Finished tests" "exit_code:$exit_code"
   exit $exit_code
 }
 
@@ -3518,6 +3631,8 @@ function main::exec_benchmarks() {
   while IFS= read -r line; do
     bench_files+=("$line")
   done < <(helper::load_bench_files "$filter" "${files[@]}")
+
+  internal_log "exec_benchmarks" "filter:$filter" "files:${bench_files[*]}"
 
   if [[ ${#bench_files[@]} -eq 0 || -z "${bench_files[0]}" ]]; then
     printf "%sError: At least one file path is required.%s\n" "${_COLOR_FAILED}" "${_COLOR_DEFAULT}"
@@ -3532,6 +3647,7 @@ function main::exec_benchmarks() {
   benchmark::print_results
 
   cleanup_temp_files
+  internal_log "Finished benchmarks"
 }
 
 function main::cleanup() {
@@ -3630,7 +3746,7 @@ function main::handle_assert_exit_code() {
 set -euo pipefail
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.22.0"
+declare -r BASHUNIT_VERSION="0.22.3"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
