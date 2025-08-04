@@ -678,7 +678,14 @@ function clock::_choose_impl() {
     return 0
   fi
 
-  # 7. All methods failed
+  # 7. Very last fallback: seconds resolution only
+  attempts[${#attempts[@]}]="date-seconds"
+  if date +%s &>/dev/null; then
+    _CLOCK_NOW_IMPL="date-seconds"
+    return 0
+  fi
+
+  # 8. All methods failed
   printf "clock::now implementations tried: %s\n" "${attempts[*]}" >&2
   echo ""
   return 1
@@ -713,6 +720,11 @@ EOF
       ;;
     date)
       date +%s%N
+      ;;
+    date-seconds)
+      local seconds
+      seconds=$(date +%s)
+      math::calculate "$seconds * 1000000000"
       ;;
     shell)
       # shellcheck disable=SC2155
@@ -773,6 +785,7 @@ _DUPLICATED_FUNCTION_NAMES=""
 _FILE_WITH_DUPLICATED_FUNCTION_NAMES=""
 _DUPLICATED_TEST_FUNCTIONS_FOUND=false
 _TEST_OUTPUT=""
+_TEST_TITLE=""
 _TEST_EXIT_CODE=0
 
 function state::get_tests_passed() {
@@ -891,6 +904,18 @@ function state::set_test_exit_code() {
   _TEST_EXIT_CODE="$1"
 }
 
+function state::get_test_title() {
+  echo "$_TEST_TITLE"
+}
+
+function state::set_test_title() {
+  _TEST_TITLE="$1"
+}
+
+function state::reset_test_title() {
+  _TEST_TITLE=""
+}
+
 function state::set_duplicated_functions_merged() {
   state::set_duplicated_test_functions_found
   state::set_file_with_duplicated_function_names "$1"
@@ -904,17 +929,21 @@ function state::initialize_assertions_count() {
     _ASSERTIONS_INCOMPLETE=0
     _ASSERTIONS_SNAPSHOT=0
     _TEST_OUTPUT=""
+    _TEST_TITLE=""
 }
 
 function state::export_subshell_context() {
   local encoded_test_output
+  local encoded_test_title
 
   if base64 --help 2>&1 | grep -q -- "-w"; then
     # Alpine requires the -w 0 option to avoid wrapping
     encoded_test_output=$(echo -n "$_TEST_OUTPUT" | base64 -w 0)
+    encoded_test_title=$(echo -n "$_TEST_TITLE" | base64 -w 0)
   else
     # macOS and others: default base64 without wrapping
     encoded_test_output=$(echo -n "$_TEST_OUTPUT" | base64)
+    encoded_test_title=$(echo -n "$_TEST_TITLE" | base64)
   fi
 
   cat <<EOF
@@ -924,6 +953,7 @@ function state::export_subshell_context() {
 ##ASSERTIONS_INCOMPLETE=$_ASSERTIONS_INCOMPLETE\
 ##ASSERTIONS_SNAPSHOT=$_ASSERTIONS_SNAPSHOT\
 ##TEST_EXIT_CODE=$_TEST_EXIT_CODE\
+##TEST_TITLE=$encoded_test_title\
 ##TEST_OUTPUT=$encoded_test_output\
 ##
 EOF
@@ -1078,7 +1108,7 @@ Usage:
 
 Arguments:
   PATH                      File or directory containing tests.
-                            - Directories: runs all '*test.sh' files.
+                            - Directories: runs all '*test.sh' or '*test.bash' files.
                             - Wildcards: supported to match multiple test files.
                             - Default search path is 'tests'
 
@@ -1430,6 +1460,13 @@ function helper::normalize_test_function_name() {
   local original_fn_name="${1-}"
   local interpolated_fn_name="${2-}"
 
+  local custom_title
+  custom_title="$(state::get_test_title)"
+  if [[ -n "$custom_title" ]]; then
+    echo "$custom_title"
+    return
+  fi
+
   if [[ -n "${interpolated_fn_name-}" ]]; then
     original_fn_name="$interpolated_fn_name"
   fi
@@ -1471,6 +1508,16 @@ function helper::interpolate_function_name() {
   done
 
   echo "$result"
+}
+
+function helper::decode_base64() {
+  local value="$1"
+
+  if command -v base64 >/dev/null; then
+    echo "$value" | base64 -d
+  else
+    echo "$value" | openssl enc -d -base64
+  fi
 }
 
 function helper::check_duplicate_functions() {
@@ -1546,10 +1593,23 @@ function helper::find_files_recursive() {
   local path="${1%%/}"
   local pattern="${2:-*[tT]est.sh}"
 
+  local alt_pattern=""
+  if [[ $pattern == *test.sh ]] || [[ $pattern =~ \[tT\]est\.sh$ ]]; then
+    alt_pattern="${pattern%.sh}.bash"
+  fi
+
   if [[ "$path" == *"*"* ]]; then
-    eval find "$path" -type f -name "$pattern" | sort -u
+    if [[ -n $alt_pattern ]]; then
+      eval "find $path -type f \( -name \"$pattern\" -o -name \"$alt_pattern\" \)" | sort -u
+    else
+      eval "find $path -type f -name \"$pattern\"" | sort -u
+    fi
   elif [[ -d "$path" ]]; then
-    find "$path" -type f -name "$pattern" | sort -u
+    if [[ -n $alt_pattern ]]; then
+      find "$path" -type f \( -name "$pattern" -o -name "$alt_pattern" \) | sort -u
+    else
+      find "$path" -type f -name "$pattern" | sort -u
+    fi
   else
     echo "$path"
   fi
@@ -2009,6 +2069,87 @@ function assert_not_matches() {
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
     state::add_assertions_failed
     console_results::print_failed_test "${label}" "${actual}" "to not match" "${expected}"
+    return
+  fi
+
+  state::add_assertions_passed
+}
+
+function assert_exec() {
+  local cmd="$1"
+  shift
+
+  local expected_exit=0
+  local expected_stdout=""
+  local expected_stderr=""
+  local check_stdout=false
+  local check_stderr=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --exit)
+        expected_exit="$2"
+        shift 2
+        ;;
+      --stdout)
+        expected_stdout="$2"
+        check_stdout=true
+        shift 2
+        ;;
+      --stderr)
+        expected_stderr="$2"
+        check_stderr=true
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  local stdout_file stderr_file
+  stdout_file=$(mktemp)
+  stderr_file=$(mktemp)
+
+  eval "$cmd" >"$stdout_file" 2>"$stderr_file"
+  local exit_code=$?
+
+  local stdout
+  stdout=$(cat "$stdout_file")
+  local stderr
+  stderr=$(cat "$stderr_file")
+
+  rm -f "$stdout_file" "$stderr_file"
+
+  local expected_desc="exit: $expected_exit"
+  local actual_desc="exit: $exit_code"
+  local failed=0
+
+  if [[ "$exit_code" -ne "$expected_exit" ]]; then
+    failed=1
+  fi
+
+  if $check_stdout; then
+    expected_desc+=$'\n'"stdout: $expected_stdout"
+    actual_desc+=$'\n'"stdout: $stdout"
+    if [[ "$stdout" != "$expected_stdout" ]]; then
+      failed=1
+    fi
+  fi
+
+  if $check_stderr; then
+    expected_desc+=$'\n'"stderr: $expected_stderr"
+    actual_desc+=$'\n'"stderr: $stderr"
+    if [[ "$stderr" != "$expected_stderr" ]]; then
+      failed=1
+    fi
+  fi
+
+  if [[ $failed -eq 1 ]]; then
+    local label
+    label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
+    state::add_assertions_failed
+    console_results::print_failed_test "$label" "$expected_desc" "but got " "$actual_desc"
     return
   fi
 
@@ -2796,6 +2937,9 @@ function reports::add_test_failed() {
 }
 
 function reports::add_test() {
+  # Skip tracking when no report output is requested
+  [[ -n "${BASHUNIT_LOG_JUNIT:-}" || -n "${BASHUNIT_REPORT_HTML:-}" ]] || return 0
+
   local file="$1"
   local test_name="$2"
   local duration="$3"
@@ -3163,6 +3307,8 @@ function runner::run_test() {
     export BASHUNIT_CURRENT_TEST_ID="${sanitized_fn_name}_$$"
   fi
 
+  state::reset_test_title
+
   local interpolated_fn_name="$(helper::interpolate_function_name "$fn_name" "$@")"
   local current_assertions_failed="$(state::get_assertions_failed)"
   local current_assertions_snapshot="$(state::get_assertions_snapshot)"
@@ -3253,21 +3399,32 @@ function runner::run_test() {
   local total_assertions="$(state::calculate_total_assertions "$test_execution_result")"
   local test_exit_code="$(state::get_test_exit_code)"
 
+  local encoded_test_title
+  encoded_test_title="${test_execution_result##*##TEST_TITLE=}"
+  encoded_test_title="${encoded_test_title%%##*}"
+  local test_title=""
+  [[ -n "$encoded_test_title" ]] && test_title="$(helper::decode_base64 "$encoded_test_title")"
+
+  state::set_test_title "$test_title"
+  local label
+  label="$(helper::normalize_test_function_name "$fn_name" "$interpolated_fn_name")"
+  state::reset_test_title
+
   if [[ -n $runtime_error || $test_exit_code -ne 0 ]]; then
     state::add_tests_failed
-    console_results::print_error_test "$fn_name" "$runtime_error"
-    reports::add_test_failed "$test_file" "$fn_name" "$duration" "$total_assertions"
+    console_results::print_error_test "$label" "$runtime_error"
+    reports::add_test_failed "$test_file" "$label" "$duration" "$total_assertions"
     runner::write_failure_result_output "$test_file" "$fn_name" "$runtime_error"
-    internal_log "Test error" "$fn_name" "$runtime_error"
+    internal_log "Test error" "$label" "$runtime_error"
     return
   fi
 
   if [[ "$current_assertions_failed" != "$(state::get_assertions_failed)" ]]; then
     state::add_tests_failed
-    reports::add_test_failed "$test_file" "$fn_name" "$duration" "$total_assertions"
+    reports::add_test_failed "$test_file" "$label" "$duration" "$total_assertions"
     runner::write_failure_result_output "$test_file" "$fn_name" "$subshell_output"
 
-    internal_log "Test failed" "$fn_name"
+    internal_log "Test failed" "$label"
 
     if env::is_stop_on_failure_enabled; then
       if parallel::is_enabled; then
@@ -3281,27 +3438,25 @@ function runner::run_test() {
 
   if [[ "$current_assertions_snapshot" != "$(state::get_assertions_snapshot)" ]]; then
     state::add_tests_snapshot
-    console_results::print_snapshot_test "$fn_name"
-    reports::add_test_snapshot "$test_file" "$fn_name" "$duration" "$total_assertions"
-    internal_log "Test snapshot" "$fn_name"
+    console_results::print_snapshot_test "$label"
+    reports::add_test_snapshot "$test_file" "$label" "$duration" "$total_assertions"
+    internal_log "Test snapshot" "$label"
     return
   fi
 
   if [[ "$current_assertions_incomplete" != "$(state::get_assertions_incomplete)" ]]; then
     state::add_tests_incomplete
-    reports::add_test_incomplete "$test_file" "$fn_name" "$duration" "$total_assertions"
-    internal_log "Test incomplete" "$fn_name"
+    reports::add_test_incomplete "$test_file" "$label" "$duration" "$total_assertions"
+    internal_log "Test incomplete" "$label"
     return
   fi
 
   if [[ "$current_assertions_skipped" != "$(state::get_assertions_skipped)" ]]; then
     state::add_tests_skipped
-    reports::add_test_skipped "$test_file" "$fn_name" "$duration" "$total_assertions"
-    internal_log "Test skipped" "$fn_name"
+    reports::add_test_skipped "$test_file" "$label" "$duration" "$total_assertions"
+    internal_log "Test skipped" "$label"
     return
   fi
-
-  local label="$(helper::normalize_test_function_name "$fn_name" "$interpolated_fn_name")"
 
   if [[ "$fn_name" == "$interpolated_fn_name" ]]; then
     console_results::print_successful_test "${label}" "$duration" "$@"
@@ -3309,8 +3464,8 @@ function runner::run_test() {
     console_results::print_successful_test "${label}" "$duration"
   fi
   state::add_tests_passed
-  reports::add_test_passed "$test_file" "$fn_name" "$duration" "$total_assertions"
-  internal_log "Test passed" "$fn_name"
+  reports::add_test_passed "$test_file" "$label" "$duration" "$total_assertions"
+  internal_log "Test passed" "$label"
 }
 
 function runner::decode_subshell_output() {
@@ -3318,13 +3473,7 @@ function runner::decode_subshell_output() {
 
   local test_output_base64="${test_execution_result##*##TEST_OUTPUT=}"
   test_output_base64="${test_output_base64%%##*}"
-
-  local subshell_output
-  if command -v base64 >/dev/null; then
-    echo "$test_output_base64" | base64 -d
-  else
-    echo "$test_output_base64" | openssl enc -d -base64
-  fi
+  helper::decode_base64 "$test_output_base64"
 }
 
 function runner::parse_result() {
@@ -3745,8 +3894,34 @@ function main::handle_assert_exit_code() {
 #!/usr/bin/env bash
 set -euo pipefail
 
+declare -r BASHUNIT_MIN_BASH_VERSION="3.2"
+
+function _check_bash_version() {
+  local current_version
+  if [[ -n ${BASHUNIT_TEST_BASH_VERSION:-} ]]; then
+    # Checks if BASHUNIT_TEST_BASH_VERSION is set (typically for testing purposes)
+    current_version="${BASHUNIT_TEST_BASH_VERSION}"
+  elif [[ -n ${BASH_VERSINFO+set} ]]; then
+    # Checks if the special Bash array BASH_VERSINFO exists. This array is only defined in Bash.
+    current_version="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+  else
+    # If not in Bash (e.g., running from Zsh). The pipeline extracts just the major.minor version (e.g., 3.2).
+    current_version="$(bash --version | head -n1 | cut -d' ' -f4 | cut -d. -f1,2)"
+  fi
+
+  local major minor
+  IFS=. read -r major minor _ <<< "$current_version"
+
+  if (( major < 3 )) || { (( major == 3 )) && (( minor < 2 )); }; then
+    printf 'Bashunit requires Bash >= %s. Current version: %s\n' "$BASHUNIT_MIN_BASH_VERSION" "$current_version" >&2
+    exit 1
+  fi
+}
+
+_check_bash_version
+
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.22.3"
+declare -r BASHUNIT_VERSION="0.23.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
