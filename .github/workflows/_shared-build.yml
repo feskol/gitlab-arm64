@@ -59,7 +59,7 @@ jobs:
       github_arm64_image_tag: ${{ steps.docker-tags.outputs.GITHUB_ARM64_IMAGE_TAG }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set Permissions
         # make all scripts in scripts/workflows/build executable
@@ -107,7 +107,7 @@ jobs:
     if: inputs.use_gitlab_official_arm64_image == false
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set Permissions
         # make all scripts in scripts/workflows/build executable
@@ -165,7 +165,7 @@ jobs:
         platform: ["DOCKERHUB", "GITHUB"]
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set Permissions
         # make all scripts in scripts/workflows/build executable
