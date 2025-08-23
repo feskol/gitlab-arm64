@@ -40,7 +40,7 @@ This repository provides **GitLab Docker images for the ARM64 architecture**.
 
 **GitLab** officially supports **ARM64 images** since version `18.1`.
 This repository was originally created before **official ARM64 Docker** images were available.
-It is now maintained to support custom tags and to give users time to transition to the **official GitLab images** — if they choose to do so.
+It will continue to be maintained to provide security patches for versions lower than `18.1` and to support custom tags.
 
 This repository provides a GitHub Action that checks for new releases daily and
 automatically builds the custom **Docker image** tags using the official GitLab images.
