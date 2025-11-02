@@ -10,9 +10,6 @@
 name: Test
 
 on:
-  push:
-    branches-ignore:
-      - 'main' # This excludes the 'main' branch
   pull_request:
 
 jobs:
