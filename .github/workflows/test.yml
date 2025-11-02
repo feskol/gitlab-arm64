@@ -40,7 +40,7 @@ jobs:
     with:
       is_test: true # This must always be true in tests!
 
-  test-build-workflow:
+  test-build-workflow-with-gitlabs-own-arm64-image:
     needs: [test-scripts, test-snycversion-workflow]
     uses: ./.github/workflows/_shared-build.yml
     with:
@@ -48,6 +48,7 @@ jobs:
       include_major_minor_tag: true
       include_major_tag: true
       include_latest_tags: true
+      use_gitlab_official_arm64_image: true
       is_test: true # This must always be true in tests!
 
   test-build-workflow-with-feskols-own-arm64-image:
@@ -59,16 +60,4 @@ jobs:
       include_major_tag: true
       include_latest_tags: true
       use_gitlab_official_arm64_image: false
-      is_test: true # This must always be true in tests!
-
-
-  test-build-workflow-with-gitlabs-own-arm64-image:
-    needs: [test-scripts]
-    uses: ./.github/workflows/_shared-build.yml
-    with:
-      gitlab_release: 18.1.0-ce.0
-      include_major_minor_tag: true
-      include_major_tag: true
-      include_latest_tags: true
-      use_gitlab_official_arm64_image: true
       is_test: true # This must always be true in tests!
