@@ -734,7 +734,7 @@ function clock::now() {
     python)
       python - <<'EOF'
 import time, sys
-sys.stdout.write(str(int(time.time() * 1_000_000_000)))
+sys.stdout.write(str(int(time.time() * 1000000000)))
 EOF
       ;;
     node)
@@ -2313,6 +2313,20 @@ function assert_successful_code() {
   state::add_assertions_passed
 }
 
+function assert_unsuccessful_code() {
+  local actual_exit_code=${3-"$?"}
+
+  if [[ "$actual_exit_code" -eq 0 ]]; then
+    local label
+    label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
+    state::add_assertions_failed
+    console_results::print_failed_test "${label}" "${actual_exit_code}" "to be non-zero" "but was 0"
+    return
+  fi
+
+  state::add_assertions_passed
+}
+
 function assert_general_error() {
   local actual_exit_code=${3-"$?"}
   local expected_exit_code=1
@@ -3241,6 +3255,13 @@ function reports::generate_report_html() {
 # runner.sh
 # shellcheck disable=SC2155
 
+# Pre-compiled regex pattern for parsing test result assertions
+if [[ -z ${RUNNER_PARSE_RESULT_REGEX+x} ]]; then
+  declare -r RUNNER_PARSE_RESULT_REGEX='ASSERTIONS_FAILED=([0-9]*)##ASSERTIONS_PASSED=([0-9]*)##'\
+'ASSERTIONS_SKIPPED=([0-9]*)##ASSERTIONS_INCOMPLETE=([0-9]*)##ASSERTIONS_SNAPSHOT=([0-9]*)##'\
+'TEST_EXIT_CODE=([0-9]*)'
+fi
+
 function runner::load_test_files() {
   local filter=$1
   shift
@@ -3257,6 +3278,8 @@ function runner::load_test_files() {
     internal_log "Loading file" "$test_file"
     # shellcheck source=/dev/null
     source "$test_file"
+    # Update function cache after sourcing new test file
+    CACHED_ALL_FUNCTIONS=$(declare -F | awk '{print $3}')
     if ! runner::run_set_up_before_script "$test_file"; then
       runner::clean_set_up_and_tear_down_after_script
       if ! parallel::is_enabled; then
@@ -3300,9 +3323,11 @@ function runner::load_bench_files() {
   for bench_file in "${files[@]}"; do
     [[ -f $bench_file ]] || continue
     unset BASHUNIT_CURRENT_TEST_ID
-    export BASHUNIT_CURRENT_SCRIPT_ID="$(helper::generate_id "${test_file}")"
+    export BASHUNIT_CURRENT_SCRIPT_ID="$(helper::generate_id "${bench_file}")"
     # shellcheck source=/dev/null
     source "$bench_file"
+    # Update function cache after sourcing new bench file
+    CACHED_ALL_FUNCTIONS=$(declare -F | awk '{print $3}')
     if ! runner::run_set_up_before_script "$bench_file"; then
       runner::clean_set_up_and_tear_down_after_script
       cleanup_script_temp_files
@@ -3406,7 +3431,10 @@ function runner::parse_data_provider_args() {
           quote_char="$char"
           ;;
         " " | $'\t')
-          args+=("$current_arg")
+          # Only add non-empty arguments to avoid duplicates from consecutive separators
+          if [[ -n "$current_arg" ]]; then
+            args+=("$current_arg")
+          fi
           current_arg=""
           ;;
         *)
@@ -3421,8 +3449,17 @@ function runner::parse_data_provider_args() {
     fi
   done
   args+=("$current_arg")
+  # Remove all trailing empty strings
+  while [[ ${#args[@]} -gt 0 ]]; do
+    local last_idx=$((${#args[@]} - 1))
+    if [[ -z "${args[$last_idx]}" ]]; then
+      unset 'args[$last_idx]'
+    else
+      break
+    fi
+  done
   # Print one arg per line to stdout, base64-encoded to preserve newlines in the data
-  for arg in "${args[@]}"; do
+  for arg in "${args[@]+"${args[@]}"}"; do
     encoded_arg="$(helper::encode_base64 "${arg}")"
     printf '%s\n' "$encoded_arg"
   done
@@ -3432,9 +3469,8 @@ function runner::call_test_functions() {
   local script="$1"
   local filter="$2"
   local prefix="test"
-  # Use declare -F to list all function names
-  local all_fn_names=$(declare -F | awk '{print $3}')
-  local filtered_functions=$(helper::get_functions_to_run "$prefix" "$filter" "$all_fn_names")
+  # Use cached function names for better performance
+  local filtered_functions=$(helper::get_functions_to_run "$prefix" "$filter" "$CACHED_ALL_FUNCTIONS")
   # shellcheck disable=SC2207
   local functions_to_run=($(runner::functions_for_script "$script" "$filtered_functions"))
 
@@ -3483,8 +3519,8 @@ function runner::call_bench_functions() {
   local filter="$2"
   local prefix="bench"
 
-  local all_fn_names=$(declare -F | awk '{print $3}')
-  local filtered_functions=$(helper::get_functions_to_run "$prefix" "$filter" "$all_fn_names")
+  # Use cached function names for better performance
+  local filtered_functions=$(helper::get_functions_to_run "$prefix" "$filter" "$CACHED_ALL_FUNCTIONS")
   # shellcheck disable=SC2207
   local functions_to_run=($(runner::functions_for_script "$script" "$filtered_functions"))
 
@@ -3606,9 +3642,9 @@ function runner::run_test() {
     local line="${subshell_output#*]}"  # Remove everything before and including "]"
 
     # Replace [type] with a newline to split the messages
-    line=$(echo "$line" | sed -e 's/\[failed\]/\n/g' \
-                              -e 's/\[skipped\]/\n/g' \
-                              -e 's/\[incomplete\]/\n/g')
+    line="${line//\[failed\]/$'\n'}"       # Replace [failed] with newline
+    line="${line//\[skipped\]/$'\n'}"      # Replace [skipped] with newline
+    line="${line//\[incomplete\]/$'\n'}"   # Replace [incomplete] with newline
 
     state::print_line "$type" "$line"
 
@@ -3625,7 +3661,8 @@ function runner::run_test() {
       "readonly variable" "missing keyword" "killed" \
       "cannot execute binary file" "invalid arithmetic operator"; do
     if [[ "$runtime_output" == *"$error"* ]]; then
-      runtime_error=$(echo "${runtime_output#*: }" | tr -d '\n')
+      runtime_error="${runtime_output#*: }"      # Remove everything up to and including ": "
+      runtime_error="${runtime_error//$'\n'/}"   # Remove all newlines using parameter expansion
       break
     fi
   done
@@ -3816,7 +3853,7 @@ function runner::parse_result_sync() {
   local execution_result=$2
 
   local result_line
-  result_line=$(echo "$execution_result" | tail -n 1)
+  result_line="${execution_result##*$'\n'}"
 
   local assertions_failed=0
   local assertions_passed=0
@@ -3825,15 +3862,8 @@ function runner::parse_result_sync() {
   local assertions_snapshot=0
   local test_exit_code=0
 
-  local regex
-  regex='ASSERTIONS_FAILED=([0-9]*)##'
-  regex+='ASSERTIONS_PASSED=([0-9]*)##'
-  regex+='ASSERTIONS_SKIPPED=([0-9]*)##'
-  regex+='ASSERTIONS_INCOMPLETE=([0-9]*)##'
-  regex+='ASSERTIONS_SNAPSHOT=([0-9]*)##'
-  regex+='TEST_EXIT_CODE=([0-9]*)'
-
-  if [[ $result_line =~ $regex ]]; then
+  # Use pre-compiled regex constant
+  if [[ $result_line =~ $RUNNER_PARSE_RESULT_REGEX ]]; then
     assertions_failed="${BASH_REMATCH[1]}"
     assertions_passed="${BASH_REMATCH[2]}"
     assertions_skipped="${BASH_REMATCH[3]}"
@@ -3918,7 +3948,10 @@ function runner::execute_file_hook() {
   } >"$hook_output_file" 2>&1 || status=$?
 
   if [[ -f "$hook_output_file" ]]; then
-    hook_output=$(cat "$hook_output_file")
+    hook_output=""
+    while IFS= read -r line; do
+      [[ -z "$hook_output" ]] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
+    done < "$hook_output_file"
     rm -f "$hook_output_file"
   fi
 
@@ -3969,7 +4002,10 @@ function runner::execute_test_hook() {
   } >"$hook_output_file" 2>&1 || status=$?
 
   if [[ -f "$hook_output_file" ]]; then
-    hook_output=$(cat "$hook_output_file")
+    hook_output=""
+    while IFS= read -r line; do
+      [[ -z "$hook_output" ]] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
+    done < "$hook_output_file"
     rm -f "$hook_output_file"
   fi
 
@@ -4331,7 +4367,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.25.0"
+declare -r BASHUNIT_VERSION="0.26.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
