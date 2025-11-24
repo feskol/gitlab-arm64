@@ -37,7 +37,7 @@ jobs:
       latest_ee_tag: ${{ steps.extract-latest-tag.outputs.LATEST_EE_TAG }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
         # Copy fixtures for test-run
       - name: '[TEST] Create Test-Data'
