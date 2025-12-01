@@ -83,6 +83,12 @@ export -f check_os::is_nixos
 
 # str.sh
 
+# Strip ANSI escape codes and control characters
+function str::strip_ansi() {
+  local input="$1"
+  echo -e "$input" | sed -E 's/\x1B\[[0-9;]*[mK]//g; s/[[:cntrl:]]//g'
+}
+
 function str::rpad() {
   local left_text="$1"
   local right_word="$2"
@@ -95,7 +101,7 @@ function str::rpad() {
 
   # Remove ANSI escape sequences (non-visible characters) for length calculation
   # shellcheck disable=SC2155
-  local clean_left_text=$(echo -e "$left_text" | sed 's/\x1b\[[0-9;]*m//g')
+  local clean_left_text=$(str::strip_ansi "$left_text")
 
   local is_truncated=false
   # If the visible left text exceeds the padding, truncate it and add "..."
@@ -193,8 +199,6 @@ function random_str() {
 
 function temp_file() {
   local prefix=${1:-bashunit}
-  local base_dir="${TMPDIR:-/tmp}/bashunit/tmp"
-  mkdir -p "$base_dir" && chmod -R 777 "$base_dir"
   local test_prefix=""
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
     # We're inside a test function - use test ID
@@ -203,13 +207,11 @@ function temp_file() {
     # We're at script level (e.g., in set_up_before_script) - use script ID
     test_prefix="${BASHUNIT_CURRENT_SCRIPT_ID}_"
   fi
-  mktemp "$base_dir/${test_prefix}${prefix}.XXXXXXX"
+  mktemp "$BASHUNIT_TEMP_DIR/${test_prefix}${prefix}.XXXXXXX"
 }
 
 function temp_dir() {
   local prefix=${1:-bashunit}
-  local base_dir="${TMPDIR:-/tmp}/bashunit/tmp"
-  mkdir -p "$base_dir" && chmod -R 777 "$base_dir"
   local test_prefix=""
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
     # We're inside a test function - use test ID
@@ -218,20 +220,20 @@ function temp_dir() {
     # We're at script level (e.g., in set_up_before_script) - use script ID
     test_prefix="${BASHUNIT_CURRENT_SCRIPT_ID}_"
   fi
-  mktemp -d "$base_dir/${test_prefix}${prefix}.XXXXXXX"
+  mktemp -d "$BASHUNIT_TEMP_DIR/${test_prefix}${prefix}.XXXXXXX"
 }
 
 function cleanup_testcase_temp_files() {
   internal_log "cleanup_testcase_temp_files"
   if [[ -n "${BASHUNIT_CURRENT_TEST_ID:-}" ]]; then
-    rm -rf "${TMPDIR:-/tmp}/bashunit/tmp/${BASHUNIT_CURRENT_TEST_ID}"_*
+    rm -rf "$BASHUNIT_TEMP_DIR/${BASHUNIT_CURRENT_TEST_ID}"_*
   fi
 }
 
 function cleanup_script_temp_files() {
   internal_log "cleanup_script_temp_files"
   if [[ -n "${BASHUNIT_CURRENT_SCRIPT_ID:-}" ]]; then
-    rm -rf "${TMPDIR:-/tmp}/bashunit/tmp/${BASHUNIT_CURRENT_SCRIPT_ID}"_*
+    rm -rf "$BASHUNIT_TEMP_DIR/${BASHUNIT_CURRENT_SCRIPT_ID}"_*
   fi
 }
 
@@ -393,7 +395,7 @@ function parallel::aggregate_test_results() {
 
     for result_file in "${result_files[@]}"; do
       local result_line
-      result_line=$(tail -n 1 "$result_file")
+      result_line=$(tail -n 1 < "$result_file")
 
       local failed="${result_line##*##ASSERTIONS_FAILED=}"
       failed="${failed%%##*}"; failed=${failed:-0}
@@ -523,6 +525,8 @@ _DEFAULT_VERBOSE="false"
 _DEFAULT_BENCH_MODE="false"
 _DEFAULT_NO_OUTPUT="false"
 _DEFAULT_INTERNAL_LOG="false"
+_DEFAULT_SHOW_SKIPPED="false"
+_DEFAULT_SHOW_INCOMPLETE="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_SHOW_HEADER:=${SHOW_HEADER:=$_DEFAULT_SHOW_HEADER}}"
@@ -534,6 +538,8 @@ _DEFAULT_INTERNAL_LOG="false"
 : "${BASHUNIT_BENCH_MODE:=${BENCH_MODE:=$_DEFAULT_BENCH_MODE}}"
 : "${BASHUNIT_NO_OUTPUT:=${NO_OUTPUT:=$_DEFAULT_NO_OUTPUT}}"
 : "${BASHUNIT_INTERNAL_LOG:=${INTERNAL_LOG:=$_DEFAULT_INTERNAL_LOG}}"
+: "${BASHUNIT_SHOW_SKIPPED:=${SHOW_SKIPPED:=$_DEFAULT_SHOW_SKIPPED}}"
+: "${BASHUNIT_SHOW_INCOMPLETE:=${SHOW_INCOMPLETE:=$_DEFAULT_SHOW_INCOMPLETE}}"
 
 function env::is_parallel_run_enabled() {
   [[ "$BASHUNIT_PARALLEL_RUN" == "true" ]]
@@ -577,6 +583,14 @@ function env::is_bench_mode_enabled() {
 
 function env::is_no_output_enabled() {
   [[ "$BASHUNIT_NO_OUTPUT" == "true" ]]
+}
+
+function env::is_show_skipped_enabled() {
+  [[ "$BASHUNIT_SHOW_SKIPPED" == "true" ]]
+}
+
+function env::is_show_incomplete_enabled() {
+  [[ "$BASHUNIT_SHOW_INCOMPLETE" == "true" ]]
 }
 
 function env::active_internet_connection() {
@@ -650,7 +664,13 @@ TEMP_DIR_PARALLEL_TEST_SUITE="${TMPDIR:-/tmp}/bashunit/parallel/${_OS:-Unknown}/
 TEMP_FILE_PARALLEL_STOP_ON_FAILURE="$TEMP_DIR_PARALLEL_TEST_SUITE/.stop-on-failure"
 TERMINAL_WIDTH="$(env::find_terminal_width)"
 FAILURES_OUTPUT_PATH=$(mktemp)
+SKIPPED_OUTPUT_PATH=$(mktemp)
+INCOMPLETE_OUTPUT_PATH=$(mktemp)
 CAT="$(command -v cat)"
+
+# Initialize temp directory once at startup for performance
+BASHUNIT_TEMP_DIR="${TMPDIR:-/tmp}/bashunit/tmp"
+mkdir -p "$BASHUNIT_TEMP_DIR" && chmod -R 777 "$BASHUNIT_TEMP_DIR"
 
 if env::is_dev_mode_enabled; then
   internal_log "info" "Dev log enabled" "file:$BASHUNIT_DEV_LOG"
@@ -821,6 +841,7 @@ _TEST_EXIT_CODE=0
 _TEST_HOOK_FAILURE=""
 _TEST_HOOK_MESSAGE=""
 _CURRENT_TEST_INTERPOLATED_NAME=""
+_ASSERTION_FAILED_IN_TEST=0
 
 function state::get_tests_passed() {
   echo "$_TESTS_PASSED"
@@ -986,6 +1007,14 @@ function state::reset_test_hook_message() {
   _TEST_HOOK_MESSAGE=""
 }
 
+function state::is_assertion_failed_in_test() {
+  (( _ASSERTION_FAILED_IN_TEST ))
+}
+
+function state::mark_assertion_failed_in_test() {
+  _ASSERTION_FAILED_IN_TEST=1
+}
+
 function state::set_duplicated_functions_merged() {
   state::set_duplicated_test_functions_found
   state::set_file_with_duplicated_function_names "$1"
@@ -1002,6 +1031,7 @@ function state::initialize_assertions_count() {
     _TEST_TITLE=""
     _TEST_HOOK_FAILURE=""
     _TEST_HOOK_MESSAGE=""
+    _ASSERTION_FAILED_IN_TEST=0
 }
 
 function state::export_subshell_context() {
@@ -1150,6 +1180,9 @@ function console_header::print_version() {
   local total_tests
   if [[ ${#files[@]} -eq 0 ]]; then
     total_tests=0
+  elif parallel::is_enabled && env::is_simple_output_enabled; then
+    # Skip counting in parallel+simple mode for faster startup
+    total_tests=0
   else
     total_tests=$(helper::find_total_tests "$filter" "${files[@]}")
   fi
@@ -1181,63 +1214,157 @@ EOF
 
 function console_header::print_help() {
     cat <<EOF
-Usage:
-  bashunit [PATH] [OPTIONS]
+Usage: bashunit <command> [arguments] [options]
 
-Arguments:
-  PATH                      File or directory containing tests.
-                            - Directories: runs all '*test.sh' or '*test.bash' files.
-                            - Wildcards: supported to match multiple test files.
-                            - Default search path is 'tests'
+Commands:
+  test [path]       Run tests (default command)
+  bench [path]      Run benchmarks
+  doc [filter]      Display assertion documentation
+  init [dir]        Initialize a new test directory
+  learn             Start interactive tutorial
+  upgrade           Upgrade bashunit to latest version
 
-Options:
-  -a, --assert <function args>
-                            Run a core assert function standalone (outside test context).
+Global Options:
+  -h, --help        Show this help message
+  -v, --version     Display the current version
 
-  -b, --bench [file]
-                            Run benchmark functions from file or '*.bench.sh' under
-                            BASHUNIT_DEFAULT_PATH when no file is provided.
+Run 'bashunit <command> --help' for command-specific options.
 
-  --debug [file]
-                            Enable shell debug mode. Logs to file if provided.
-
-  -e, --env, --boot <file>
-                            Load a custom env/bootstrap file to override .env or define globals.
-
-  -f, --filter <name>
-                            Only run tests matching the given name.
-
-  -h, --help
-                            Show this help message.
-
-  --init [dir]
-                            Generate a sample test suite in current or specified directory.
-
-  -l, --log-junit <file>
-                            Write test results as JUnit XML report.
-
-  -p, --parallel | --no-parallel
-                            Run tests in parallel (default: enabled). Random execution order.
-
-  -r, --report-html <file>
-                            Write test results as an HTML report.
-
-  -s, --simple | --detailed
-                            Choose console output style (default: detailed).
-
-  -S, --stop-on-failure
-                            Stop execution immediately on the first failing test.
-
-  --upgrade
-                            Upgrade bashunit to the latest version.
-
-  -vvv, --verbose
-                            Show internal execution details per test.
-
-  --version
-                            Display the current version of bashunit.
+Examples:
+  bashunit test tests/              Run all tests in directory
+  bashunit tests/                   Run all tests (shorthand)
+  bashunit bench                    Run all benchmarks
+  bashunit doc contains             Show docs for 'contains' assertions
+  bashunit init                     Initialize test directory
 
 More info: https://bashunit.typeddevs.com/command-line
+EOF
+}
+
+function console_header::print_test_help() {
+    cat <<EOF
+Usage: bashunit test [path] [options]
+       bashunit [path] [options]
+
+Run test files. If no path is provided, searches for tests in BASHUNIT_DEFAULT_PATH.
+
+Arguments:
+  path                        File or directory containing tests
+                              - Directories: runs all '*test.sh' files
+                              - Wildcards: supported to match multiple files
+
+Options:
+  -a, --assert <fn> <args>    Run a standalone assert function
+  -e, --env, --boot <file>    Load a custom env/bootstrap file
+  -f, --filter <name>         Only run tests matching the name
+  -l, --log-junit <file>      Write JUnit XML report
+  -p, --parallel              Run tests in parallel (default)
+  --no-parallel               Run tests sequentially
+  -r, --report-html <file>    Write HTML report
+  -s, --simple                Simple output (dots)
+  --detailed                  Detailed output (default)
+  -S, --stop-on-failure       Stop on first failure
+  -vvv, --verbose             Show execution details
+  --debug [file]              Enable shell debug mode
+  --no-output                 Suppress all output
+  -h, --help                  Show this help message
+
+Examples:
+  bashunit test tests/
+  bashunit test tests/unit/ --parallel
+  bashunit test --filter "user" tests/
+  bashunit test -a equals "foo" "foo"
+EOF
+}
+
+function console_header::print_bench_help() {
+    cat <<EOF
+Usage: bashunit bench [path] [options]
+
+Run benchmark files. Searches for '*bench.sh' files.
+
+Arguments:
+  path                        File or directory containing benchmarks
+
+Options:
+  -e, --env, --boot <file>    Load a custom env/bootstrap file
+  -f, --filter <name>         Only run benchmarks matching the name
+  -s, --simple                Simple output
+  --detailed                  Detailed output (default)
+  -vvv, --verbose             Show execution details
+  -h, --help                  Show this help message
+
+Examples:
+  bashunit bench
+  bashunit bench benchmarks/
+  bashunit bench --filter "parse"
+EOF
+}
+
+function console_header::print_doc_help() {
+    cat <<EOF
+Usage: bashunit doc [filter]
+
+Display documentation for assertion functions.
+
+Arguments:
+  filter                      Optional filter to show only matching assertions
+
+Examples:
+  bashunit doc                Show all assertions
+  bashunit doc equals         Show assertions containing 'equals'
+  bashunit doc file           Show file-related assertions
+EOF
+}
+
+function console_header::print_init_help() {
+    cat <<EOF
+Usage: bashunit init [directory]
+
+Initialize a new test directory with sample files.
+
+Arguments:
+  directory                   Target directory (default: tests)
+
+Creates:
+  - bootstrap.sh              Setup file for test configuration
+  - example_test.sh           Sample test file to get started
+
+Examples:
+  bashunit init               Create tests/ directory
+  bashunit init spec          Create spec/ directory
+EOF
+}
+
+function console_header::print_learn_help() {
+    cat <<EOF
+Usage: bashunit learn
+
+Start the interactive learning tutorial.
+
+The tutorial includes 10 progressive lessons:
+  1. Basics - Your First Test
+  2. Assertions - Testing Different Conditions
+  3. Setup & Teardown - Managing Test Lifecycle
+  4. Testing Functions - Unit Testing Patterns
+  5. Testing Scripts - Integration Testing
+  6. Mocking - Test Doubles and Mocks
+  7. Spies - Verifying Function Calls
+  8. Data Providers - Parameterized Tests
+  9. Exit Codes - Testing Success and Failure
+  10. Complete Challenge - Real World Scenario
+
+Your progress is saved automatically.
+EOF
+}
+
+function console_header::print_upgrade_help() {
+    cat <<EOF
+Usage: bashunit upgrade
+
+Upgrade bashunit to the latest version.
+
+Downloads and installs the newest release from GitHub.
 EOF
 }
 
@@ -1259,75 +1386,87 @@ function console_results::render_result() {
     printf "\n\n"
   fi
 
+  # Cache state values to avoid repeated subshell invocations
+  local tests_passed=$_TESTS_PASSED
+  local tests_skipped=$_TESTS_SKIPPED
+  local tests_incomplete=$_TESTS_INCOMPLETE
+  local tests_snapshot=$_TESTS_SNAPSHOT
+  local tests_failed=$_TESTS_FAILED
+  local assertions_passed=$_ASSERTIONS_PASSED
+  local assertions_skipped=$_ASSERTIONS_SKIPPED
+  local assertions_incomplete=$_ASSERTIONS_INCOMPLETE
+  local assertions_snapshot=$_ASSERTIONS_SNAPSHOT
+  local assertions_failed=$_ASSERTIONS_FAILED
+
   local total_tests=0
-  ((total_tests += $(state::get_tests_passed))) || true
-  ((total_tests += $(state::get_tests_skipped))) || true
-  ((total_tests += $(state::get_tests_incomplete))) || true
-  ((total_tests += $(state::get_tests_snapshot))) || true
-  ((total_tests += $(state::get_tests_failed))) || true
+  ((total_tests += tests_passed)) || true
+  ((total_tests += tests_skipped)) || true
+  ((total_tests += tests_incomplete)) || true
+  ((total_tests += tests_snapshot)) || true
+  ((total_tests += tests_failed)) || true
 
   local total_assertions=0
-  ((total_assertions += $(state::get_assertions_passed))) || true
-  ((total_assertions += $(state::get_assertions_skipped))) || true
-  ((total_assertions += $(state::get_assertions_incomplete))) || true
-  ((total_assertions += $(state::get_assertions_snapshot))) || true
-  ((total_assertions += $(state::get_assertions_failed))) || true
+  ((total_assertions += assertions_passed)) || true
+  ((total_assertions += assertions_skipped)) || true
+  ((total_assertions += assertions_incomplete)) || true
+  ((total_assertions += assertions_snapshot)) || true
+  ((total_assertions += assertions_failed)) || true
 
   printf "%sTests:     %s" "$_COLOR_FAINT" "$_COLOR_DEFAULT"
-  if [[ "$(state::get_tests_passed)" -gt 0 ]] || [[ "$(state::get_assertions_passed)" -gt 0 ]]; then
-    printf " %s%s passed%s," "$_COLOR_PASSED" "$(state::get_tests_passed)" "$_COLOR_DEFAULT"
+  if [[ "$tests_passed" -gt 0 ]] || [[ "$assertions_passed" -gt 0 ]]; then
+    printf " %s%s passed%s," "$_COLOR_PASSED" "$tests_passed" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_skipped)" -gt 0 ]] || [[ "$(state::get_assertions_skipped)" -gt 0 ]]; then
-    printf " %s%s skipped%s," "$_COLOR_SKIPPED" "$(state::get_tests_skipped)" "$_COLOR_DEFAULT"
+  if [[ "$tests_skipped" -gt 0 ]] || [[ "$assertions_skipped" -gt 0 ]]; then
+    printf " %s%s skipped%s," "$_COLOR_SKIPPED" "$tests_skipped" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_incomplete)" -gt 0 ]] || [[ "$(state::get_assertions_incomplete)" -gt 0 ]]; then
-    printf " %s%s incomplete%s," "$_COLOR_INCOMPLETE" "$(state::get_tests_incomplete)" "$_COLOR_DEFAULT"
+  if [[ "$tests_incomplete" -gt 0 ]] || [[ "$assertions_incomplete" -gt 0 ]]; then
+    printf " %s%s incomplete%s," "$_COLOR_INCOMPLETE" "$tests_incomplete" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_snapshot)" -gt 0 ]] || [[ "$(state::get_assertions_snapshot)" -gt 0 ]]; then
-    printf " %s%s snapshot%s," "$_COLOR_SNAPSHOT" "$(state::get_tests_snapshot)" "$_COLOR_DEFAULT"
+  if [[ "$tests_snapshot" -gt 0 ]] || [[ "$assertions_snapshot" -gt 0 ]]; then
+    printf " %s%s snapshot%s," "$_COLOR_SNAPSHOT" "$tests_snapshot" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_failed)" -gt 0 ]] || [[ "$(state::get_assertions_failed)" -gt 0 ]]; then
-    printf " %s%s failed%s," "$_COLOR_FAILED" "$(state::get_tests_failed)" "$_COLOR_DEFAULT"
+  if [[ "$tests_failed" -gt 0 ]] || [[ "$assertions_failed" -gt 0 ]]; then
+    printf " %s%s failed%s," "$_COLOR_FAILED" "$tests_failed" "$_COLOR_DEFAULT"
   fi
   printf " %s total\n" "$total_tests"
 
   printf "%sAssertions:%s" "$_COLOR_FAINT" "$_COLOR_DEFAULT"
-  if [[ "$(state::get_tests_passed)" -gt 0 ]] || [[ "$(state::get_assertions_passed)" -gt 0 ]]; then
-      printf " %s%s passed%s," "$_COLOR_PASSED" "$(state::get_assertions_passed)" "$_COLOR_DEFAULT"
+  if [[ "$tests_passed" -gt 0 ]] || [[ "$assertions_passed" -gt 0 ]]; then
+      printf " %s%s passed%s," "$_COLOR_PASSED" "$assertions_passed" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_skipped)" -gt 0 ]] || [[ "$(state::get_assertions_skipped)" -gt 0 ]]; then
-    printf " %s%s skipped%s," "$_COLOR_SKIPPED" "$(state::get_assertions_skipped)" "$_COLOR_DEFAULT"
+  if [[ "$tests_skipped" -gt 0 ]] || [[ "$assertions_skipped" -gt 0 ]]; then
+    printf " %s%s skipped%s," "$_COLOR_SKIPPED" "$assertions_skipped" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_incomplete)" -gt 0 ]] || [[ "$(state::get_assertions_incomplete)" -gt 0 ]]; then
-    printf " %s%s incomplete%s," "$_COLOR_INCOMPLETE" "$(state::get_assertions_incomplete)" "$_COLOR_DEFAULT"
+  if [[ "$tests_incomplete" -gt 0 ]] || [[ "$assertions_incomplete" -gt 0 ]]; then
+    printf " %s%s incomplete%s," "$_COLOR_INCOMPLETE" "$assertions_incomplete" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_snapshot)" -gt 0 ]] || [[ "$(state::get_assertions_snapshot)" -gt 0 ]]; then
-    printf " %s%s snapshot%s," "$_COLOR_SNAPSHOT" "$(state::get_assertions_snapshot)" "$_COLOR_DEFAULT"
+  if [[ "$tests_snapshot" -gt 0 ]] || [[ "$assertions_snapshot" -gt 0 ]]; then
+    printf " %s%s snapshot%s," "$_COLOR_SNAPSHOT" "$assertions_snapshot" "$_COLOR_DEFAULT"
   fi
-  if [[ "$(state::get_tests_failed)" -gt 0 ]] || [[ "$(state::get_assertions_failed)" -gt 0 ]]; then
-    printf " %s%s failed%s," "$_COLOR_FAILED" "$(state::get_assertions_failed)" "$_COLOR_DEFAULT"
+  if [[ "$tests_failed" -gt 0 ]] || [[ "$assertions_failed" -gt 0 ]]; then
+    printf " %s%s failed%s," "$_COLOR_FAILED" "$assertions_failed" "$_COLOR_DEFAULT"
   fi
   printf " %s total\n" "$total_assertions"
 
-  if [[ "$(state::get_tests_failed)" -gt 0 ]]; then
+  if [[ "$tests_failed" -gt 0 ]]; then
     printf "\n%s%s%s\n" "$_COLOR_RETURN_ERROR" " Some tests failed " "$_COLOR_DEFAULT"
     console_results::print_execution_time
     return 1
   fi
 
-  if [[ "$(state::get_tests_incomplete)" -gt 0 ]]; then
+  if [[ "$tests_incomplete" -gt 0 ]]; then
     printf "\n%s%s%s\n" "$_COLOR_RETURN_INCOMPLETE" " Some tests incomplete " "$_COLOR_DEFAULT"
     console_results::print_execution_time
     return 0
   fi
 
-  if [[ "$(state::get_tests_skipped)" -gt 0 ]]; then
+  if [[ "$tests_skipped" -gt 0 ]]; then
     printf "\n%s%s%s\n" "$_COLOR_RETURN_SKIPPED" " Some tests skipped " "$_COLOR_DEFAULT"
     console_results::print_execution_time
     return 0
   fi
 
-  if [[ "$(state::get_tests_snapshot)" -gt 0 ]]; then
+  if [[ "$tests_snapshot" -gt 0 ]]; then
     printf "\n%s%s%s\n" "$_COLOR_RETURN_SNAPSHOT" " Some snapshots created " "$_COLOR_DEFAULT"
     console_results::print_execution_time
     return 0
@@ -1533,6 +1672,50 @@ function console_results::print_failing_tests_and_reset() {
   fi
 }
 
+function console_results::print_skipped_tests_and_reset() {
+  if [[ -s "$SKIPPED_OUTPUT_PATH" ]] && env::is_show_skipped_enabled; then
+    local total_skipped
+    total_skipped=$(state::get_tests_skipped)
+
+    if env::is_simple_output_enabled; then
+      printf "\n"
+    fi
+
+    if [[ "$total_skipped" -eq 1 ]]; then
+      echo -e "${_COLOR_BOLD}There was 1 skipped test:${_COLOR_DEFAULT}\n"
+    else
+      echo -e "${_COLOR_BOLD}There were $total_skipped skipped tests:${_COLOR_DEFAULT}\n"
+    fi
+
+    tr -d '\r' < "$SKIPPED_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
+    rm "$SKIPPED_OUTPUT_PATH"
+
+    echo ""
+  fi
+}
+
+function console_results::print_incomplete_tests_and_reset() {
+  if [[ -s "$INCOMPLETE_OUTPUT_PATH" ]] && env::is_show_incomplete_enabled; then
+    local total_incomplete
+    total_incomplete=$(state::get_tests_incomplete)
+
+    if env::is_simple_output_enabled; then
+      printf "\n"
+    fi
+
+    if [[ "$total_incomplete" -eq 1 ]]; then
+      echo -e "${_COLOR_BOLD}There was 1 incomplete test:${_COLOR_DEFAULT}\n"
+    else
+      echo -e "${_COLOR_BOLD}There were $total_incomplete incomplete tests:${_COLOR_DEFAULT}\n"
+    fi
+
+    tr -d '\r' < "$INCOMPLETE_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
+    rm "$INCOMPLETE_OUTPUT_PATH"
+
+    echo ""
+  fi
+}
+
 # helpers.sh
 
 declare -r BASHUNIT_GIT_REPO="https://github.com/TypedDevs/bashunit"
@@ -1576,8 +1759,18 @@ function helper::normalize_test_function_name() {
   fi
   # Replace underscores with spaces
   result="${result//_/ }"
-  # Capitalize the first letter
-  result="$(tr '[:lower:]' '[:upper:]' <<< "${result:0:1}")${result:1}"
+  # Capitalize the first letter (bash 3.2 compatible, no subprocess)
+  local first_char="${result:0:1}"
+  case "$first_char" in
+    a) first_char='A' ;; b) first_char='B' ;; c) first_char='C' ;; d) first_char='D' ;;
+    e) first_char='E' ;; f) first_char='F' ;; g) first_char='G' ;; h) first_char='H' ;;
+    i) first_char='I' ;; j) first_char='J' ;; k) first_char='K' ;; l) first_char='L' ;;
+    m) first_char='M' ;; n) first_char='N' ;; o) first_char='O' ;; p) first_char='P' ;;
+    q) first_char='Q' ;; r) first_char='R' ;; s) first_char='S' ;; t) first_char='T' ;;
+    u) first_char='U' ;; v) first_char='V' ;; w) first_char='W' ;; x) first_char='X' ;;
+    y) first_char='Y' ;; z) first_char='Z' ;;
+  esac
+  result="${first_char}${result:1}"
 
   echo "$result"
 }
@@ -1609,9 +1802,9 @@ function helper::encode_base64() {
   local value="$1"
 
   if command -v base64 >/dev/null; then
-    echo "$value" | base64 | tr -d '\n'
+    printf '%s' "$value" | base64 -w 0 2>/dev/null || printf '%s' "$value" | base64 | tr -d '\n'
   else
-    echo "$value" | openssl enc -base64 -A
+    printf '%s' "$value" | openssl enc -base64 -A
   fi
 }
 
@@ -1619,9 +1812,9 @@ function helper::decode_base64() {
   local value="$1"
 
   if command -v base64 >/dev/null; then
-    echo "$value" | base64 -d
+    printf '%s' "$value" | base64 -d
   else
-    echo "$value" | openssl enc -d -base64
+    printf '%s' "$value" | openssl enc -d -base64
   fi
 }
 
@@ -1683,7 +1876,7 @@ function helper::get_functions_to_run() {
 function helper::execute_function_if_exists() {
   local fn_name="$1"
 
-  if [[ "$(type -t "$fn_name")" == "function" ]]; then
+  if declare -F "$fn_name" >/dev/null 2>&1; then
     "$fn_name"
     return $?
   fi
@@ -1750,8 +1943,7 @@ function helper::get_provider_data() {
   data_provider_function=$(
     # shellcheck disable=SC1087
     grep -B 2 -E "function[[:space:]]+$function_name[[:space:]]*\(\)" "$script" 2>/dev/null | \
-    grep -E "^[[:space:]]*# *@?data_provider[[:space:]]+" | \
-    sed -E 's/^[[:space:]]*# *@?data_provider[[:space:]]+//' || true
+    sed -nE 's/^[[:space:]]*# *@?data_provider[[:space:]]+//p'
   )
 
   if [[ -n "$data_provider_function" ]]; then
@@ -1899,6 +2091,75 @@ function helper::generate_id() {
   fi
 }
 
+#
+# Parses a file path that may contain a filter suffix.
+# Supports two syntaxes:
+#   - path::function_name (filter by function name)
+#   - path:line_number (filter by line number)
+#
+# @param $1 string Eg: "tests/test.sh::test_foo" or "tests/test.sh:123"
+#
+# @return string Two lines: first is file path, second is filter (or empty)
+#
+function helper::parse_file_path_filter() {
+  local input="$1"
+  local file_path=""
+  local filter=""
+
+  # Check for :: syntax (function name filter)
+  if [[ "$input" == *"::"* ]]; then
+    file_path="${input%%::*}"
+    filter="${input#*::}"
+  # Check for :number syntax (line number filter)
+  elif [[ "$input" =~ ^(.+):([0-9]+)$ ]]; then
+    file_path="${BASH_REMATCH[1]}"
+    local line_number="${BASH_REMATCH[2]}"
+    # Line number will be resolved to function name later
+    filter="__line__:${line_number}"
+  else
+    file_path="$input"
+  fi
+
+  echo "$file_path"
+  echo "$filter"
+}
+
+#
+# Finds the test function that contains a given line number in a file.
+#
+# @param $1 string File path
+# @param $2 number Line number
+#
+# @return string The function name, or empty if not found
+#
+function helper::find_function_at_line() {
+  local file="$1"
+  local target_line="$2"
+
+  if [[ ! -f "$file" ]]; then
+    return 1
+  fi
+
+  # Find all test function definitions and their line numbers
+  local best_match=""
+  local best_line=0
+
+  while IFS=: read -r line_num content; do
+    # Extract function name from the line
+    local fn_name=""
+    if [[ "$content" =~ ^[[:space:]]*(function[[:space:]]+)?(test[a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\(\) ]]; then
+      fn_name="${BASH_REMATCH[2]}"
+    fi
+
+    if [[ -n "$fn_name" && "$line_num" -le "$target_line" && "$line_num" -gt "$best_line" ]]; then
+      best_match="$fn_name"
+      best_line="$line_num"
+    fi
+  done < <(grep -n -E '^[[:space:]]*(function[[:space:]]+)?test[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\(\)' "$file")
+
+  echo "$best_match"
+}
+
 # test_title.sh
 
 function set_test_title() {
@@ -1935,16 +2196,26 @@ function upgrade::upgrade() {
 
 # assert.sh
 
+# Helper to mark assertion as failed and set the guard flag
+function assert::mark_failed() {
+  state::add_assertions_failed
+  state::mark_assertion_failed_in_test
+}
+
 function fail() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local message="${1:-${FUNCNAME[1]}}"
 
   local label
   label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-  state::add_assertions_failed
+  assert::mark_failed
   console_results::print_failure_message "${label}" "$message"
 }
 
 function assert_true() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local actual="$1"
 
   # Check for expected literal values first
@@ -1965,6 +2236,8 @@ function assert_true() {
 }
 
 function assert_false() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local actual="$1"
 
   # Check for expected literal values first
@@ -2003,18 +2276,20 @@ function handle_bool_assertion_failure() {
   local label
   label="$(helper::normalize_test_function_name "${FUNCNAME[2]}")"
 
-  state::add_assertions_failed
+  assert::mark_failed
   console_results::print_failed_test "$label" "$expected" "but got " "$got"
 }
 
 function assert_same() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if [[ "$expected" != "$actual" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${expected}" "but got " "${actual}"
     return
   fi
@@ -2023,23 +2298,20 @@ function assert_same() {
 }
 
 function assert_equals() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
-  # Remove ANSI escape sequences (color codes)
   local actual_cleaned
-  actual_cleaned=$(echo -e "$actual" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
+  actual_cleaned=$(str::strip_ansi "$actual")
   local expected_cleaned
-  expected_cleaned=$(echo -e "$expected" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
-
-  # Remove all control characters and whitespace (optional, depending on your needs)
-  actual_cleaned=$(echo "$actual_cleaned" | tr -d '[:cntrl:]')
-  expected_cleaned=$(echo "$expected_cleaned" | tr -d '[:cntrl:]')
+  expected_cleaned=$(str::strip_ansi "$expected")
 
   if [[ "$expected_cleaned" != "$actual_cleaned" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${expected_cleaned}" "but got " "${actual_cleaned}"
     return
   fi
@@ -2048,23 +2320,20 @@ function assert_equals() {
 }
 
 function assert_not_equals() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
-  # Remove ANSI escape sequences (color codes)
   local actual_cleaned
-  actual_cleaned=$(echo -e "$actual" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
+  actual_cleaned=$(str::strip_ansi "$actual")
   local expected_cleaned
-  expected_cleaned=$(echo -e "$expected" | sed -r "s/\x1B\[[0-9;]*[mK]//g")
-
-  # Remove all control characters and whitespace (optional, depending on your needs)
-  actual_cleaned=$(echo "$actual_cleaned" | tr -d '[:cntrl:]')
-  expected_cleaned=$(echo "$expected_cleaned" | tr -d '[:cntrl:]')
+  expected_cleaned=$(str::strip_ansi "$expected")
 
   if [[ "$expected_cleaned" == "$actual_cleaned" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${expected_cleaned}" "but got " "${actual_cleaned}"
     return
   fi
@@ -2073,12 +2342,14 @@ function assert_not_equals() {
 }
 
 function assert_empty() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
 
   if [[ "$expected" != "" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "to be empty" "but got " "${expected}"
     return
   fi
@@ -2087,12 +2358,14 @@ function assert_empty() {
 }
 
 function assert_not_empty() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
 
   if [[ "$expected" == "" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "to not be empty" "but got " "${expected}"
     return
   fi
@@ -2101,13 +2374,15 @@ function assert_not_empty() {
 }
 
 function assert_not_same() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if [[ "$expected" == "$actual" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${expected}" "but got " "${actual}"
     return
   fi
@@ -2116,6 +2391,8 @@ function assert_not_same() {
 }
 
 function assert_contains() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2124,7 +2401,7 @@ function assert_contains() {
   if ! [[ $actual == *"$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to contain" "${expected}"
     return
   fi
@@ -2133,6 +2410,8 @@ function assert_contains() {
 }
 
 function assert_contains_ignore_case() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
@@ -2141,7 +2420,7 @@ function assert_contains_ignore_case() {
   if ! [[ $actual =~ $expected ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to contain" "${expected}"
     shopt -u nocasematch
     return
@@ -2152,6 +2431,8 @@ function assert_contains_ignore_case() {
 }
 
 function assert_not_contains() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2160,7 +2441,7 @@ function assert_not_contains() {
   if [[ $actual == *"$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to not contain" "${expected}"
     return
   fi
@@ -2169,6 +2450,8 @@ function assert_not_contains() {
 }
 
 function assert_matches() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2177,7 +2460,7 @@ function assert_matches() {
   if ! [[ $actual =~ $expected ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to match" "${expected}"
     return
   fi
@@ -2186,6 +2469,8 @@ function assert_matches() {
 }
 
 function assert_not_matches() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2194,7 +2479,7 @@ function assert_not_matches() {
   if [[ $actual =~ $expected ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to not match" "${expected}"
     return
   fi
@@ -2203,6 +2488,8 @@ function assert_not_matches() {
 }
 
 function assert_exec() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local cmd="$1"
   shift
 
@@ -2275,7 +2562,7 @@ function assert_exec() {
   if [[ $failed -eq 1 ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "$label" "$expected_desc" "but got " "$actual_desc"
     return
   fi
@@ -2284,13 +2571,15 @@ function assert_exec() {
 }
 
 function assert_exit_code() {
-  local actual_exit_code=${3-"$?"}
+  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected_exit_code="$1"
 
   if [[ "$actual_exit_code" -ne "$expected_exit_code" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual_exit_code}" "to be" "${expected_exit_code}"
     return
   fi
@@ -2299,13 +2588,15 @@ function assert_exit_code() {
 }
 
 function assert_successful_code() {
-  local actual_exit_code=${3-"$?"}
+  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected_exit_code=0
 
   if [[ "$actual_exit_code" -ne "$expected_exit_code" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
     return
   fi
@@ -2314,12 +2605,13 @@ function assert_successful_code() {
 }
 
 function assert_unsuccessful_code() {
-  local actual_exit_code=${3-"$?"}
+  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
 
   if [[ "$actual_exit_code" -eq 0 ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual_exit_code}" "to be non-zero" "but was 0"
     return
   fi
@@ -2328,13 +2620,15 @@ function assert_unsuccessful_code() {
 }
 
 function assert_general_error() {
-  local actual_exit_code=${3-"$?"}
+  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected_exit_code=1
 
   if [[ "$actual_exit_code" -ne "$expected_exit_code" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
     return
   fi
@@ -2343,13 +2637,15 @@ function assert_general_error() {
 }
 
 function assert_command_not_found() {
-  local actual_exit_code=${3-"$?"}
+  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected_exit_code=127
 
   if [[ $actual_exit_code -ne "$expected_exit_code" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
     return
   fi
@@ -2358,6 +2654,8 @@ function assert_command_not_found() {
 }
 
 function assert_string_starts_with() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2366,7 +2664,7 @@ function assert_string_starts_with() {
   if [[ $actual != "$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to start with" "${expected}"
     return
   fi
@@ -2375,13 +2673,15 @@ function assert_string_starts_with() {
 }
 
 function assert_string_not_starts_with() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if [[ $actual == "$expected"* ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to not start with" "${expected}"
     return
   fi
@@ -2390,6 +2690,8 @@ function assert_string_not_starts_with() {
 }
 
 function assert_string_ends_with() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2398,7 +2700,7 @@ function assert_string_ends_with() {
   if [[ $actual != *"$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to end with" "${expected}"
     return
   fi
@@ -2407,6 +2709,8 @@ function assert_string_ends_with() {
 }
 
 function assert_string_not_ends_with() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual_arr=("${@:2}")
   local actual
@@ -2415,7 +2719,7 @@ function assert_string_not_ends_with() {
   if [[ $actual == *"$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to not end with" "${expected}"
     return
   fi
@@ -2424,13 +2728,15 @@ function assert_string_not_ends_with() {
 }
 
 function assert_less_than() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if ! [[ "$actual" -lt "$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to be less than" "${expected}"
     return
   fi
@@ -2439,13 +2745,15 @@ function assert_less_than() {
 }
 
 function assert_less_or_equal_than() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if ! [[ "$actual" -le "$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to be less or equal than" "${expected}"
     return
   fi
@@ -2454,13 +2762,15 @@ function assert_less_or_equal_than() {
 }
 
 function assert_greater_than() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if ! [[ "$actual" -gt "$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to be greater than" "${expected}"
     return
   fi
@@ -2469,13 +2779,15 @@ function assert_greater_than() {
 }
 
 function assert_greater_or_equal_than() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local actual="$2"
 
   if ! [[ "$actual" -ge "$expected" ]]; then
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${actual}" "to be greater or equal than" "${expected}"
     return
   fi
@@ -2484,6 +2796,8 @@ function assert_greater_or_equal_than() {
 }
 
 function assert_line_count() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected="$1"
   local input_arr=("${@:2}")
   local input_str
@@ -2503,7 +2817,7 @@ function assert_line_count() {
     local label
     label="$(helper::normalize_test_function_name "${FUNCNAME[1]}")"
 
-    state::add_assertions_failed
+    assert::mark_failed
     console_results::print_failed_test "${label}" "${input_str}"\
       "to contain number of lines equal to" "${expected}"\
       "but found" "${actual}"
@@ -2927,7 +3241,7 @@ function mock() {
   shift
 
   if [[ $# -gt 0 ]]; then
-    eval "function $command() { $* ; }"
+    eval "function $command() { $* \"\$@\"; }"
   else
     eval "function $command() { echo \"$($CAT)\" ; }"
   fi
@@ -3281,6 +3595,18 @@ function runner::load_test_files() {
     # Update function cache after sourcing new test file
     CACHED_ALL_FUNCTIONS=$(declare -F | awk '{print $3}')
     if ! runner::run_set_up_before_script "$test_file"; then
+      # Count the test functions that couldn't run due to set_up_before_script failure
+      # and add them as failed (minus 1 since the hook failure already counts as 1)
+      local filtered_functions
+      filtered_functions=$(helper::get_functions_to_run "test" "$filter" "$CACHED_ALL_FUNCTIONS")
+      if [[ -n "$filtered_functions" ]]; then
+        # shellcheck disable=SC2206
+        local functions_to_run=($filtered_functions)
+        local additional_failures=$((${#functions_to_run[@]} - 1))
+        for ((i = 0; i < additional_failures; i++)); do
+          state::add_tests_failed
+        done
+      fi
       runner::clean_set_up_and_tear_down_after_script
       if ! parallel::is_enabled; then
         cleanup_script_temp_files
@@ -3307,7 +3633,7 @@ function runner::load_test_files() {
     parallel::aggregate_test_results "$TEMP_DIR_PARALLEL_TEST_SUITE"
     # Kill the spinner once the aggregation finishes
     disown "$spinner_pid" && kill "$spinner_pid" &>/dev/null
-    printf "\r " # Clear the spinner output
+    printf "\r  \r" # Clear the spinner output
     for script_id in "${scripts_ids[@]}"; do
       export BASHUNIT_CURRENT_SCRIPT_ID="${script_id}"
       cleanup_script_temp_files
@@ -3329,6 +3655,18 @@ function runner::load_bench_files() {
     # Update function cache after sourcing new bench file
     CACHED_ALL_FUNCTIONS=$(declare -F | awk '{print $3}')
     if ! runner::run_set_up_before_script "$bench_file"; then
+      # Count the bench functions that couldn't run due to set_up_before_script failure
+      # and add them as failed (minus 1 since the hook failure already counts as 1)
+      local filtered_functions
+      filtered_functions=$(helper::get_functions_to_run "bench" "$filter" "$CACHED_ALL_FUNCTIONS")
+      if [[ -n "$filtered_functions" ]]; then
+        # shellcheck disable=SC2206
+        local functions_to_run=($filtered_functions)
+        local additional_failures=$((${#functions_to_run[@]} - 1))
+        for ((i = 0; i < additional_failures; i++)); do
+          state::add_tests_failed
+        done
+      fi
       runner::clean_set_up_and_tear_down_after_script
       cleanup_script_temp_files
       continue
@@ -3341,6 +3679,13 @@ function runner::load_bench_files() {
 }
 
 function runner::spinner() {
+  # Only show spinner when output is to a terminal
+  if [[ ! -t 1 ]]; then
+    # Not a terminal, just wait silently
+    while true; do sleep 1; done
+    return
+  fi
+
   if env::is_simple_output_enabled; then
     printf "\n"
   fi
@@ -3600,9 +3945,13 @@ function runner::run_test() {
     # shellcheck disable=SC2064
     trap 'exit_code=$?; runner::cleanup_on_exit "$test_file" "$exit_code"' EXIT
     state::initialize_assertions_count
-    if ! runner::run_set_up "$test_file"; then
-      status=$?
-      exit "$status"
+
+    # Run set_up and capture exit code without || to preserve errexit behavior
+    local setup_exit_code=0
+    runner::run_set_up "$test_file"
+    setup_exit_code=$?
+    if [[ $setup_exit_code -ne 0 ]]; then
+      exit $setup_exit_code
     fi
 
     # 2>&1: Redirects the std-error (FD 2) to the std-output (FD 1).
@@ -3750,6 +4099,7 @@ function runner::run_test() {
   if [[ "$current_assertions_incomplete" != "$(state::get_assertions_incomplete)" ]]; then
     state::add_tests_incomplete
     reports::add_test_incomplete "$test_file" "$label" "$duration" "$total_assertions"
+    runner::write_incomplete_result_output "$test_file" "$fn_name" "$subshell_output"
     internal_log "Test incomplete" "$label"
     return
   fi
@@ -3757,6 +4107,7 @@ function runner::run_test() {
   if [[ "$current_assertions_skipped" != "$(state::get_assertions_skipped)" ]]; then
     state::add_tests_skipped
     reports::add_test_skipped "$test_file" "$label" "$duration" "$total_assertions"
+    runner::write_skipped_result_output "$test_file" "$fn_name" "$subshell_output"
     internal_log "Test skipped" "$label"
     return
   fi
@@ -3776,8 +4127,9 @@ function runner::cleanup_on_exit() {
   local exit_code="$2"
 
   set +e
-  local teardown_status=0
-  runner::run_tear_down "$test_file" || teardown_status=$?
+  # Don't use || here - it disables ERR trap in the entire call chain
+  runner::run_tear_down "$test_file"
+  local teardown_status=$?
   runner::clear_mocks
   cleanup_testcase_temp_files
 
@@ -3906,6 +4258,38 @@ function runner::write_failure_result_output() {
   echo -e "$test_nr) $test_file:$line_number\n$error_msg" >> "$FAILURES_OUTPUT_PATH"
 }
 
+function runner::write_skipped_result_output() {
+  local test_file=$1
+  local fn_name=$2
+  local output_msg=$3
+
+  local line_number
+  line_number=$(helper::get_function_line_number "$fn_name")
+
+  local test_nr="*"
+  if ! parallel::is_enabled; then
+    test_nr=$(state::get_tests_skipped)
+  fi
+
+  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >> "$SKIPPED_OUTPUT_PATH"
+}
+
+function runner::write_incomplete_result_output() {
+  local test_file=$1
+  local fn_name=$2
+  local output_msg=$3
+
+  local line_number
+  line_number=$(helper::get_function_line_number "$fn_name")
+
+  local test_nr="*"
+  if ! parallel::is_enabled; then
+    test_nr=$(state::get_tests_incomplete)
+  fi
+
+  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >> "$INCOMPLETE_OUTPUT_PATH"
+}
+
 function runner::record_file_hook_failure() {
   local hook_name="$1"
   local test_file="$2"
@@ -3934,9 +4318,7 @@ function runner::execute_file_hook() {
   local test_file="$2"
   local render_header="${3:-false}"
 
-  if [[ "$(type -t "$hook_name")" != "function" ]]; then
-    return 0
-  fi
+  declare -F "$hook_name" >/dev/null 2>&1 || return 0
 
   local hook_output=""
   local status=0
@@ -3988,18 +4370,31 @@ function runner::run_tear_down() {
 function runner::execute_test_hook() {
   local hook_name="$1"
 
-  if [[ "$(type -t "$hook_name")" != "function" ]]; then
-    return 0
-  fi
+  declare -F "$hook_name" >/dev/null 2>&1 || return 0
 
   local hook_output=""
   local status=0
   local hook_output_file
   hook_output_file=$(temp_file "${hook_name}_output")
 
+  # Enable errexit and errtrace to catch any failing command in the hook.
+  # The ERR trap saves the exit status to a global variable (since return value
+  # from trap doesn't propagate properly), disables errexit (to prevent caller
+  # from exiting) and returns from the hook function, preventing subsequent
+  # commands from executing.
+  # Variables set before the failure are preserved since we don't use a subshell.
+  _BASHUNIT_HOOK_ERR_STATUS=0
+  set -eE
+  trap '_BASHUNIT_HOOK_ERR_STATUS=$?; set +eE; trap - ERR; return $_BASHUNIT_HOOK_ERR_STATUS' ERR
+
   {
     "$hook_name"
-  } >"$hook_output_file" 2>&1 || status=$?
+  } >"$hook_output_file" 2>&1
+
+  # Capture exit status from global variable and clean up
+  status=$_BASHUNIT_HOOK_ERR_STATUS
+  trap - ERR
+  set +eE
 
   if [[ -f "$hook_output_file" ]]; then
     hook_output=""
@@ -4111,6 +4506,2410 @@ SH
   echo "> bashunit initialized in $tests_dir"
 }
 
+# learn.sh
+# shellcheck disable=SC2016
+
+##
+# Interactive learning module for bashunit
+# Provides guided tutorials and exercises to learn bashunit
+##
+
+declare -r LEARN_TEMP_DIR="/tmp/bashunit_learn_$$"
+declare -r LEARN_PROGRESS_FILE="$HOME/.bashunit_learn_progress"
+
+##
+# Initialize learning environment
+##
+function learn::init() {
+  mkdir -p "$LEARN_TEMP_DIR"
+  mkdir -p tests
+}
+
+##
+# Cleanup learning environment
+##
+function learn::cleanup() {
+  rm -rf "$LEARN_TEMP_DIR"
+}
+
+##
+# Print the learning menu
+##
+function learn::print_menu() {
+  cat <<EOF
+${_COLOR_BOLD}${_COLOR_PASSED}bashunit${_COLOR_DEFAULT} - Interactive Learning
+
+Choose a lesson:
+
+  ${_COLOR_BOLD}1.${_COLOR_DEFAULT} Basics - Your First Test
+  ${_COLOR_BOLD}2.${_COLOR_DEFAULT} Assertions - Testing Different Conditions
+  ${_COLOR_BOLD}3.${_COLOR_DEFAULT} Setup & Teardown - Managing Test Lifecycle
+  ${_COLOR_BOLD}4.${_COLOR_DEFAULT} Testing Functions - Unit Testing Patterns
+  ${_COLOR_BOLD}5.${_COLOR_DEFAULT} Testing Scripts - Integration Testing
+  ${_COLOR_BOLD}6.${_COLOR_DEFAULT} Mocking - Test Doubles and Mocks
+  ${_COLOR_BOLD}7.${_COLOR_DEFAULT} Spies - Verifying Function Calls
+  ${_COLOR_BOLD}8.${_COLOR_DEFAULT} Data Providers - Parameterized Tests
+  ${_COLOR_BOLD}9.${_COLOR_DEFAULT} Exit Codes - Testing Success and Failure
+  ${_COLOR_BOLD}10.${_COLOR_DEFAULT} Complete Challenge - Real World Scenario
+
+  ${_COLOR_BOLD}p.${_COLOR_DEFAULT} Show Progress
+  ${_COLOR_BOLD}r.${_COLOR_DEFAULT} Reset Progress
+  ${_COLOR_BOLD}q.${_COLOR_DEFAULT} Quit
+
+Enter your choice:
+EOF
+}
+
+##
+# Main learning loop
+##
+function learn::start() {
+  learn::init
+
+  trap 'learn::cleanup' EXIT
+
+  while true; do
+    echo ""
+    learn::print_menu
+    read -r choice
+    echo ""
+
+    case "$choice" in
+      1) learn::lesson_basics || true ;;
+      2) learn::lesson_assertions || true ;;
+      3) learn::lesson_lifecycle || true ;;
+      4) learn::lesson_functions || true ;;
+      5) learn::lesson_scripts || true ;;
+      6) learn::lesson_mocking || true ;;
+      7) learn::lesson_spies || true ;;
+      8) learn::lesson_data_providers || true ;;
+      9) learn::lesson_exit_codes || true ;;
+      10) learn::lesson_challenge || true ;;
+      p) learn::show_progress ;;
+      r) learn::reset_progress ;;
+      q)
+        echo "${_COLOR_PASSED}Happy testing!${_COLOR_DEFAULT}"
+        break
+        ;;
+      *)
+        echo "${_COLOR_FAILED}Invalid choice. Please try again.${_COLOR_DEFAULT}"
+        ;;
+    esac
+  done
+
+  learn::cleanup
+}
+
+##
+# Mark lesson as completed
+##
+function learn::mark_completed() {
+  local lesson=$1
+  echo "$lesson" >> "$LEARN_PROGRESS_FILE"
+}
+
+##
+# Check if lesson is completed
+##
+function learn::is_completed() {
+  local lesson=$1
+  [[ -f "$LEARN_PROGRESS_FILE" ]] && grep -q "^$lesson$" "$LEARN_PROGRESS_FILE"
+}
+
+##
+# Show learning progress
+##
+function learn::show_progress() {
+  if [[ ! -f "$LEARN_PROGRESS_FILE" ]]; then
+    echo "${_COLOR_INCOMPLETE}No progress yet. Start with lesson 1!${_COLOR_DEFAULT}"
+    return
+  fi
+
+  echo "${_COLOR_BOLD}Your Progress:${_COLOR_DEFAULT}"
+  echo ""
+
+  local total_lessons=10
+  local completed=0
+
+  for i in $(seq 1 $total_lessons); do
+    if learn::is_completed "lesson_$i"; then
+      echo "  ${_COLOR_PASSED}✓${_COLOR_DEFAULT} Lesson $i completed"
+      ((completed++))
+    else
+      echo "  ${_COLOR_INCOMPLETE}○${_COLOR_DEFAULT} Lesson $i"
+    fi
+  done
+
+  echo ""
+  echo "Progress: $completed/$total_lessons lessons completed"
+
+  if [[ $completed -eq $total_lessons ]]; then
+    echo ""
+    echo "${_COLOR_PASSED}${_COLOR_BOLD}🎉 Congratulations! You've completed all lessons!${_COLOR_DEFAULT}"
+  fi
+
+  read -p "Press Enter to continue..." -r
+}
+
+##
+# Reset learning progress
+##
+function learn::reset_progress() {
+  rm -f "$LEARN_PROGRESS_FILE"
+  echo "${_COLOR_PASSED}Progress reset successfully.${_COLOR_DEFAULT}"
+  read -p "Press Enter to continue..." -r
+}
+
+##
+# Create the example file automatically
+# Arguments: $1 - filename, $2 - file content
+##
+function learn::create_example_file() {
+  local filename=$1
+  local content=$2
+
+  echo ""
+  echo "Creating example file ${_COLOR_BOLD}$filename${_COLOR_DEFAULT}..."
+  echo "$content" > "$filename"
+  chmod +x "$filename"
+  echo "${_COLOR_PASSED}✓ Created $filename${_COLOR_DEFAULT}"
+  echo ""
+  echo "File created! Edit it to complete the TODO items, then run this lesson again."
+  read -p "Press Enter to continue..." -r
+  return 0
+}
+
+##
+# Run a lesson test and check results
+##
+function learn::run_lesson_test() {
+  local test_file=$1
+  local lesson_number=$2
+
+  echo "${_COLOR_BOLD}Running your test...${_COLOR_DEFAULT}"
+  echo ""
+
+  if "$BASHUNIT_ROOT_DIR/bashunit" "$test_file" --simple; then
+    echo ""
+    echo "${_COLOR_PASSED}${_COLOR_BOLD}✓ Excellent! Lesson $lesson_number completed!${_COLOR_DEFAULT}"
+    learn::mark_completed "lesson_$lesson_number"
+    read -p "Press Enter to continue..." -r
+    return 0
+  else
+    echo ""
+    echo "${_COLOR_FAILED}Not quite right. Review the requirements and try again.${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+}
+
+##
+# Lesson 1: Basics - Your First Test
+##
+function learn::lesson_basics() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║                    Lesson 1: Your First Test                   ║
+╚════════════════════════════════════════════════════════════════╝
+
+Welcome to bashunit! Let's write your first test.
+
+CONCEPT: A test is a function that starts with 'test_' and uses
+assertions to verify behavior.
+
+TASK: Create a test file that checks if two values are equal.
+
+File: tests/first_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function test_bashunit_works() {
+  # TODO: Use assert_same to check if "hello" equals "hello"
+  # Hint: assert_same "expected" "actual"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • The assert_same function takes two arguments:
+    assert_same "expected" "actual"
+  • Test functions must start with "test_" prefix
+  • Always quote your strings to avoid word splitting
+  • Keep test files in a tests/ directory for better organization
+EOF
+
+  local default_file="tests/first_test.sh"
+  echo ""
+  printf "When ready, enter file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function test_bashunit_works() {
+  # TODO: Use assert_same to check if "hello" equals "hello"
+  # Hint: assert_same "expected" "actual"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  # Check if file contains assert_same
+  if ! grep -q "assert_same" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should use assert_same${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 1
+}
+
+##
+# Lesson 2: Assertions - Testing Different Conditions
+##
+function learn::lesson_assertions() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║              Lesson 2: Testing Different Conditions            ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: bashunit provides many assertion functions for different checks:
+  • assert_same - exact equality
+  • assert_contains - substring check
+  • assert_matches - regex pattern
+  • assert_not_same - inequality
+  • assert_empty - checks if value is empty
+  • assert_not_empty - checks if value is not empty
+
+TASK: Write a test file with 3 different assertions.
+
+File: tests/assertions_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function test_multiple_assertions() {
+  local message="Hello, bashunit!"
+
+  # TODO: Check that message contains "bashunit"
+  # Hint: assert_contains "substring" "$message"
+
+  # TODO: Check that message matches the pattern "Hello.*!"
+  # Hint: assert_matches "pattern" "$message"
+
+  # TODO: Check that message is not empty
+  # Hint: assert_not_empty "$message"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • assert_same checks exact equality (useful for strings/numbers)
+  • assert_contains is more flexible for partial matches
+  • assert_matches uses regex patterns (e.g., "^[0-9]+$" for numbers)
+  • Explore more: assert_empty, assert_true, assert_false
+EOF
+
+  local default_file="tests/assertions_test.sh"
+  echo ""
+  printf "When ready, enter file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function test_multiple_assertions() {
+  local message="Hello, bashunit!"
+
+  # TODO: Check that message contains "bashunit"
+  # Hint: assert_contains "substring" "$message"
+
+  # TODO: Check that message matches the pattern "Hello.*!"
+  # Hint: assert_matches "pattern" "$message"
+
+  # TODO: Check that message is not empty
+  # Hint: assert_not_empty "$message"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "assert_contains" "$test_file" || \
+      ! grep -q "assert_matches" "$test_file" || \
+      ! grep -q "assert_not_empty" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should use all three assertion types${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 2
+}
+
+##
+# Lesson 3: Setup & Teardown - Managing Test Lifecycle
+##
+function learn::lesson_lifecycle() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║           Lesson 3: Setup and Teardown Functions               ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Tests often need preparation and cleanup. bashunit provides:
+  • set_up() - runs before EACH test
+  • tear_down() - runs after EACH test
+  • set_up_before_script() - runs once before ALL tests
+  • tear_down_after_script() - runs once after ALL tests
+
+TASK: Create a test that uses setup and teardown to manage files.
+
+File: tests/lifecycle_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  # Create a temp file before each test
+  # TODO: export TEST_FILE="/tmp/test_$$"
+  # TODO: echo "test content" > "$TEST_FILE"
+}
+
+function tear_down() {
+  # Clean up after each test
+  # TODO: rm -f "$TEST_FILE"
+}
+
+function test_file_exists() {
+  # TODO: assert_file_exists "$TEST_FILE"
+}
+
+function test_file_has_content() {
+  # TODO: assert_file_contains "test content" "$TEST_FILE"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • set_up() runs before EACH test (good for test isolation)
+  • set_up_before_script() runs ONCE before all tests (good for expensive setup)
+  • Always clean up in tear_down() to avoid polluting other tests
+  • Use $$ for unique temp file names to avoid conflicts
+EOF
+
+  local default_file="tests/lifecycle_test.sh"
+  echo ""
+  printf "When ready, enter file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  # Create a temp file before each test
+  # TODO: export TEST_FILE="/tmp/test_$$"
+  # TODO: echo "test content" > "$TEST_FILE"
+}
+
+function tear_down() {
+  # Clean up after each test
+  # TODO: rm -f "$TEST_FILE"
+}
+
+function test_file_exists() {
+  # TODO: assert_file_exists "$TEST_FILE"
+}
+
+function test_file_has_content() {
+  # TODO: assert_file_contains "test content" "$TEST_FILE"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "function set_up()" "$test_file" || \
+      ! grep -q "function tear_down()" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should define set_up and tear_down functions${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 3
+}
+
+##
+# Lesson 4: Testing Functions
+##
+function learn::lesson_functions() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║              Lesson 4: Testing Bash Functions                  ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: To test functions, source the file containing them, then
+call them in your tests.
+
+TASK: Create a script with a function, then test it.
+
+File: calculator.sh (source code)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function add() {
+  echo $(($1 + $2))
+}
+───────────────────────────────────────────────────────────────
+
+File: tests/calculator_test.sh (test file)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  # TODO: Source calculator.sh from parent directory
+  # Hint: source ../calculator.sh
+}
+
+function test_add_positive_numbers() {
+  # TODO: Test that add 2 3 returns "5"
+  # Hint: result=$(add 2 3)
+  # Hint: assert_same "5" "$result"
+}
+
+function test_add_negative_numbers() {
+  # TODO: Test that add -2 -3 returns "-5"
+  # Hint: result=$(add -2 -3)
+  # Hint: assert_same "-5" "$result"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Source files in set_up() to reload them fresh for each test
+  • Capture function output with: result=$(function_name args)
+  • Test edge cases: positive, negative, zero, large numbers
+  • Source files from parent directory: source ../file.sh
+EOF
+
+  local default_file="tests/calculator_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  # TODO: Source calculator.sh from parent directory
+  # Hint: source ../calculator.sh
+}
+
+function test_add_positive_numbers() {
+  # TODO: Test that add 2 3 returns "5"
+  # Hint: result=$(add 2 3)
+  # Hint: assert_same "5" "$result"
+}
+
+function test_add_negative_numbers() {
+  # TODO: Test that add -2 -3 returns "-5"
+  # Hint: result=$(add -2 -3)
+  # Hint: assert_same "-5" "$result"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "source" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should source the calculator.sh file${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 4
+}
+
+##
+# Lesson 5: Testing Scripts
+##
+function learn::lesson_scripts() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║                 Lesson 5: Testing Bash Scripts                 ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Scripts that execute commands directly are tested differently.
+Run them and capture their output.
+
+TASK: Create a script and test its output.
+
+File: greeter.sh (source code)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+name=${1:-World}
+echo "Hello, $name!"
+───────────────────────────────────────────────────────────────
+
+File: tests/greeter_test.sh (test file)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function test_default_greeting() {
+  # TODO: Run greeter.sh from parent directory and capture output
+  # Hint: output=$(../greeter.sh)
+
+  # TODO: Assert output contains "Hello, World!"
+  # Hint: assert_contains "Hello, World!" "$output"
+}
+
+function test_custom_greeting() {
+  # TODO: Run greeter.sh with argument "Alice"
+  # Hint: output=$(../greeter.sh "Alice")
+
+  # TODO: Assert output contains "Hello, Alice!"
+  # Hint: assert_contains "Hello, Alice!" "$output"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Use command substitution: output=$(./script.sh)
+  • Make scripts executable: chmod +x script.sh
+  • Test both default behavior and with various arguments
+  • Scripts run in subshells, so they can't modify parent environment
+  • Run scripts from parent directory: ../script.sh
+EOF
+
+  local default_file="tests/greeter_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function test_default_greeting() {
+  # TODO: Run greeter.sh from parent directory and capture output
+  # Hint: output=$(../greeter.sh)
+
+  # TODO: Assert output contains "Hello, World!"
+  # Hint: assert_contains "Hello, World!" "$output"
+}
+
+function test_custom_greeting() {
+  # TODO: Run greeter.sh with argument "Alice"
+  # Hint: output=$(../greeter.sh "Alice")
+
+  # TODO: Assert output contains "Hello, Alice!"
+  # Hint: assert_contains "Hello, Alice!" "$output"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 5
+}
+
+##
+# Lesson 6: Mocking
+##
+function learn::lesson_mocking() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║               Lesson 6: Mocking External Commands              ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Mocks let you override external commands or functions to
+control their behavior in tests.
+
+TASK: Test a function that uses external commands.
+
+File: system_info.sh (source code)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function get_system_info() {
+  echo "OS: $(uname -s)"
+}
+───────────────────────────────────────────────────────────────
+
+File: tests/system_info_test.sh (test file)
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  source ../system_info.sh
+}
+
+function test_system_info_on_linux() {
+  # TODO: Mock uname to return "Linux"
+  # Hint: mock uname echo "Linux"
+
+  local output
+  output=$(get_system_info)
+
+  # TODO: Assert output contains "OS: Linux"
+}
+
+function test_system_info_on_macos() {
+  # TODO: Mock uname to return "Darwin"
+
+  local output
+  output=$(get_system_info)
+
+  # TODO: Assert output contains "OS: Darwin"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Mocks replace commands/functions with custom behavior
+  • Syntax: mock command_name echo "mocked output"
+  • Mocks are automatically cleaned up after each test
+  • Use mocks to avoid calling expensive external commands
+EOF
+
+  local default_file="tests/system_info_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  source ../system_info.sh
+}
+
+function test_system_info_on_linux() {
+  # TODO: Mock uname to return "Linux"
+  # Hint: mock uname echo "Linux"
+
+  local output
+  output=$(get_system_info)
+
+  # TODO: Assert output contains "OS: Linux"
+}
+
+function test_system_info_on_macos() {
+  # TODO: Mock uname to return "Darwin"
+
+  local output
+  output=$(get_system_info)
+
+  # TODO: Assert output contains "OS: Darwin"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "mock" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should use mock${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 6
+}
+
+##
+# Lesson 7: Spies
+##
+function learn::lesson_spies() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║              Lesson 7: Spies - Verifying Calls                 ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Spies let you verify that functions were called with specific
+arguments or a certain number of times.
+
+KEY DIFFERENCE: Spies track calls without changing behavior, while
+mocks (Lesson 6) replace the function entirely with custom behavior.
+
+TASK: Use spies to verify function calls.
+
+File: deploy.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function deploy_app() {
+  git push origin main
+  docker build -t myapp .
+  docker push myapp
+}
+───────────────────────────────────────────────────────────────
+
+File: deploy_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  source deploy.sh
+}
+
+function test_deploy_calls_git_push() {
+  # TODO: Create spies for git and docker
+  # Hint: spy git
+  # Hint: spy docker
+
+  deploy_app
+
+  # TODO: Assert git was called
+  # Hint: assert_have_been_called git
+
+  # TODO: Assert docker was called
+}
+
+function test_deploy_calls_docker_twice() {
+  # TODO: Spy on docker
+
+  deploy_app
+
+  # TODO: Assert docker was called exactly 2 times
+  # Hint: assert_have_been_called_times 2 docker
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Spies track calls but don't change behavior (unlike mocks)
+  • assert_have_been_called - verifies at least one call
+  • assert_have_been_called_times N - verifies exact call count
+  • assert_have_been_called_with - verifies specific arguments
+  • Spies are cleaned up automatically after each test
+EOF
+
+  local default_file="deploy_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  source deploy.sh
+}
+
+function test_deploy_calls_git_push() {
+  # TODO: Create spies for git and docker
+  # Hint: spy git
+  # Hint: spy docker
+
+  deploy_app
+
+  # TODO: Assert git was called
+  # Hint: assert_have_been_called git
+
+  # TODO: Assert docker was called
+}
+
+function test_deploy_calls_docker_twice() {
+  # TODO: Spy on docker
+
+  deploy_app
+
+  # TODO: Assert docker was called exactly 2 times
+  # Hint: assert_have_been_called_times 2 docker
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "spy" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should use spy${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 7
+}
+
+##
+# Lesson 8: Data Providers
+##
+function learn::lesson_data_providers() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║           Lesson 8: Data Providers - Parameterized Tests       ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Data providers let you run the same test with different inputs.
+Define a function that echoes test data, one per line.
+
+HOW IT WORKS: Each line from data_provider_* becomes $1 in your test.
+The test runs once for each line of data.
+
+TASK: Test multiple email formats using a data provider.
+
+File: validator.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function is_valid_email() {
+  [[ $1 =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
+}
+───────────────────────────────────────────────────────────────
+
+File: validator_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  source validator.sh
+}
+
+function data_provider_valid_emails() {
+  # TODO: Echo valid email addresses, one per line
+  # Example: echo "user@example.com"
+}
+
+function test_valid_emails() {
+  # $1 contains the email from data provider
+  # TODO: Assert is_valid_email succeeds
+  # Hint: assert_successful_code "is_valid_email \"$1\""
+}
+
+function data_provider_invalid_emails() {
+  # TODO: Echo invalid email addresses, one per line
+  # Example: echo "not-an-email"
+}
+
+function test_invalid_emails() {
+  # TODO: Assert is_valid_email fails
+  # Hint: assert_general_error "is_valid_email \"$1\""
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Data providers must be named: data_provider_<test_name>
+  • Each line of output becomes one test case
+  • The test function receives the line as $1
+  • Great for testing multiple inputs without duplicating code
+  • You can have multiple data provider/test pairs in one file
+EOF
+
+  local default_file="validator_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  source validator.sh
+}
+
+function data_provider_valid_emails() {
+  # TODO: Echo valid email addresses, one per line
+  # Example: echo "user@example.com"
+}
+
+function test_valid_emails() {
+  # $1 contains the email from data provider
+  # TODO: Assert is_valid_email succeeds
+  # Hint: assert_successful_code "is_valid_email \"$1\""
+}
+
+function data_provider_invalid_emails() {
+  # TODO: Echo invalid email addresses, one per line
+  # Example: echo "not-an-email"
+}
+
+function test_invalid_emails() {
+  # TODO: Assert is_valid_email fails
+  # Hint: assert_general_error "is_valid_email \"$1\""
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "function data_provider_" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should define data provider functions${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 8
+}
+
+##
+# Lesson 9: Exit Codes
+##
+function learn::lesson_exit_codes() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║             Lesson 9: Testing Exit Codes                       ║
+╚════════════════════════════════════════════════════════════════╝
+
+CONCEPT: Exit codes indicate success (0) or failure (non-zero).
+bashunit provides assertions to test them:
+  • assert_successful_code - expects exit code 0
+  • assert_general_error - expects exit code 1
+  • assert_exit_code N - expects specific exit code N
+
+TASK: Test different exit codes.
+
+File: checker.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function check_file() {
+  if [[ ! -e "$1" ]]; then
+    echo "File not found" >&2
+    return 127
+  fi
+
+  if [[ ! -r "$1" ]]; then
+    echo "Permission denied" >&2
+    return 1
+  fi
+
+  echo "File OK"
+  return 0
+}
+───────────────────────────────────────────────────────────────
+
+File: checker_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function set_up() {
+  source checker.sh
+  # Create a test file
+  export TEST_FILE="/tmp/test_file_$$"
+  touch "$TEST_FILE"
+}
+
+function tear_down() {
+  rm -f "$TEST_FILE"
+}
+
+function test_existing_file_returns_success() {
+  # TODO: Assert check_file succeeds with TEST_FILE
+  # Hint: assert_successful_code "check_file '$TEST_FILE'"
+}
+
+function test_missing_file_returns_127() {
+  # TODO: Assert check_file returns exit code 127 for missing file
+  # Hint: assert_exit_code 127 "check_file '/nonexistent/file'"
+}
+───────────────────────────────────────────────────────────────
+
+TIPS:
+  • Exit code 0 = success (assert_successful_code)
+  • Exit code 1 = general error (assert_general_error)
+  • Other codes = specific errors (assert_exit_code N)
+  • Bash uses 'return N' in functions, 'exit N' in scripts
+  • Common codes: 127=not found, 126=not executable, 2=misuse
+EOF
+
+  local default_file="checker_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  source checker.sh
+  # Create a test file
+  export TEST_FILE="/tmp/test_file_$$"
+  touch "$TEST_FILE"
+}
+
+function tear_down() {
+  rm -f "$TEST_FILE"
+}
+
+function test_existing_file_returns_success() {
+  # TODO: Assert check_file succeeds with TEST_FILE
+  # Hint: assert_successful_code "check_file '\''$TEST_FILE'\''"
+}
+
+function test_missing_file_returns_127() {
+  # TODO: Assert check_file returns exit code 127 for missing file
+  # Hint: assert_exit_code 127 "check_file '\''/nonexistent/file'\''"
+}'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  if ! grep -q "assert_successful_code\|assert_exit_code\|assert_general_error" "$test_file"; then
+    echo "${_COLOR_FAILED}Your test should use exit code assertions${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  learn::run_lesson_test "$test_file" 9
+}
+
+##
+# Lesson 10: Complete Challenge
+##
+function learn::lesson_challenge() {
+  clear
+  cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║          Lesson 10: Complete Challenge - Backup Script         ║
+╚════════════════════════════════════════════════════════════════╝
+
+FINAL CHALLENGE: Combine everything you've learned!
+
+CONCEPT: Real-world tests combine multiple concepts: lifecycle
+management, assertions, exit codes, and test doubles.
+
+TASK: Create a backup script and comprehensive tests.
+
+File: backup.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+function create_backup() {
+  local source=$1
+  local dest=$2
+
+  if [[ ! -d "$source" ]]; then
+    echo "Source directory not found" >&2
+    return 1
+  fi
+
+  tar -czf "$dest" -C "$source" .
+  echo "Backup created: $dest"
+}
+───────────────────────────────────────────────────────────────
+
+File: backup_test.sh
+───────────────────────────────────────────────────────────────
+#!/usr/bin/env bash
+
+Your test must include:
+  1. set_up and tear_down functions
+  2. Test successful backup creation
+  3. Test failure when source doesn't exist
+  4. Mock or spy on tar command
+  5. Verify backup file exists
+  6. Check output message
+
+TIP: Combine patterns from all previous lessons!
+EOF
+
+  local default_file="backup_test.sh"
+  echo ""
+  printf "When ready, enter TEST file path %s[%s]%s: " "${_COLOR_FAINT}" "$default_file" "${_COLOR_DEFAULT}"
+  read -r test_file
+  test_file="${test_file:-$default_file}"
+
+  if [[ ! -f "$test_file" ]]; then
+    local template='#!/usr/bin/env bash
+
+function set_up() {
+  source backup.sh
+  # TODO: Create test directories and variables
+}
+
+function tear_down() {
+  # TODO: Clean up test files
+}
+
+function test_successful_backup() {
+  # TODO: Test backup creation
+}
+
+function test_backup_failure_when_source_missing() {
+  # TODO: Test failure case
+}
+
+# Add more tests as needed:
+# - Mock or spy on tar command
+# - Verify backup file exists
+# - Check output message
+#
+# TIPS:
+# - Combine lifecycle (set_up/tear_down) with file assertions
+# - Use spies to verify tar was called correctly
+# - Test both success and failure scenarios
+# - Mock external commands to avoid side effects'
+
+    learn::create_example_file "$test_file" "$template"
+    return 1
+  fi
+
+  # Verify the test has key components
+  local missing_components=()
+
+  if ! grep -q "function set_up()" "$test_file"; then
+    missing_components+=("set_up function")
+  fi
+
+  if ! grep -q "function tear_down()" "$test_file"; then
+    missing_components+=("tear_down function")
+  fi
+
+  if [[ ${#missing_components[@]} -gt 0 ]]; then
+    echo "${_COLOR_FAILED}Missing required components:${_COLOR_DEFAULT}"
+    printf "  - %s\n" "${missing_components[@]}"
+    read -p "Press Enter to continue..." -r
+    return 1
+  fi
+
+  if learn::run_lesson_test "$test_file" 10; then
+    echo ""
+    echo "${_COLOR_PASSED}${_COLOR_BOLD}"
+    cat <<'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║                   🎉 CONGRATULATIONS! 🎉                       ║
+║                                                                ║
+║          You've completed all bashunit lessons!                ║
+║                                                                ║
+║  You now know how to:                                          ║
+║    ✓ Write and run tests                                       ║
+║    ✓ Use various assertions                                    ║
+║    ✓ Manage test lifecycle                                     ║
+║    ✓ Test functions and scripts                                ║
+║    ✓ Mock external dependencies                                ║
+║    ✓ Spy on function calls                                     ║
+║    ✓ Use data providers                                        ║
+║    ✓ Test exit codes                                           ║
+║                                                                ║
+║  Next steps:                                                   ║
+║    • Explore https://bashunit.typeddevs.com                    ║
+║    • Check out /common-patterns for more examples              ║
+║    • Start testing your own bash scripts!                      ║
+╚════════════════════════════════════════════════════════════════╝
+EOF
+    echo "${_COLOR_DEFAULT}"
+    read -p "Press Enter to continue..." -r
+  fi
+}
+
+# doc.sh
+
+# This function returns the embedded assertions.md content.
+# During development, it reads from the file.
+# During build, this function is replaced with actual content.
+function doc::get_embedded_docs() {
+  cat <<'__BASHUNIT_DOCS_EOF__'
+# Assertions
+
+When creating tests, you'll need to verify your commands and functions.
+We provide assertions for these checks.
+Below is their documentation.
+
+## assert_true
+> `assert_true bool|function|command`
+
+Reports an error if the argument result in a truthy value: `true` or `0`.
+
+- [assert_false](#assert-false) is similar but different.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_true true
+  assert_true 0
+  assert_true "eval return 0"
+  assert_true mock_true
+}
+
+function test_failure() {
+  assert_true false
+  assert_true 1
+  assert_true "eval return 1"
+  assert_true mock_false
+}
+```
+```bash [globals.sh]
+function mock_true() {
+  return 0
+}
+function mock_false() {
+  return 1
+}
+:::
+
+## assert_false
+> `assert_false bool|function|command`
+
+Reports an error if the argument result in a falsy value: `false` or `1`.
+
+- [assert_true](#assert-true) is similar but different.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_false false
+  assert_false 1
+  assert_false "eval return 1"
+  assert_false mock_false
+}
+
+function test_failure() {
+  assert_false true
+  assert_false 0
+  assert_false "eval return 0"
+  assert_false mock_true
+}
+```
+```bash [globals.sh]
+function mock_true() {
+  return 0
+}
+function mock_false() {
+  return 1
+}
+```
+:::
+
+## assert_same
+> `assert_same "expected" "actual"`
+
+Reports an error if the `expected` and `actual` are not the same - including special chars.
+
+- [assert_not_same](#assert-not-same) is the inverse of this assertion and takes the same arguments.
+- [assert_equals](#assert-equals) is similar but ignoring the special chars.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_same "foo" "foo"
+}
+
+function test_failure() {
+  assert_same "foo" "bar"
+}
+```
+:::
+
+## assert_equals
+> `assert_equals "expected" "actual"`
+
+Reports an error if the two variables `expected` and `actual` are not equal ignoring the special chars like ANSI Escape Sequences (colors) and other special chars like tabs and new lines.
+
+- [assert_same](#assert-same) is similar but including special chars.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_equals "foo" "\e[31mfoo"
+}
+
+function test_failure() {
+  assert_equals "\e[31mfoo" "\e[31mfoo"
+}
+```
+:::
+
+## assert_contains
+> `assert_contains "needle" "haystack"`
+
+Reports an error if `needle` is not a substring of `haystack`.
+
+- [assert_not_contains](#assert-not-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_contains "foo" "foobar"
+}
+
+function test_failure() {
+  assert_contains "baz" "foobar"
+}
+```
+
+:::
+
+## assert_contains_ignore_case
+> `assert_contains_ignore_case "needle" "haystack"`
+
+Reports an error if `needle` is not a substring of `haystack`.
+Differences in casing are ignored when needle is searched for in haystack.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_contains_ignore_case "foo" "FooBar"
+}
+function test_failure() {
+  assert_contains_ignore_case "baz" "FooBar"
+}
+```
+:::
+
+## assert_empty
+> `assert_empty "actual"`
+
+Reports an error if `actual` is not empty.
+
+- [assert_not_empty](#assert-not-empty) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_empty ""
+}
+
+function test_failure() {
+  assert_empty "foo"
+}
+```
+:::
+
+## assert_matches
+> `assert_matches "pattern" "value"`
+
+Reports an error if `value` does not match the regular expression `pattern`.
+
+- [assert_not_matches](#assert-not-matches) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_matches "^foo" "foobar"
+}
+
+function test_failure() {
+  assert_matches "^bar" "foobar"
+}
+```
+:::
+
+## assert_string_starts_with
+> `assert_string_starts_with "needle" "haystack"`
+
+Reports an error if `haystack` does not starts with `needle`.
+
+- [assert_string_not_starts_with](#assert-string-not-starts-with) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_string_starts_with "foo" "foobar"
+}
+
+function test_failure() {
+  assert_string_starts_with "baz" "foobar"
+}
+```
+:::
+
+## assert_string_ends_with
+> `assert_string_ends_with "needle" "haystack"`
+
+Reports an error if `haystack` does not ends with `needle`.
+
+- [assert_string_not_ends_with](#assert-string-not-ends-with) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_string_ends_with "bar" "foobar"
+}
+
+function test_failure() {
+  assert_string_ends_with "foo" "foobar"
+}
+```
+:::
+
+## assert_line_count
+> `assert_line_count "count" "haystack"`
+
+Reports an error if `haystack` does not contain `count` lines.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local string="this is line one
+this is line two
+this is line three"
+
+  assert_line_count 3 "$string"
+}
+
+function test_failure() {
+  assert_line_count 2 "foobar"
+}
+```
+:::
+
+## assert_less_than
+> `assert_less_than "expected" "actual"`
+
+Reports an error if `actual` is not less than `expected`.
+
+- [assert_greater_than](#assert-greater-than) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_less_than "999" "1"
+}
+
+function test_failure() {
+  assert_less_than "1" "999"
+}
+```
+:::
+
+## assert_less_or_equal_than
+> `assert_less_or_equal_than "expected" "actual"`
+
+Reports an error if `actual` is not less than or equal to `expected`.
+
+- [assert_greater_than](#assert-greater-or-equal-than) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_less_or_equal_than "999" "1"
+}
+
+function test_success_with_two_equal_numbers() {
+  assert_less_or_equal_than "999" "999"
+}
+
+function test_failure() {
+  assert_less_or_equal_than "1" "999"
+}
+```
+:::
+
+## assert_greater_than
+> `assert_greater_than "expected" "actual"`
+
+Reports an error if `actual` is not greater than `expected`.
+
+- [assert_less_than](#assert-less-than) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_greater_than "1" "999"
+}
+
+function test_failure() {
+  assert_greater_than "999" "1"
+}
+```
+:::
+
+## assert_greater_or_equal_than
+> `assert_greater_or_equal_than "expected" "actual"`
+
+Reports an error if `actual` is not greater than or equal to `expected`.
+
+- [assert_less_or_equal_than](#assert-less-or-equal-than) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_greater_or_equal_than "1" "999"
+}
+
+function test_success_with_two_equal_numbers() {
+  assert_greater_or_equal_than "999" "999"
+}
+
+function test_failure() {
+  assert_greater_or_equal_than "999" "1"
+}
+```
+:::
+
+## assert_exit_code
+> `assert_exit_code "expected" ["callable"]`
+
+Reports an error if the exit code of `callable` is not equal to `expected`.
+
+If `callable` is not provided, it takes the last executed command or function instead.
+
+- [assert_successful_code](#assert-successful-code), [assert_unsuccessful_code](#assert-unsuccessful-code), [assert_general_error](#assert-general-error) and [assert_command_not_found](#assert-command-not-found)
+are more semantic versions of this assertion, for which you don't need to specify an exit code.
+
+::: code-group
+```bash [Example]
+function test_success_with_callable() {
+  function foo() {
+    return 1
+  }
+
+  assert_exit_code "1" "$(foo)"
+}
+
+function test_success_without_callable() {
+  function foo() {
+    return 1
+  }
+
+  foo # function took instead `callable`
+
+  assert_exit_code "1"
+}
+
+function test_failure() {
+  function foo() {
+    return 1
+  }
+
+  assert_exit_code "0" "$(foo)"
+}
+```
+:::
+
+## assert_exec
+> `assert_exec "command" [--exit <code>] [--stdout "text"] [--stderr "text"]`
+
+Runs `command` capturing its exit status, standard output and standard error and
+checks all provided expectations. When `--exit` is omitted the expected exit
+status defaults to `0`.
+
+::: code-group
+```bash [Example]
+function sample() {
+  echo "out"
+  echo "err" >&2
+  return 1
+}
+
+function test_success() {
+  assert_exec sample --exit 1 --stdout "out" --stderr "err"
+}
+
+function test_failure() {
+  assert_exec sample --exit 0 --stdout "out" --stderr "err"
+}
+```
+:::
+
+## assert_array_contains
+> `assert_array_contains "needle" "haystack"`
+
+Reports an error if `needle` is not an element of `haystack`.
+
+- [assert_array_not_contains](#assert-array-not-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local haystack=(foo bar baz)
+
+  assert_array_contains "bar" "${haystack[@]}"
+}
+
+function test_failure() {
+  local haystack=(foo bar baz)
+
+  assert_array_contains "foobar" "${haystack[@]}"
+}
+```
+:::
+
+## assert_successful_code
+> `assert_successful_code ["callable"]`
+
+Reports an error if the exit code of `callable` is not successful (`0`).
+
+If `callable` is not provided, it takes the last executed command or function instead.
+
+- [assert_exit_code](#assert-exit-code) is the full version of this assertion where you can specify the expected exit code.
+
+::: code-group
+```bash [Example]
+function test_success_with_callable() {
+  function foo() {
+    return 0
+  }
+
+  assert_successful_code "$(foo)"
+}
+
+function test_success_without_callable() {
+  function foo() {
+    return 0
+  }
+
+  foo # function took instead `callable`
+
+  assert_successful_code
+}
+
+function test_failure() {
+  function foo() {
+    return 1
+  }
+
+  assert_successful_code "$(foo)"
+}
+```
+:::
+
+## assert_unsuccessful_code
+> `assert_unsuccessful_code ["callable"]`
+
+Reports an error if the exit code of `callable` is not unsuccessful (non-zero).
+
+If `callable` is not provided, it takes the last executed command or function instead.
+
+[assert_exit_code](#assert-exit-code) is the full version of this assertion where you can specify the expected exit code.
+
+::: code-group
+```bash [Example]
+function test_success_with_callable() {
+  function foo() {
+    return 1
+  }
+
+  assert_unsuccessful_code "$(foo)"
+}
+
+function test_success_without_callable() {
+  function foo() {
+    return 2
+  }
+
+  foo # function took instead `callable`
+
+  assert_unsuccessful_code
+}
+
+function test_failure() {
+  function foo() {
+    return 0
+  }
+
+  assert_unsuccessful_code "$(foo)"
+}
+```
+:::
+
+## assert_general_error
+> `assert_general_error ["callable"]`
+
+Reports an error if the exit code of `callable` is not a general error (`1`).
+
+If `callable` is not provided, it takes the last executed command or function instead.
+
+- [assert_exit_code](#assert-exit-code) is the full version of this assertion where you can specify the expected exit code.
+
+::: code-group
+```bash [Example]
+function test_success_with_callable() {
+  function foo() {
+    return 1
+  }
+
+  assert_general_error "$(foo)"
+}
+
+function test_success_without_callable() {
+  function foo() {
+    return 1
+  }
+
+  foo # function took instead `callable`
+
+  assert_general_error
+}
+
+function test_failure() {
+  function foo() {
+    return 0
+  }
+
+  assert_general_error "$(foo)"
+}
+```
+:::
+
+## assert_command_not_found
+> `assert_general_error ["callable"]`
+
+Reports an error if `callable` exists.
+In other words, if executing `callable` does not return a command not found exit code (`127`).
+
+If `callable` is not provided, it takes the last executed command or function instead.
+
+- [assert_exit_code](#assert-exit-code) is the full version of this assertion where you can specify the expected exit code.
+
+::: code-group
+```bash [Example]
+function test_success_with_callable() {
+  assert_command_not_found "$(foo > /dev/null 2>&1)"
+}
+
+function test_success_without_callable() {
+  foo > /dev/null 2>&1
+
+  assert_command_not_found
+}
+
+function test_failure() {
+  assert_command_not_found "$(ls > /dev/null 2>&1)"
+}
+```
+:::
+
+## assert_file_exists
+> `assert_file_exists "file"`
+
+Reports an error if `file` does not exists, or it is a directory.
+
+- [assert_file_not_exists](#assert-file-not-exists) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file_path="foo.txt"
+  touch "$file_path"
+
+  assert_file_exists "$file_path"
+  rm "$file_path"
+}
+
+function test_failure() {
+  local file_path="foo.txt"
+  rm -f $file_path
+
+  assert_file_exists "$file_path"
+}
+```
+:::
+
+## assert_file_contains
+> `assert_file_contains "file" "search"`
+
+Reports an error if `file` does not contains the search string.
+
+- [assert_file_not_contains](#assert-file-not-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file="/tmp/file-path.txt"
+  echo -e "original content" > "$file"
+
+  assert_file_contains "$file" "content"
+}
+
+function test_failure() {
+  local file="/tmp/file-path.txt"
+  echo -e "original content" > "$file"
+
+  assert_file_contains "$file" "non existing"
+}
+```
+:::
+
+## assert_is_file
+> `assert_is_file "file"`
+
+Reports an error if `file` is not a file.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file_path="foo.txt"
+  touch "$file_path"
+
+  assert_is_file "$file_path"
+  rm "$file_path"
+}
+
+function test_failure() {
+  local dir_path="bar"
+  mkdir "$dir_path"
+
+  assert_is_file "$dir_path"
+  rmdir "$dir_path"
+}
+```
+:::
+
+## assert_is_file_empty
+> `assert_is_file_empty "file"`
+
+Reports an error if `file` is not empty.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file_path="foo.txt"
+  touch "$file_path"
+
+  assert_is_file_empty "$file_path"
+  rm "$file_path"
+}
+
+function test_failure() {
+  local file_path="foo.txt"
+  echo "bar" > "$file_path"
+
+  assert_is_file_empty "$file_path"
+  rm "$file_path"
+}
+```
+:::
+
+## assert_directory_exists
+> `assert_directory_exists "directory"`
+
+Reports an error if `directory` does not exist.
+
+- [assert_directory_not_exists](#assert-directory-not-exists) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/var"
+
+  assert_directory_exists "$directory"
+}
+
+function test_failure() {
+  local directory="/nonexistent_directory"
+
+  assert_directory_exists "$directory"
+}
+```
+:::
+
+## assert_is_directory
+> `assert_is_directory "directory"`
+
+Reports an error if `directory` is not a directory.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/var"
+
+  assert_is_directory "$directory"
+}
+
+function test_failure() {
+  local file="/etc/hosts"
+
+  assert_is_directory "$file"
+}
+```
+:::
+
+## assert_is_directory_empty
+> `assert_is_directory_empty "directory"`
+
+Reports an error if `directory` is not an empty directory.
+
+- [assert_is_directory_not_empty](#assert-is-directory-not-empty) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/home/user/empty_directory"
+  mkdir "$directory"
+
+  assert_is_directory_empty "$directory"
+}
+
+function test_failure() {
+  local directory="/etc"
+
+  assert_is_directory_empty "$directory"
+}
+```
+:::
+
+## assert_is_directory_readable
+> `assert_is_directory_readable "directory"`
+
+Reports an error if `directory` is not a readable directory.
+
+- [assert_is_directory_not_readable](#assert-is-directory-not-readable) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/var"
+
+  assert_is_directory_readable "$directory"
+}
+
+function test_failure() {
+  local directory="/home/user/test"
+  chmod -r "$directory"
+
+  assert_is_directory_readable "$directory"
+}
+```
+:::
+
+## assert_is_directory_writable
+> `assert_is_directory_writable "directory"`
+
+Reports an error if `directory` is not a writable directory.
+
+- [assert_is_directory_not_writable](#assert-is-directory-not-writable) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/tmp"
+
+  assert_is_directory_writable "$directory"
+}
+
+function test_failure() {
+  local directory="/home/user/test"
+  chmod -w "$directory"
+
+  assert_is_directory_writable "$directory"
+}
+```
+:::
+
+## assert_files_equals
+> `assert_files_equals "expected" "actual"`
+
+Reports an error if `expected` and `actual` are not equals.
+
+- [assert_files_not_equals](#assert-files-not-equals) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local expected="/tmp/file1.txt"
+  local actual="/tmp/file2.txt"
+
+  echo "file content" > "$expected"
+  echo "file content" > "$actual"
+
+  assert_files_equals "$expected" "$actual"
+}
+
+function test_failure() {
+  local expected="/tmp/file1.txt"
+  local actual="/tmp/file2.txt"
+
+  echo "file content" > "$expected"
+  echo "different content" > "$actual"
+
+  assert_files_equals "$expected" "$actual"
+}
+```
+```[Output]
+✓ Passed: Success
+✗ Failed: Failure
+    Expected '/tmp/file1.txt'
+    Compared '/tmp/file2.txt'
+    Diff '@@ -1 +1 @@
+-file content
++different content'
+```
+:::
+
+## assert_not_same
+> `assert_not_same "expected" "actual"`
+
+Reports an error if the two variables `expected` and `actual` are the same value.
+
+- [assert_same](#assert-same) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_not_same "foo" "bar"
+}
+
+function test_failure() {
+  assert_not_same "foo" "foo"
+}
+```
+:::
+
+## assert_not_contains
+> `assert_not_contains "needle" "haystack"`
+
+Reports an error if `needle` is a substring of `haystack`.
+
+- [assert_contains](#assert-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_not_contains "baz" "foobar"
+}
+
+function test_failure() {
+  assert_not_contains "foo" "foobar"
+}
+```
+:::
+
+## assert_string_not_starts_with
+> `assert_string_not_starts_with "needle" "haystack"`
+
+Reports an error if `haystack` does starts with `needle`.
+
+- [assert_string_starts_with](#assert-string-starts-with) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_string_not_starts_with "bar" "foobar"
+}
+
+function test_failure() {
+  assert_string_not_starts_with "foo" "foobar"
+}
+```
+:::
+
+## assert_string_not_ends_with
+> `assert_string_not_ends_with "needle" "haystack"`
+
+Reports an error if `haystack` does ends with `needle`.
+
+- [assert_string_ends_with](#assert-string-ends-with) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_string_not_ends_with "foo" "foobar"
+}
+
+function test_failure() {
+  assert_string_not_ends_with "bar" "foobar"
+}
+```
+:::
+
+## assert_not_empty
+> `assert_not_empty "actual"`
+
+Reports an error if `actual` is empty.
+
+- [assert_empty](#assert-empty) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_not_empty "foo"
+}
+
+function test_failure() {
+  assert_not_empty ""
+}
+```
+:::
+
+## assert_not_matches
+> `assert_not_matches "pattern" "value"`
+
+Reports an error if `value` matches the regular expression `pattern`.
+
+- [assert_matches](#assert-matches) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_not_matches "foo$" "foobar"
+}
+
+function test_failure() {
+  assert_not_matches "bar$" "foobar"
+}
+```
+:::
+
+## assert_array_not_contains
+> `assert_array_not_contains "needle" "haystack"`
+
+Reports an error if `needle` is an element of `haystack`.
+
+- [assert_array_contains](#assert-array-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local haystack=(foo bar baz)
+
+  assert_array_not_contains "foobar" "${haystack[@]}"
+}
+
+function test_failure() {
+  local haystack=(foo bar baz)
+
+  assert_array_not_contains "baz" "${haystack[@]}"
+}
+```
+:::
+
+## assert_file_not_exists
+> `assert_file_not_exists "file"`
+
+Reports an error if `file` does exists.
+
+- [assert_file_exists](#assert-file-exists) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file_path="foo.txt"
+  touch "$file_path"
+  rm "$file_path"
+
+  assert_file_not_exists "$file_path"
+}
+
+function test_failed() {
+  local file_path="foo.txt"
+  touch "$file_path"
+
+  assert_file_not_exists "$file_path"
+  rm "$file_path"
+}
+```
+:::
+
+## assert_file_not_contains
+> `assert_file_not_contains "file" "search"`
+
+Reports an error if `file` contains the search string.
+
+- [assert_file_contains](#assert-file-contains) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file="/tmp/file-path.txt"
+  echo -e "original content" > "$file"
+
+  assert_file_not_contains "$file" "non existing"
+}
+
+function test_failure() {
+  local file="/tmp/file-path.txt"
+  echo -e "original content" > "$file"
+
+  assert_file_not_contains "$file" "content"
+}
+```
+:::
+
+## assert_directory_not_exists
+> `assert_directory_not_exists "directory"`
+
+Reports an error if `directory` exists.
+
+- [assert_directory_exists](#assert-directory-exists) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/nonexistent_directory"
+
+  assert_directory_not_exists "$directory"
+}
+
+function test_failure() {
+  local directory="/var"
+
+  assert_directory_not_exists "$directory"
+}
+```
+:::
+
+## assert_is_directory_not_empty
+> `assert_is_directory_not_empty "directory"`
+
+Reports an error if `directory` is empty.
+
+- [assert_is_directory_empty](#assert-is-directory-empty) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/etc"
+
+  assert_is_directory_not_empty "$directory"
+}
+
+function test_failure() {
+  local directory="/home/user/empty_directory"
+  mkdir "$directory"
+
+  assert_is_directory_not_empty "$directory"
+}
+```
+:::
+
+## assert_is_directory_not_readable
+> `assert_is_directory_not_readable "directory"`
+
+Reports an error if `directory` is readable.
+
+- [assert_is_directory_readable](#assert-is-directory-readable) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/home/user/test"
+  chmod -r "$directory"
+
+  assert_is_directory_not_readable "$directory"
+}
+
+function test_failure() {
+  local directory="/var"
+
+  assert_is_directory_not_readable "$directory"
+}
+```
+:::
+
+## assert_is_directory_not_writable
+> `assert_is_directory_not_writable "directory"`
+
+Reports an error if `directory` is writable.
+
+- [assert_is_directory_writable](#assert-is-directory-writable) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local directory="/home/user/test"
+  chmod -w "$directory"
+
+  assert_is_directory_not_writable "$directory"
+}
+
+function test_failure() {
+  local directory="/tmp"
+
+  assert_is_directory_not_writable "$directory"
+}
+```
+:::
+
+
+## assert_files_not_equals
+> `assert_files_not_equals "expected" "actual"`
+
+Reports an error if `expected` and `actual` are not equals.
+
+- [assert_files_equals](#assert-files-equals) is the inverse of this assertion and takes the same arguments.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local expected="/tmp/file1.txt"
+  local actual="/tmp/file2.txt"
+
+  echo "file content" > "$expected"
+  echo "different content" > "$actual"
+
+  assert_files_not_equals "$expected" "$actual"
+}
+
+function test_failure() {
+
+  local expected="/tmp/file1.txt"
+  local actual="/tmp/file2.txt"
+
+  echo "file content" > "$expected"
+  echo "file content" > "$actual"
+
+  assert_files_not_equals "$expected" "$actual"
+}
+```
+```[Output]
+✓ Passed: Success
+✗ Failed: Failure
+    Expected '/tmp/file1.txt'
+    Compared '/tmp/file2.txt'
+    Diff 'Files are equals'
+```
+:::
+
+## fail
+> `fail "failure message"`
+
+Unambiguously reports an error message. Useful for reporting specific message
+when testing situations not covered by any `assert_*` functions.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  if [ "$(date +%-H)" -gt 25 ]; then
+    fail "Something is very wrong with your clock"
+  fi
+}
+function test_failure() {
+  if [ "$(date +%-H)" -lt 25 ]; then
+    fail "This test will always fail"
+  fi
+}
+```
+:::
+__BASHUNIT_DOCS_EOF__
+}
+
+function doc::print_asserts() {
+  local filter="${1:-}"
+  local line
+  local docstring=""
+  local fn=""
+  local should_print=0
+
+  while IFS='' read -r line || [[ -n "$line" ]]; do
+    if [[ $line =~ ^##\ ([A-Za-z0-9_]+) ]]; then
+      fn="${BASH_REMATCH[1]}"
+      if [[ -z "$filter" || "$fn" == *"$filter"* ]]; then
+        should_print=1
+        echo "$line"
+        docstring=""
+      else
+        should_print=0
+      fi
+      continue
+    fi
+
+    if (( should_print )); then
+      if [[ "$line" =~ ^\`\`\` ]]; then
+        echo "--------------"
+        echo "$docstring"
+        should_print=0
+        continue
+      fi
+
+      [[ "$line" == "::: code-group"* ]] && continue
+
+      # Remove markdown link brackets and anchor tags
+      line="${line//[\[\]]/}"
+      line="$(sed -E 's/ *\(#[-a-z0-9]+\)//g' <<< "$line")"
+      docstring+="$line"$'\n'
+    fi
+  done <<< "$(doc::get_embedded_docs)"
+}
+
 # bashunit.sh
 
 # This file provides a facade to developers who wants
@@ -4118,23 +6917,293 @@ SH
 # e.g. adding custom assertions
 
 function bashunit::assertion_failed() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   local expected=$1
   local actual=$2
   local failure_condition_message=${3:-"but got "}
 
   local label
   label="$(helper::normalize_test_function_name "${FUNCNAME[2]}")"
-  state::add_assertions_failed
+  assert::mark_failed
   console_results::print_failed_test "${label}" "${expected}" \
     "$failure_condition_message" "${actual}"
 }
 
 function bashunit::assertion_passed() {
+  (( _ASSERTION_FAILED_IN_TEST )) && return 0
+
   state::add_assertions_passed
 }
 
 # main.sh
 
+#############################
+# Subcommand: test
+#############################
+function main::cmd_test() {
+  local filter=""
+  local raw_args=()
+  local args=()
+  local assert_fn=""
+
+  # Parse test-specific options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -a|--assert)
+        assert_fn="$2"
+        shift
+        ;;
+      -f|--filter)
+        filter="$2"
+        shift
+        ;;
+      -s|--simple)
+        export BASHUNIT_SIMPLE_OUTPUT=true
+        ;;
+      --detailed)
+        export BASHUNIT_SIMPLE_OUTPUT=false
+        ;;
+      --debug)
+        local output_file="${2:-}"
+        if [[ -n "$output_file" && "${output_file:0:1}" != "-" ]]; then
+          exec > "$output_file" 2>&1
+          shift
+        fi
+        set -x
+        ;;
+      -S|--stop-on-failure)
+        export BASHUNIT_STOP_ON_FAILURE=true
+        ;;
+      -p|--parallel)
+        export BASHUNIT_PARALLEL_RUN=true
+        ;;
+      --no-parallel)
+        export BASHUNIT_PARALLEL_RUN=false
+        ;;
+      -e|--env|--boot)
+        # shellcheck disable=SC1090
+        source "$2"
+        shift
+        ;;
+      -l|--log-junit)
+        export BASHUNIT_LOG_JUNIT="$2"
+        shift
+        ;;
+      -r|--report-html)
+        export BASHUNIT_REPORT_HTML="$2"
+        shift
+        ;;
+      --no-output)
+        export BASHUNIT_NO_OUTPUT=true
+        ;;
+      -vvv|--verbose)
+        export BASHUNIT_VERBOSE=true
+        ;;
+      -h|--help)
+        console_header::print_test_help
+        exit 0
+        ;;
+      --show-skipped)
+        export BASHUNIT_SHOW_SKIPPED=true
+        ;;
+      --show-incomplete)
+        export BASHUNIT_SHOW_INCOMPLETE=true
+        ;;
+      *)
+        raw_args+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  # Expand positional arguments and extract inline filters
+  # Skip filter parsing for assert mode - args are not file paths
+  local inline_filter=""
+  local inline_filter_file=""
+  if [[ ${#raw_args[@]} -gt 0 ]]; then
+    if [[ -n "$assert_fn" ]]; then
+      # Assert mode: pass args as-is without file path processing
+      args=("${raw_args[@]}")
+    else
+      # Test mode: process file paths and extract inline filters
+      for arg in "${raw_args[@]}"; do
+        local parsed_path parsed_filter
+        {
+          read -r parsed_path
+          read -r parsed_filter
+        } < <(helper::parse_file_path_filter "$arg")
+
+        # If an inline filter was found, store it
+        if [[ -n "$parsed_filter" ]]; then
+          inline_filter="$parsed_filter"
+          inline_filter_file="$parsed_path"
+        fi
+
+        while IFS= read -r file; do
+          args+=("$file")
+        done < <(helper::find_files_recursive "$parsed_path" '*[tT]est.sh')
+      done
+
+      # Resolve line number filter to function name
+      if [[ "$inline_filter" == "__line__:"* ]]; then
+        local line_number="${inline_filter#__line__:}"
+        local resolved_file="${inline_filter_file}"
+
+        # If the file path was a pattern, use the first resolved file
+        if [[ ${#args[@]} -gt 0 ]]; then
+          resolved_file="${args[0]}"
+        fi
+
+        inline_filter=$(helper::find_function_at_line "$resolved_file" "$line_number")
+        if [[ -z "$inline_filter" ]]; then
+          printf "%sError: No test function found at line %s in %s%s\n" \
+            "${_COLOR_FAILED}" "$line_number" "$resolved_file" "${_COLOR_DEFAULT}"
+          exit 1
+        fi
+      fi
+
+      # Use inline filter if no -f filter was provided
+      if [[ -z "$filter" && -n "$inline_filter" ]]; then
+        filter="$inline_filter"
+      fi
+    fi
+  fi
+
+  # Optional bootstrap
+  # shellcheck disable=SC1090
+  [[ -f "${BASHUNIT_BOOTSTRAP:-}" ]] && source "$BASHUNIT_BOOTSTRAP"
+
+  if [[ "${BASHUNIT_NO_OUTPUT:-false}" == true ]]; then
+    exec >/dev/null 2>&1
+  fi
+
+  set +eu
+
+  # Execute
+  if [[ -n "$assert_fn" ]]; then
+    main::exec_assert "$assert_fn" "${args[@]}"
+  else
+    main::exec_tests "$filter" "${args[@]}"
+  fi
+}
+
+#############################
+# Subcommand: bench
+#############################
+function main::cmd_bench() {
+  local filter=""
+  local raw_args=()
+  local args=()
+
+  export BASHUNIT_BENCH_MODE=true
+  source "$BASHUNIT_ROOT_DIR/src/benchmark.sh"
+
+  # Parse bench-specific options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -f|--filter)
+        filter="$2"
+        shift
+        ;;
+      -s|--simple)
+        export BASHUNIT_SIMPLE_OUTPUT=true
+        ;;
+      --detailed)
+        export BASHUNIT_SIMPLE_OUTPUT=false
+        ;;
+      -e|--env|--boot)
+        # shellcheck disable=SC1090
+        source "$2"
+        shift
+        ;;
+      -vvv|--verbose)
+        export BASHUNIT_VERBOSE=true
+        ;;
+      -h|--help)
+        console_header::print_bench_help
+        exit 0
+        ;;
+      *)
+        raw_args+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  # Expand positional arguments
+  if [[ ${#raw_args[@]} -gt 0 ]]; then
+    for arg in "${raw_args[@]}"; do
+      while IFS= read -r file; do
+        args+=("$file")
+      done < <(helper::find_files_recursive "$arg" '*[bB]ench.sh')
+    done
+  fi
+
+  # Optional bootstrap
+  # shellcheck disable=SC1090
+  [[ -f "${BASHUNIT_BOOTSTRAP:-}" ]] && source "$BASHUNIT_BOOTSTRAP"
+
+  set +eu
+
+  main::exec_benchmarks "$filter" "${args[@]}"
+}
+
+#############################
+# Subcommand: doc
+#############################
+function main::cmd_doc() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    console_header::print_doc_help
+    exit 0
+  fi
+
+  doc::print_asserts "${1:-}"
+  exit 0
+}
+
+#############################
+# Subcommand: init
+#############################
+function main::cmd_init() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    console_header::print_init_help
+    exit 0
+  fi
+
+  init::project "${1:-}"
+  exit 0
+}
+
+#############################
+# Subcommand: learn
+#############################
+function main::cmd_learn() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    console_header::print_learn_help
+    exit 0
+  fi
+
+  learn::start
+  exit 0
+}
+
+#############################
+# Subcommand: upgrade
+#############################
+function main::cmd_upgrade() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    console_header::print_upgrade_help
+    exit 0
+  fi
+
+  upgrade::upgrade
+  exit 0
+}
+
+#############################
+# Test execution
+#############################
 function main::exec_tests() {
   local filter=$1
   local files=("${@:2}")
@@ -4194,6 +7263,8 @@ function main::exec_tests() {
   fi
 
   console_results::print_failing_tests_and_reset
+  console_results::print_incomplete_tests_and_reset
+  console_results::print_skipped_tests_and_reset
   console_results::render_result
   exit_code=$?
 
@@ -4253,6 +7324,8 @@ function main::cleanup() {
 function main::handle_stop_on_failure_sync() {
   printf "\n%sStop on failure enabled...%s\n"  "${_COLOR_SKIPPED}" "${_COLOR_DEFAULT}"
   console_results::print_failing_tests_and_reset
+  console_results::print_incomplete_tests_and_reset
+  console_results::print_skipped_tests_and_reset
   console_results::render_result
   cleanup_script_temp_files
   if parallel::is_enabled; then
@@ -4367,135 +7440,52 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.26.0"
+declare -r BASHUNIT_VERSION="0.28.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 export BASHUNIT_ROOT_DIR
 
 
-_ASSERT_FN=""
-_FILTER=""
-_RAW_ARGS=()
-_ARGS=()
-_BENCH_MODE=false
-
 check_os::init
 clock::init
 
-# Argument parsing
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -a|--assert)
-      _ASSERT_FN="$2"
-      shift
-      ;;
-    -f|--filter)
-      _FILTER="$2"
-      shift
-      ;;
-    -s|--simple)
-      export BASHUNIT_SIMPLE_OUTPUT=true
-      ;;
-    --detailed)
-      export BASHUNIT_SIMPLE_OUTPUT=false
-      ;;
-    --debug)
-      OUTPUT_FILE="${2:-}"
-      if [[ -n "$OUTPUT_FILE" ]]; then
-        exec > "$OUTPUT_FILE" 2>&1
-      fi
-      set -x
-      ;;
-    -b|--bench)
-      _BENCH_MODE=true
-      export BASHUNIT_BENCH_MODE=true
-      source "$BASHUNIT_ROOT_DIR/src/benchmark.sh"
-      ;;
-    -S|--stop-on-failure)
-      export BASHUNIT_STOP_ON_FAILURE=true
-      ;;
-    -p|--parallel)
-      export BASHUNIT_PARALLEL_RUN=true
-      ;;
-    --no-parallel)
-      export BASHUNIT_PARALLEL_RUN=false
-      ;;
-    -e|--env|--boot)
-      # shellcheck disable=SC1090
-      source "$2"
-      shift
-      ;;
-    -l|--log-junit)
-      export BASHUNIT_LOG_JUNIT="$2"
-      shift
-      ;;
-    -r|--report-html)
-      export BASHUNIT_REPORT_HTML="$2"
-      shift
-      ;;
-    --no-output)
-      export BASHUNIT_NO_OUTPUT=true
-      ;;
-    -vvv|--verbose)
-      export BASHUNIT_VERBOSE=true
-      ;;
-    -v|--version)
-      console_header::print_version
-      trap '' EXIT && exit 0
-      ;;
-    --upgrade)
-      upgrade::upgrade
-      trap '' EXIT && exit 0
-      ;;
-    --init)
-      if [[ -n ${2:-} && ${2:0:1} != "-" ]]; then
-        init::project "$2"
-        shift
-      else
-        init::project
-      fi
-      trap '' EXIT && exit 0
-      ;;
-    -h|--help)
-      console_header::print_help
-      trap '' EXIT && exit 0
-      ;;
-    *)
-      _RAW_ARGS+=("$1")
-      ;;
-  esac
-  shift
-done
+# Subcommand detection
+_SUBCOMMAND=""
 
-# Expand positional arguments after all options have been processed
-if [[ ${#_RAW_ARGS[@]} -gt 0 ]]; then
-  pattern='*[tT]est.sh'
-  [[ "$_BENCH_MODE" == true ]] && pattern='*[bB]ench.sh'
-  for arg in "${_RAW_ARGS[@]}"; do
-    while IFS= read -r file; do
-      _ARGS+=("$file")
-    done < <(helper::find_files_recursive "$arg" "$pattern")
-  done
-fi
+case "${1:-}" in
+  test|bench|doc|init|learn|upgrade)
+    _SUBCOMMAND="$1"
+    shift
+    ;;
+  -v|--version)
+    console_header::print_version
+    exit 0
+    ;;
+  -h|--help)
+    console_header::print_help
+    exit 0
+    ;;
+  -*)
+    # Flag without subcommand → assume "test"
+    _SUBCOMMAND="test"
+    ;;
+  "")
+    # No arguments → assume "test" (uses BASHUNIT_DEFAULT_PATH)
+    _SUBCOMMAND="test"
+    ;;
+  *)
+    # Path argument → assume "test"
+    _SUBCOMMAND="test"
+    ;;
+esac
 
-# Optional bootstrap
-# shellcheck disable=SC1090
-[[ -f "${BASHUNIT_BOOTSTRAP:-}" ]] && source "$BASHUNIT_BOOTSTRAP"
-
-if [[ "${BASHUNIT_NO_OUTPUT:-false}" == true ]]; then
-  exec >/dev/null 2>&1
-fi
-
-set +eu
-
-#################
-# Main execution
-#################
-if [[ -n "$_ASSERT_FN" ]]; then
-  main::exec_assert "$_ASSERT_FN" "${_ARGS[@]}"
-elif [[ "$_BENCH_MODE" == true ]]; then
-  main::exec_benchmarks "$_FILTER" "${_ARGS[@]}"
-else
-  main::exec_tests "$_FILTER" "${_ARGS[@]}"
-fi
+# Route to subcommand handler
+case "$_SUBCOMMAND" in
+  test)    main::cmd_test "$@" ;;
+  bench)   main::cmd_bench "$@" ;;
+  doc)     main::cmd_doc "$@" ;;
+  init)    main::cmd_init "$@" ;;
+  learn)   main::cmd_learn "$@" ;;
+  upgrade) main::cmd_upgrade "$@" ;;
+esac
