@@ -17,7 +17,7 @@ if ! command -v jq &>/dev/null; then
 fi
 
 # Fetch own docker tags
-feskol_url="https://hub.docker.com/v2/repositories/feskol/gitlab/tags?page_size=100"
+feskol_url="https://hub.docker.com/v2/namespaces/feskol/repositories/gitlab/tags?page_size=100"
 
 echo "" >own_tags.txt #creates the empty file
 
