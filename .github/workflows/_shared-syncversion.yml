@@ -44,8 +44,9 @@ jobs:
         if: inputs.is_test == true
         run: |
           mkdir -p .github/generated-files/
-          echo "2024-10-31T00:00:00.000000Z" > .github/generated-files/last_modified_ce_date.txt
-          echo "2024-10-30T00:00:00.000000Z" > .github/generated-files/last_modified_ee_date.txt
+          DATE_3_MONTHS_AGO=$(date -u -d "3 months ago" +"%Y-%m-%dT%H:%M:%S.000000Z")
+          echo "$DATE_3_MONTHS_AGO" > .github/generated-files/last_modified_ce_date.txt
+          echo "$DATE_3_MONTHS_AGO" > .github/generated-files/last_modified_ee_date.txt
 
       - name: Set Permissions
         # make all scripts in scripts/workflows/syncversion executable
