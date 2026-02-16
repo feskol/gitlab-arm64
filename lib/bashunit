@@ -28,11 +28,11 @@ function bashunit::check_os::init() {
 }
 
 function bashunit::check_os::is_ubuntu() {
-  command -v apt > /dev/null
+  command -v apt >/dev/null
 }
 
 function bashunit::check_os::is_alpine() {
-  command -v apk > /dev/null
+  command -v apk >/dev/null
 }
 
 function bashunit::check_os::is_nixos() {
@@ -50,12 +50,12 @@ function bashunit::check_os::is_macos() {
 
 function bashunit::check_os::is_windows() {
   case "$(uname)" in
-    *MINGW*|*MSYS*|*CYGWIN*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
+  *MINGW* | *MSYS* | *CYGWIN*)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
   esac
 }
 
@@ -63,12 +63,12 @@ function bashunit::check_os::is_busybox() {
 
   case "$_BASHUNIT_DISTRO" in
 
-    "Alpine")
-        return 0
-        ;;
-    *)
-      return 1
-      ;;
+  "Alpine")
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
   esac
 }
 
@@ -95,7 +95,7 @@ function bashunit::str::rpad() {
   local width_padding="${3:-$TERMINAL_WIDTH}"
   # Subtract 1 more to account for the extra space
   local padding=$((width_padding - ${#right_word} - 1))
-  if (( padding < 0 )); then
+  if ((padding < 0)); then
     padding=0
   fi
 
@@ -122,14 +122,14 @@ function bashunit::str::rpad() {
     # If the current character is part of an ANSI sequence, skip it and copy it
     if [[ "$original_char" == $'\x1b' ]]; then
       while [[ "${left_text:$j:1}" != "m" && $j -lt ${#left_text} ]]; do
-        result_left_text+="${left_text:$j:1}"
+        result_left_text="$result_left_text${left_text:$j:1}"
         ((j++))
       done
-      result_left_text+="${left_text:$j:1}"  # Append the final 'm'
+      result_left_text="$result_left_text${left_text:$j:1}" # Append the final 'm'
       ((j++))
     elif [[ "$char" == "$original_char" ]]; then
       # Match the actual character
-      result_left_text+="$char"
+      result_left_text="$result_left_text$char"
       ((i++))
       ((j++))
     else
@@ -138,14 +138,14 @@ function bashunit::str::rpad() {
   done
 
   local remaining_space
-  if $is_truncated ; then
-    result_left_text+="..."
+  if $is_truncated; then
+    result_left_text="$result_left_text..."
     # 1: due to a blank space
     # 3: due to the appended ...
     remaining_space=$((width_padding - ${#clean_left_text} - ${#right_word} - 1 - 3))
   else
     # Copy any remaining characters after the truncation point
-    result_left_text+="${left_text:$j}"
+    result_left_text="$result_left_text${left_text:$j}"
     remaining_space=$((width_padding - ${#clean_left_text} - ${#right_word} - 1))
   fi
 
@@ -191,8 +191,9 @@ function bashunit::random_str() {
   local length=${1:-6}
   local chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   local str=''
-  for (( i=0; i<length; i++ )); do
-    str+="${chars:RANDOM%${#chars}:1}"
+  local i
+  for ((i = 0; i < length; i++)); do
+    str="$str${chars:RANDOM%${#chars}:1}"
   done
   echo "$str"
 }
@@ -247,15 +248,18 @@ function bashunit::log() {
   shift
 
   case "$level" in
-    info|INFO)          level="INFO" ;;
-    debug|DEBUG)        level="DEBUG" ;;
-    warning|WARNING)    level="WARNING" ;;
-    critical|CRITICAL)  level="CRITICAL" ;;
-    error|ERROR)        level="ERROR" ;;
-    *) set -- "$level $@"; level="INFO" ;;
+  info | INFO) level="INFO" ;;
+  debug | DEBUG) level="DEBUG" ;;
+  warning | WARNING) level="WARNING" ;;
+  critical | CRITICAL) level="CRITICAL" ;;
+  error | ERROR) level="ERROR" ;;
+  *)
+    set -- "$level $@"
+    level="INFO"
+    ;;
   esac
 
-  echo "$(bashunit::current_timestamp) [$level]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >> "$BASHUNIT_DEV_LOG"
+  echo "$(bashunit::current_timestamp) [$level]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >>"$BASHUNIT_DEV_LOG"
 }
 
 function bashunit::internal_log() {
@@ -263,12 +267,12 @@ function bashunit::internal_log() {
     return
   fi
 
-  echo "$(bashunit::current_timestamp) [INTERNAL]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >> "$BASHUNIT_DEV_LOG"
+  echo "$(bashunit::current_timestamp) [INTERNAL]: $* #${BASH_SOURCE[1]}:${BASH_LINENO[0]}" >>"$BASHUNIT_DEV_LOG"
 }
 
 function bashunit::print_line() {
-  local length="${1:-70}"   # Default to 70 if not passed
-  local char="${2:--}"      # Default to '-' if not passed
+  local length="${1:-70}" # Default to 70 if not passed
+  local char="${2:--}"    # Default to '-' if not passed
   printf '%*s\n' "$length" '' | tr ' ' "$char"
 }
 
@@ -278,13 +282,23 @@ function bashunit::data_set() {
 
   for arg in "$@"; do
     if [ "$first" = true ]; then
-      printf '%q' "$arg"
+      # Bash 3.0 compatible: printf '%q' "" produces nothing in Bash 3.0
+      if [[ -z "$arg" ]]; then
+        printf "''"
+      else
+        printf '%q' "$arg"
+      fi
       first=false
     else
-      printf ' %q' "$arg"
+      if [[ -z "$arg" ]]; then
+        printf " ''"
+      else
+        printf ' %q' "$arg"
+      fi
     fi
   done
-  printf ' %q\n' ""
+  # Sentinel empty string at end
+  printf " ''\n"
 }
 
 # dependencies.sh
@@ -295,7 +309,7 @@ function bashunit::dependencies::has_perl() {
 }
 
 function bashunit::dependencies::has_powershell() {
-  command -v powershell > /dev/null 2>&1
+  command -v powershell >/dev/null 2>&1
 }
 
 function bashunit::dependencies::has_adjtimex() {
@@ -366,7 +380,7 @@ function bashunit::math::calculate() {
   # Remove leading zeros from integers
   expr=$(echo "$expr" | sed -E 's/\b0*([1-9][0-9]*)/\1/g')
 
-  local result=$(( expr ))
+  local result=$((expr))
   echo "$result"
 }
 
@@ -374,6 +388,7 @@ function bashunit::math::calculate() {
 
 function bashunit::parallel::aggregate_test_results() {
   local temp_dir_parallel_test_suite=$1
+  local IFS=$' \t\n'
 
   bashunit::internal_log "aggregate_test_results" "dir:$temp_dir_parallel_test_suite"
 
@@ -383,9 +398,12 @@ function bashunit::parallel::aggregate_test_results() {
   local total_incomplete=0
   local total_snapshot=0
 
+  local script_dir=""
   for script_dir in "$temp_dir_parallel_test_suite"/*; do
     shopt -s nullglob
-    local result_files=("$script_dir"/*.result)
+    # Bash 3.0 compatible: separate declaration and assignment for arrays
+    local result_files
+    result_files=("$script_dir"/*.result)
     shopt -u nullglob
 
     if [ ${#result_files[@]} -eq 0 ]; then
@@ -393,27 +411,35 @@ function bashunit::parallel::aggregate_test_results() {
       continue
     fi
 
-    for result_file in "${result_files[@]}"; do
+    local result_file=""
+    for result_file in "${result_files[@]+"${result_files[@]}"}"; do
       local result_line
-      result_line=$(tail -n 1 < "$result_file")
+      result_line=$(<"$result_file")
+      result_line="${result_line##*$'\n'}"
 
       local failed="${result_line##*##ASSERTIONS_FAILED=}"
-      failed="${failed%%##*}"; failed=${failed:-0}
+      failed="${failed%%##*}"
+      failed=${failed:-0}
 
       local passed="${result_line##*##ASSERTIONS_PASSED=}"
-      passed="${passed%%##*}"; passed=${passed:-0}
+      passed="${passed%%##*}"
+      passed=${passed:-0}
 
       local skipped="${result_line##*##ASSERTIONS_SKIPPED=}"
-      skipped="${skipped%%##*}"; skipped=${skipped:-0}
+      skipped="${skipped%%##*}"
+      skipped=${skipped:-0}
 
       local incomplete="${result_line##*##ASSERTIONS_INCOMPLETE=}"
-      incomplete="${incomplete%%##*}"; incomplete=${incomplete:-0}
+      incomplete="${incomplete%%##*}"
+      incomplete=${incomplete:-0}
 
       local snapshot="${result_line##*##ASSERTIONS_SNAPSHOT=}"
-      snapshot="${snapshot%%##*}"; snapshot=${snapshot:-0}
+      snapshot="${snapshot%%##*}"
+      snapshot=${snapshot:-0}
 
       local exit_code="${result_line##*##TEST_EXIT_CODE=}"
-      exit_code="${exit_code%%##*}"; exit_code=${exit_code:-0}
+      exit_code="${exit_code%%##*}"
+      exit_code=${exit_code:-0}
 
       # Add to the total counts
       total_failed=$((total_failed + failed))
@@ -487,7 +513,7 @@ function bashunit::parallel::is_enabled() {
   bashunit::internal_log "bashunit::parallel::is_enabled" \
     "requested:$BASHUNIT_PARALLEL_RUN" "os:${_BASHUNIT_OS:-Unknown}"
 
-  if bashunit::env::is_parallel_run_enabled && \
+  if bashunit::env::is_parallel_run_enabled &&
     (bashunit::check_os::is_macos || bashunit::check_os::is_ubuntu || bashunit::check_os::is_windows); then
     return 0
   fi
@@ -558,6 +584,8 @@ _BASHUNIT_DEFAULT_SKIP_ENV_FILE="false"
 _BASHUNIT_DEFAULT_LOGIN_SHELL="false"
 _BASHUNIT_DEFAULT_FAILURES_ONLY="false"
 _BASHUNIT_DEFAULT_NO_COLOR="false"
+_BASHUNIT_DEFAULT_SHOW_OUTPUT_ON_FAILURE="true"
+_BASHUNIT_DEFAULT_NO_PROGRESS="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_BASHUNIT_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_SHOW_HEADER:=${SHOW_HEADER:=$_BASHUNIT_DEFAULT_SHOW_HEADER}}"
@@ -576,6 +604,8 @@ _BASHUNIT_DEFAULT_NO_COLOR="false"
 : "${BASHUNIT_SKIP_ENV_FILE:=${SKIP_ENV_FILE:=$_BASHUNIT_DEFAULT_SKIP_ENV_FILE}}"
 : "${BASHUNIT_LOGIN_SHELL:=${LOGIN_SHELL:=$_BASHUNIT_DEFAULT_LOGIN_SHELL}}"
 : "${BASHUNIT_FAILURES_ONLY:=${FAILURES_ONLY:=$_BASHUNIT_DEFAULT_FAILURES_ONLY}}"
+: "${BASHUNIT_SHOW_OUTPUT_ON_FAILURE:=${SHOW_OUTPUT_ON_FAILURE:=$_BASHUNIT_DEFAULT_SHOW_OUTPUT_ON_FAILURE}}"
+: "${BASHUNIT_NO_PROGRESS:=${NO_PROGRESS:=$_BASHUNIT_DEFAULT_NO_PROGRESS}}"
 # Support NO_COLOR standard (https://no-color.org)
 if [[ -n "${NO_COLOR:-}" ]]; then
   BASHUNIT_NO_COLOR="true"
@@ -655,6 +685,14 @@ function bashunit::env::is_failures_only_enabled() {
   [[ "$BASHUNIT_FAILURES_ONLY" == "true" ]]
 }
 
+function bashunit::env::is_show_output_on_failure_enabled() {
+  [[ "$BASHUNIT_SHOW_OUTPUT_ON_FAILURE" == "true" ]]
+}
+
+function bashunit::env::is_no_progress_enabled() {
+  [[ "$BASHUNIT_NO_PROGRESS" == "true" ]]
+}
+
 function bashunit::env::is_no_color_enabled() {
   [[ "$BASHUNIT_NO_COLOR" == "true" ]]
 }
@@ -674,7 +712,7 @@ function bashunit::env::active_internet_connection() {
     wget -q --spider https://github.com && return 0
   fi
 
-  if ping -c 1 -W 3 google.com &> /dev/null; then
+  if ping -c 1 -W 3 google.com &>/dev/null; then
     return 0
   fi
 
@@ -684,11 +722,11 @@ function bashunit::env::active_internet_connection() {
 function bashunit::env::find_terminal_width() {
   local cols=""
 
-  if [[ -z "$cols" ]] && command -v tput > /dev/null; then
+  if [[ -z "$cols" ]] && command -v tput >/dev/null; then
     cols=$(tput cols 2>/dev/null)
   fi
 
-  if [[ -z "$cols" ]] && command -v stty > /dev/null; then
+  if [[ -z "$cols" ]] && command -v stty >/dev/null; then
     cols=$(stty size 2>/dev/null | cut -d' ' -f2)
   fi
 
@@ -698,7 +736,10 @@ function bashunit::env::find_terminal_width() {
 
 function bashunit::env::print_verbose() {
   bashunit::internal_log "Printing verbose environment variables"
-  local keys=(
+  local IFS=$' \t\n'
+  # Bash 3.0 compatible: separate declaration and assignment for arrays
+  local keys
+  keys=(
     "BASHUNIT_DEFAULT_PATH"
     "BASHUNIT_DEV_LOG"
     "BASHUNIT_BOOTSTRAP"
@@ -726,13 +767,14 @@ function bashunit::env::print_verbose() {
 
   local max_length=0
 
-  for key in "${keys[@]}"; do
-    if (( ${#key} > max_length )); then
+  local key
+  for key in "${keys[@]+"${keys[@]}"}"; do
+    if ((${#key} > max_length)); then
       max_length=${#key}
     fi
   done
 
-  for key in "${keys[@]}"; do
+  for key in "${keys[@]+"${keys[@]}"}"; do
     bashunit::internal_log "$key=${!key}"
     printf "%s:%*s%s\n" "$key" $((max_length - ${#key} + 1)) "" "${!key}"
   done
@@ -765,7 +807,7 @@ fi
 _BASHUNIT_COVERAGE_DATA_FILE="${_BASHUNIT_COVERAGE_DATA_FILE:-}"
 _BASHUNIT_COVERAGE_TRACKED_FILES="${_BASHUNIT_COVERAGE_TRACKED_FILES:-}"
 
-# Simple file-based cache for tracked files (Bash 3.2 compatible)
+# Simple file-based cache for tracked files (Bash 3.0 compatible)
 # The tracked cache file stores files that have already been processed
 _BASHUNIT_COVERAGE_TRACKED_CACHE_FILE="${_BASHUNIT_COVERAGE_TRACKED_CACHE_FILE:-}"
 
@@ -779,6 +821,8 @@ function bashunit::coverage::auto_discover_paths() {
   local project_root
   project_root="$(pwd)"
   local -a discovered_paths=()
+  local discovered_paths_count=0
+  local test_file
 
   for test_file in "$@"; do
     # Extract base name: tests/unit/assert_test.sh -> assert_test.sh
@@ -788,21 +832,23 @@ function bashunit::coverage::auto_discover_paths() {
     # Remove test suffixes to get source name: assert_test.sh -> assert
     local source_name="${file_basename%_test.sh}"
     [[ "$source_name" == "$file_basename" ]] && source_name="${file_basename%Test.sh}"
-    [[ "$source_name" == "$file_basename" ]] && continue  # Not a test file pattern
+    [[ "$source_name" == "$file_basename" ]] && continue # Not a test file pattern
 
     # Find matching source files recursively
+    local found_file
     while IFS= read -r -d '' found_file; do
       # Skip test files and vendor directories
       [[ "$found_file" == *test* ]] && continue
       [[ "$found_file" == *Test* ]] && continue
       [[ "$found_file" == *vendor* ]] && continue
       [[ "$found_file" == *node_modules* ]] && continue
-      discovered_paths+=("$found_file")
+      discovered_paths[discovered_paths_count]="$found_file"
+      discovered_paths_count=$((discovered_paths_count + 1))
     done < <(find "$project_root" -name "${source_name}*.sh" -type f -print0 2>/dev/null)
   done
 
   # Return unique paths, comma-separated
-  if [[ ${#discovered_paths[@]} -gt 0 ]]; then
+  if [[ "$discovered_paths_count" -gt 0 ]]; then
     printf '%s\n' "${discovered_paths[@]}" | sort -u | tr '\n' ',' | sed 's/,$//'
   fi
 }
@@ -832,10 +878,10 @@ function bashunit::coverage::init() {
   _BASHUNIT_COVERAGE_TEST_HITS_FILE="${coverage_dir}/test_hits.dat"
 
   # Initialize empty files
-  : > "$_BASHUNIT_COVERAGE_DATA_FILE"
-  : > "$_BASHUNIT_COVERAGE_TRACKED_FILES"
-  : > "$_BASHUNIT_COVERAGE_TRACKED_CACHE_FILE"
-  : > "$_BASHUNIT_COVERAGE_TEST_HITS_FILE"
+  : >"$_BASHUNIT_COVERAGE_DATA_FILE"
+  : >"$_BASHUNIT_COVERAGE_TRACKED_FILES"
+  : >"$_BASHUNIT_COVERAGE_TRACKED_CACHE_FILE"
+  : >"$_BASHUNIT_COVERAGE_TEST_HITS_FILE"
 
   export _BASHUNIT_COVERAGE_DATA_FILE
   export _BASHUNIT_COVERAGE_TRACKED_FILES
@@ -943,12 +989,12 @@ function bashunit::coverage::record_line() {
 
   # Record the hit (only if parent directory exists)
   if [[ -d "$(dirname "$data_file")" ]]; then
-    echo "${normalized_file}:${lineno}" >> "$data_file"
+    echo "${normalized_file}:${lineno}" >>"$data_file"
 
     # Also record which test caused this hit (if we're in a test context)
     if [[ -n "${_BASHUNIT_COVERAGE_CURRENT_TEST_FILE:-}" && -n "${_BASHUNIT_COVERAGE_CURRENT_TEST_FN:-}" ]]; then
       # Format: source_file:line|test_file:test_function
-      echo "${normalized_file}:${lineno}|${_BASHUNIT_COVERAGE_CURRENT_TEST_FILE}:${_BASHUNIT_COVERAGE_CURRENT_TEST_FN}" >> "$test_hits_file"
+      echo "${normalized_file}:${lineno}|${_BASHUNIT_COVERAGE_CURRENT_TEST_FILE}:${_BASHUNIT_COVERAGE_CURRENT_TEST_FN}" >>"$test_hits_file"
     fi
   fi
 }
@@ -962,14 +1008,14 @@ function bashunit::coverage::should_track() {
   # Skip if tracked files list doesn't exist (trap inherited by child process)
   [[ -z "$_BASHUNIT_COVERAGE_TRACKED_FILES" ]] && return 1
 
-  # Check file-based cache for previous decision (Bash 3.2 compatible)
+  # Check file-based cache for previous decision (Bash 3.0 compatible)
   # Cache format: "file:0" for excluded, "file:1" for tracked
   # In parallel mode, use per-process cache to avoid race conditions
   local cache_file="$_BASHUNIT_COVERAGE_TRACKED_CACHE_FILE"
   if bashunit::parallel::is_enabled && [[ -n "$cache_file" ]]; then
     cache_file="${cache_file}.$$"
     # Initialize per-process cache if needed
-    [[ ! -f "$cache_file" ]] && [[ -d "$(dirname "$cache_file")" ]] && : > "$cache_file"
+    [[ ! -f "$cache_file" ]] && [[ -d "$(dirname "$cache_file")" ]] && : >"$cache_file"
   fi
   if [[ -n "$cache_file" && -f "$cache_file" ]]; then
     local cached_decision
@@ -992,12 +1038,12 @@ function bashunit::coverage::should_track() {
   for pattern in $BASHUNIT_COVERAGE_EXCLUDE; do
     # shellcheck disable=SC2254
     case "$normalized_file" in
-      *$pattern*)
-        IFS="$old_ifs"
-        # Cache exclusion decision (use per-process cache in parallel mode)
-        [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:0" >> "$cache_file"
-        return 1
-        ;;
+    *$pattern*)
+      IFS="$old_ifs"
+      # Cache exclusion decision (use per-process cache in parallel mode)
+      [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:0" >>"$cache_file"
+      return 1
+      ;;
     esac
   done
 
@@ -1022,12 +1068,12 @@ function bashunit::coverage::should_track() {
 
   if [[ "$matched" == "false" ]]; then
     # Cache exclusion decision (use per-process cache in parallel mode)
-    [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:0" >> "$cache_file"
+    [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:0" >>"$cache_file"
     return 1
   fi
 
   # Cache tracking decision (use per-process cache in parallel mode)
-  [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:1" >> "$cache_file"
+  [[ -n "$cache_file" && -f "$cache_file" ]] && echo "${file}:1" >>"$cache_file"
 
   # Track this file for later reporting
   # In parallel mode, use a per-process file to avoid race conditions
@@ -1040,7 +1086,7 @@ function bashunit::coverage::should_track() {
   if [[ -d "$(dirname "$tracked_file")" ]]; then
     # Check if not already written to avoid duplicates
     if ! grep -q "^${normalized_file}$" "$tracked_file" 2>/dev/null; then
-      echo "$normalized_file" >> "$tracked_file"
+      echo "$normalized_file" >>"$tracked_file"
     fi
   fi
 
@@ -1055,14 +1101,14 @@ function bashunit::coverage::aggregate_parallel() {
 
   # Find and merge all per-process coverage data files
   # Use nullglob to handle case when no files match
-  local pid_files
+  local pid_files pid_file
   pid_files=$(ls -1 "${base_file}."* 2>/dev/null) || true
   if [[ -n "$pid_files" ]]; then
     while IFS= read -r pid_file; do
       [[ -f "$pid_file" ]] || continue
-      cat "$pid_file" >> "$base_file"
+      cat "$pid_file" >>"$base_file"
       rm -f "$pid_file"
-    done <<< "$pid_files"
+    done <<<"$pid_files"
   fi
 
   # Find and merge all per-process tracked files lists
@@ -1070,9 +1116,9 @@ function bashunit::coverage::aggregate_parallel() {
   if [[ -n "$pid_files" ]]; then
     while IFS= read -r pid_file; do
       [[ -f "$pid_file" ]] || continue
-      cat "$pid_file" >> "$tracked_base"
+      cat "$pid_file" >>"$tracked_base"
       rm -f "$pid_file"
-    done <<< "$pid_files"
+    done <<<"$pid_files"
   fi
 
   # Find and merge all per-process test hits files
@@ -1081,9 +1127,9 @@ function bashunit::coverage::aggregate_parallel() {
     if [[ -n "$pid_files" ]]; then
       while IFS= read -r pid_file; do
         [[ -f "$pid_file" ]] || continue
-        cat "$pid_file" >> "$test_hits_base"
+        cat "$pid_file" >>"$test_hits_base"
         rm -f "$pid_file"
-      done <<< "$pid_files"
+      done <<<"$pid_files"
     fi
   fi
 
@@ -1097,7 +1143,7 @@ function bashunit::coverage::aggregate_parallel() {
 # Matches: function foo() { OR foo() { OR function foo() OR foo()
 # Does NOT match single-line functions with body: function foo() { echo "hi"; }
 _BASHUNIT_COVERAGE_FUNC_PATTERN='^[[:space:]]*(function[[:space:]]+)?'
-_BASHUNIT_COVERAGE_FUNC_PATTERN+='[a-zA-Z_][a-zA-Z0-9_:]*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$'
+_BASHUNIT_COVERAGE_FUNC_PATTERN="${_BASHUNIT_COVERAGE_FUNC_PATTERN}"'[a-zA-Z_][a-zA-Z0-9_:]*[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*$'
 
 # Check if a line is executable (used by get_executable_lines and report_lcov)
 # Arguments: line content, line number
@@ -1110,25 +1156,30 @@ function bashunit::coverage::is_executable_line() {
   : "$lineno"
 
   # Skip empty lines (line with only whitespace)
-  [[ -z "${line// }" ]] && return 1
+  [[ -z "${line// /}" ]] && return 1
 
   # Skip comment-only lines (including shebang)
-  [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+  local _re='^[[:space:]]*#'
+  [[ "$line" =~ $_re ]] && return 1
 
   # Skip function declaration lines (but not single-line functions with body)
   [[ "$line" =~ $_BASHUNIT_COVERAGE_FUNC_PATTERN ]] && return 1
 
   # Skip lines with only braces
-  [[ "$line" =~ ^[[:space:]]*[\{\}][[:space:]]*$ ]] && return 1
+  _re='^[[:space:]]*[\{\}][[:space:]]*$'
+  [[ "$line" =~ $_re ]] && return 1
 
   # Skip control flow keywords (then, else, fi, do, done, esac, in, ;;, ;&, ;;&)
-  [[ "$line" =~ ^[[:space:]]*(then|else|fi|do|done|esac|in|;;|;;&|;&)[[:space:]]*(#.*)?$ ]] && return 1
+  _re='^[[:space:]]*(then|else|fi|do|done|esac|in|;;|;;&|;&)[[:space:]]*(#.*)?$'
+  [[ "$line" =~ $_re ]] && return 1
 
   # Skip case patterns like "--option)" or "*)"
-  [[ "$line" =~ ^[[:space:]]*[^\)]+\)[[:space:]]*$ ]] && return 1
+  _re='^[[:space:]]*[^\)]+\)[[:space:]]*$'
+  [[ "$line" =~ $_re ]] && return 1
 
   # Skip standalone ) for arrays/subshells
-  [[ "$line" =~ ^[[:space:]]*\)[[:space:]]*(#.*)?$ ]] && return 1
+  _re='^[[:space:]]*\)[[:space:]]*(#.*)?$'
+  [[ "$line" =~ $_re ]] && return 1
 
   return 0
 }
@@ -1137,11 +1188,12 @@ function bashunit::coverage::get_executable_lines() {
   local file="$1"
   local count=0
   local lineno=0
+  local line
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((lineno++))
     bashunit::coverage::is_executable_line "$line" "$lineno" && ((count++))
-  done < "$file"
+  done <"$file"
 
   echo "$count"
 }
@@ -1156,7 +1208,7 @@ function bashunit::coverage::get_hit_lines() {
 
   # Get unique hit line numbers
   local hit_lines
-  hit_lines=$( (grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null || true) | \
+  hit_lines=$( (grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null || true) |
     cut -d: -f2 | sort -u)
 
   if [[ -z "$hit_lines" ]]; then
@@ -1203,8 +1255,9 @@ function bashunit::coverage::get_all_line_hits() {
   fi
 
   # Extract all lines for this file, count occurrences of each line number
-  grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null | \
-    cut -d: -f2 | sort | uniq -c | \
+  local count lineno
+  grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null |
+    cut -d: -f2 | sort | uniq -c |
     while read -r count lineno; do
       echo "${lineno}:${count}"
     done
@@ -1221,7 +1274,7 @@ function bashunit::coverage::get_all_line_tests() {
 
   # Format in file: source_file:line|test_file:test_function
   # Output: lineno|test_file:test_function
-  grep "^${file}:" "$_BASHUNIT_COVERAGE_TEST_HITS_FILE" 2>/dev/null | \
+  grep "^${file}:" "$_BASHUNIT_COVERAGE_TEST_HITS_FILE" 2>/dev/null |
     sed "s|^${file}:||" | sort -u
 }
 
@@ -1235,6 +1288,7 @@ function bashunit::coverage::extract_functions() {
   local brace_count=0
   local current_fn=""
   local fn_start=0
+  local line
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((lineno++))
@@ -1246,10 +1300,14 @@ function bashunit::coverage::extract_functions() {
       local fn_name=""
 
       # Match: function name() or function name {
-      if [[ "$line" =~ ^[[:space:]]*(function[[:space:]]+)?([a-zA-Z_][a-zA-Z0-9_:]*)[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*(#.*)?$ ]]; then
+      local _re='^[[:space:]]*(function[[:space:]]+)?([a-zA-Z_][a-zA-Z0-9_:]*)[[:space:]]*\(\)[[:space:]]*\{?[[:space:]]*(#.*)?$'
+      if [[ "$line" =~ $_re ]]; then
         fn_name="${BASH_REMATCH[2]}"
-      elif [[ "$line" =~ ^[[:space:]]*(function[[:space:]]+)([a-zA-Z_][a-zA-Z0-9_:]*)[[:space:]]*\{[[:space:]]*(#.*)?$ ]]; then
-        fn_name="${BASH_REMATCH[2]}"
+      else
+        _re='^[[:space:]]*(function[[:space:]]+)([a-zA-Z_][a-zA-Z0-9_:]*)[[:space:]]*\{[[:space:]]*(#.*)?$'
+        if [[ "$line" =~ $_re ]]; then
+          fn_name="${BASH_REMATCH[2]}"
+        fi
       fi
 
       if [[ -n "$fn_name" ]]; then
@@ -1264,7 +1322,8 @@ function bashunit::coverage::extract_functions() {
         brace_count=$((brace_count + ${#open_braces} - ${#close_braces}))
 
         # Single-line function
-        if [[ $brace_count -eq 0 && "$line" =~ \{ && "$line" =~ \} ]]; then
+        local _re_ob='\{' _re_cb='\}'
+        if [[ $brace_count -eq 0 ]] && [[ "$line" =~ $_re_ob ]] && [[ "$line" =~ $_re_cb ]]; then
           echo "${current_fn}:${fn_start}:${lineno}"
           in_function=0
           current_fn=""
@@ -1287,7 +1346,7 @@ function bashunit::coverage::extract_functions() {
         brace_count=0
       fi
     fi
-  done < "$file"
+  done <"$file"
 
   # Handle unclosed function (shouldn't happen in valid code)
   if [[ $in_function -eq 1 && -n "$current_fn" ]]; then
@@ -1308,7 +1367,7 @@ function bashunit::coverage::get_function_coverage() {
 
   local executable=0
   local hit=0
-  local lineno
+  local lineno=0
 
   for ((lineno = fn_start; lineno <= fn_end; lineno++)); do
     local line_content
@@ -1342,8 +1401,8 @@ function bashunit::coverage::get_percentage() {
     executable=$(bashunit::coverage::get_executable_lines "$file")
     hit=$(bashunit::coverage::get_hit_lines "$file")
 
-    ((total_executable += executable))
-    ((total_hit += hit))
+    total_executable=$((total_executable + executable))
+    total_hit=$((total_hit + hit))
   done < <(bashunit::coverage::get_tracked_files)
 
   bashunit::coverage::calculate_percentage "$total_hit" "$total_executable"
@@ -1362,6 +1421,7 @@ function bashunit::coverage::report_text() {
   echo "Coverage Report"
   echo "---------------"
 
+  local file
   while IFS= read -r file; do
     [[ -z "$file" || ! -f "$file" ]] && continue
     has_files=true
@@ -1372,17 +1432,17 @@ function bashunit::coverage::report_text() {
     pct=$(bashunit::coverage::calculate_percentage "$hit" "$executable")
     class=$(bashunit::coverage::get_coverage_class "$pct")
 
-    ((total_executable += executable))
-    ((total_hit += hit))
+    total_executable=$((total_executable + executable))
+    total_hit=$((total_hit + hit))
 
     # Determine color based on class
     local color="" reset=""
     if [[ "${BASHUNIT_NO_COLOR:-false}" != "true" ]]; then
       reset=$'\033[0m'
       case "$class" in
-        high)   color=$'\033[32m' ;;  # Green
-        medium) color=$'\033[33m' ;;  # Yellow
-        low)    color=$'\033[31m' ;;  # Red
+      high) color=$'\033[32m' ;;   # Green
+      medium) color=$'\033[33m' ;; # Yellow
+      low) color=$'\033[31m' ;;    # Red
       esac
     fi
 
@@ -1409,9 +1469,9 @@ function bashunit::coverage::report_text() {
   if [[ "${BASHUNIT_NO_COLOR:-false}" != "true" ]]; then
     reset=$'\033[0m'
     case "$total_class" in
-      high)   color=$'\033[32m' ;;
-      medium) color=$'\033[33m' ;;
-      low)    color=$'\033[31m' ;;
+    high) color=$'\033[32m' ;;
+    medium) color=$'\033[33m' ;;
+    low) color=$'\033[31m' ;;
     esac
   fi
 
@@ -1445,12 +1505,13 @@ function bashunit::coverage::report_lcov() {
       echo "SF:$file"
 
       local lineno=0
+      local line
       # shellcheck disable=SC2094
       while IFS= read -r line || [[ -n "$line" ]]; do
         ((lineno++))
         bashunit::coverage::is_executable_line "$line" "$lineno" || continue
         echo "DA:${lineno},$(bashunit::coverage::get_line_hits "$file" "$lineno")"
-      done < "$file"
+      done <"$file"
 
       local executable hit
       executable=$(bashunit::coverage::get_executable_lines "$file")
@@ -1460,7 +1521,7 @@ function bashunit::coverage::report_lcov() {
       echo "LH:$hit"
       echo "end_of_record"
     done < <(bashunit::coverage::get_tracked_files)
-  } > "$output_file"
+  } >"$output_file"
 }
 
 function bashunit::coverage::check_threshold() {
@@ -1513,9 +1574,12 @@ function bashunit::coverage::report_html() {
   mkdir -p "$output_dir/files"
 
   # Collect file data for index
+  local IFS=$' \t\n'
   local total_executable=0
   local total_hit=0
-  local file_data=()
+  local -a file_data=()
+  local file_data_count=0
+  local file=""
 
   while IFS= read -r file; do
     [[ -z "$file" || ! -f "$file" ]] && continue
@@ -1525,14 +1589,15 @@ function bashunit::coverage::report_html() {
     hit=$(bashunit::coverage::get_hit_lines "$file")
     pct=$(bashunit::coverage::calculate_percentage "$hit" "$executable")
 
-    ((total_executable += executable))
-    ((total_hit += hit))
+    total_executable=$((total_executable + executable))
+    total_hit=$((total_hit + hit))
 
     local display_file="${file#"$(pwd)"/}"
     local safe_filename
     safe_filename=$(bashunit::coverage::path_to_filename "$file")
 
-    file_data+=("$display_file|$hit|$executable|$pct|$safe_filename")
+    file_data[file_data_count]="$display_file|$hit|$executable|$pct|$safe_filename"
+    file_data_count=$((file_data_count + 1))
 
     # Generate individual file HTML
     bashunit::coverage::generate_file_html "$file" "$output_dir/files/${safe_filename}.html"
@@ -1557,6 +1622,8 @@ function bashunit::coverage::report_html() {
 }
 
 function bashunit::coverage::generate_index_html() {
+  # Set normal IFS for array operations throughout the function (Bash 3.0/4.3 compatible)
+  local IFS=$' \t\n'
   local output_file="$1"
   local total_hit="$2"
   local total_executable="$3"
@@ -1565,13 +1632,16 @@ function bashunit::coverage::generate_index_html() {
   local tests_passed="$6"
   local tests_failed="$7"
   shift 7
-  local file_data=()
-  [[ $# -gt 0 ]] && file_data=("$@")
+  # Handle array passed as arguments - Bash 3.0 compatible
+  local -a file_data=()
+  local file_count=0
+  if [[ $# -gt 0 ]]; then
+    file_data=("$@")
+    file_count=$#
+  fi
 
   # Calculate uncovered lines and file count
   local total_uncovered=$((total_executable - total_hit))
-  local file_count=0
-  [[ ${#file_data[@]} -gt 0 ]] && file_count=${#file_data[@]}
 
   # Calculate gauge stroke offset (440 is full circle circumference)
   local gauge_offset=$((440 - (440 * total_pct / 100)))
@@ -1580,19 +1650,25 @@ function bashunit::coverage::generate_index_html() {
   local total_class gauge_color_start gauge_color_end gauge_text_gradient
   total_class=$(bashunit::coverage::get_coverage_class "$total_pct")
   case "$total_class" in
-    high)
-      gauge_color_start="#10b981"; gauge_color_end="#34d399"
-      gauge_text_gradient="linear-gradient(135deg, #10b981 0%, #34d399 100%)" ;;
-    medium)
-      gauge_color_start="#f59e0b"; gauge_color_end="#fbbf24"
-      gauge_text_gradient="linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)" ;;
-    low)
-      gauge_color_start="#ef4444"; gauge_color_end="#f87171"
-      gauge_text_gradient="linear-gradient(135deg, #ef4444 0%, #f87171 100%)" ;;
+  high)
+    gauge_color_start="#10b981"
+    gauge_color_end="#34d399"
+    gauge_text_gradient="linear-gradient(135deg, #10b981 0%, #34d399 100%)"
+    ;;
+  medium)
+    gauge_color_start="#f59e0b"
+    gauge_color_end="#fbbf24"
+    gauge_text_gradient="linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)"
+    ;;
+  low)
+    gauge_color_start="#ef4444"
+    gauge_color_end="#f87171"
+    gauge_text_gradient="linear-gradient(135deg, #ef4444 0%, #f87171 100%)"
+    ;;
   esac
 
   {
-    cat << 'EOF'
+    cat <<'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1631,7 +1707,7 @@ function bashunit::coverage::generate_index_html() {
     .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; }
 EOF
     echo "    .gauge-percent { font-size: 3.5rem; font-weight: 800; background: ${gauge_text_gradient}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1; margin: 0; display: block; }"
-    cat << 'EOF'
+    cat <<'EOF'
     .gauge-label { color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; margin: 0; display: block; }
     .gauge-info { flex: 1; }
     .gauge-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; }
@@ -1721,7 +1797,7 @@ EOF
         </div>
 EOF
     echo "        <div class=\"header-badge\">v${BASHUNIT_VERSION:-0.0.0}</div>"
-    cat << 'EOF'
+    cat <<'EOF'
       </div>
       <h1 class="header-title">Code Coverage Report</h1>
       <p class="header-subtitle">Comprehensive line-by-line coverage analysis for your bash scripts</p>
@@ -1736,18 +1812,18 @@ EOF
 EOF
     echo "              <stop offset=\"0%\" style=\"stop-color:${gauge_color_start}\"/>"
     echo "              <stop offset=\"100%\" style=\"stop-color:${gauge_color_end}\"/>"
-    cat << 'EOF'
+    cat <<'EOF'
             </linearGradient>
           </defs>
           <circle class="gauge-bg" cx="80" cy="80" r="70"/>
 EOF
     echo "          <circle class=\"gauge-fill\" cx=\"80\" cy=\"80\" r=\"70\" stroke-dasharray=\"440\" stroke-dashoffset=\"${gauge_offset}\"/>"
-    cat << 'EOF'
+    cat <<'EOF'
         </svg>
         <div class="gauge-text">
 EOF
     echo "          <div class=\"gauge-percent\">${total_pct}%</div>"
-    cat << 'EOF'
+    cat <<'EOF'
           <div class="gauge-label">Coverage</div>
         </div>
       </div>
@@ -1755,7 +1831,7 @@ EOF
         <h2 class="gauge-title">Overall Code Coverage</h2>
 EOF
     echo "        <p class=\"gauge-description\"><strong>${total_hit} of ${total_executable}</strong> executable lines covered across <strong>${file_count} files</strong>.</p>"
-    cat << 'EOF'
+    cat <<'EOF'
 
         <div class="compact-metrics">
           <div class="metrics-group coverage-group">
@@ -1766,21 +1842,21 @@ EOF
                 <span class="breakdown-label">Total:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${total_executable} lines</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
               <div class="breakdown-item">
                 <span class="breakdown-dot covered"></span>
                 <span class="breakdown-label">Covered:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${total_hit} lines</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
               <div class="breakdown-item">
                 <span class="breakdown-dot uncovered"></span>
                 <span class="breakdown-label">Uncovered:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${total_uncovered} lines</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
             </div>
           </div>
@@ -1792,28 +1868,28 @@ EOF
                 <span class="breakdown-label">Files:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${file_count}</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
               <div class="breakdown-item">
                 <span class="breakdown-dot tests"></span>
                 <span class="breakdown-label">Tests:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${tests_total} total</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
               <div class="breakdown-item">
                 <span class="breakdown-dot tests-passed"></span>
                 <span class="breakdown-label">Passed:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${tests_passed}</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
               <div class="breakdown-item">
                 <span class="breakdown-dot tests-failed"></span>
                 <span class="breakdown-label">Failed:</span>
 EOF
     echo "                <span class=\"breakdown-value\">${tests_failed}</span>"
-    cat << 'EOF'
+    cat <<'EOF'
               </div>
             </div>
           </div>
@@ -1828,19 +1904,19 @@ EOF
             <span class="legend-color high"></span>
 EOF
     echo "            <span>≥${BASHUNIT_COVERAGE_THRESHOLD_HIGH:-80}% High</span>"
-    cat << 'EOF'
+    cat <<'EOF'
           </div>
           <div class="legend-item">
             <span class="legend-color medium"></span>
 EOF
     echo "            <span>${BASHUNIT_COVERAGE_THRESHOLD_LOW:-50}-${BASHUNIT_COVERAGE_THRESHOLD_HIGH:-80}% Medium</span>"
-    cat << 'EOF'
+    cat <<'EOF'
           </div>
           <div class="legend-item">
             <span class="legend-color low"></span>
 EOF
     echo "            <span>&lt;${BASHUNIT_COVERAGE_THRESHOLD_LOW:-50}% Low</span>"
-    cat << 'EOF'
+    cat <<'EOF'
           </div>
         </div>
       </div>
@@ -1856,8 +1932,9 @@ EOF
           <tbody>
 EOF
 
+    local data display_file hit executable pct safe_filename
     for data in ${file_data[@]+"${file_data[@]}"}; do
-      IFS='|' read -r display_file hit executable pct safe_filename <<< "$data"
+      IFS='|' read -r display_file hit executable pct safe_filename <<<"$data"
 
       local class
       class=$(bashunit::coverage::get_coverage_class "$pct")
@@ -1886,7 +1963,7 @@ EOF
       echo "            </tr>"
     done
 
-    cat << 'EOF'
+    cat <<'EOF'
           </tbody>
         </table>
       </div>
@@ -1904,7 +1981,7 @@ EOF
 </body>
 </html>
 EOF
-  } > "$output_file"
+  } >"$output_file"
 }
 
 function bashunit::coverage::generate_file_html() {
@@ -1928,7 +2005,7 @@ function bashunit::coverage::generate_file_html() {
 
   # Pre-load test hits data into indexed array (for tooltips)
   # Index: line number, Value: newline-separated list of "test_file:test_function"
-  # Using indexed array for Bash 3.2 compatibility (no associative arrays)
+  # Using indexed array for Bash 3.0 compatibility (no associative arrays)
   local -a tests_by_line=()
   local _line_and_test
   while IFS= read -r _line_and_test; do
@@ -1948,11 +2025,11 @@ function bashunit::coverage::generate_file_html() {
 
   # Count total lines and functions
   local total_lines
-  total_lines=$(wc -l < "$file" | tr -d ' ')
+  total_lines=$(wc -l <"$file" | tr -d ' ')
   local non_executable=$((total_lines - executable))
 
   {
-    cat << 'EOF'
+    cat <<'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1960,7 +2037,7 @@ function bashunit::coverage::generate_file_html() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 EOF
     echo "  <title>$(basename "$display_file") | Coverage Report</title>"
-    cat << 'EOF'
+    cat <<'EOF'
   <style>
     :root {
       --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #818cf8;
@@ -2099,20 +2176,20 @@ EOF
         <div class="file-title">
 EOF
     echo "          <span class=\"file-name\">$(basename "$display_file")</span>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
       </div>
       <div class="stats-section">
         <div class="stat-item">
 EOF
     echo "          <span class=\"stat-badge coverage $class\">${pct}%</span>"
-    cat << 'EOF'
+    cat <<'EOF'
           <span class="stat-label">Coverage</span>
         </div>
         <div class="stat-item">
 EOF
     echo "          <span class=\"stat-badge lines\">${hit}/${executable}</span>"
-    cat << 'EOF'
+    cat <<'EOF'
           <span class="stat-label">Lines</span>
         </div>
       </div>
@@ -2125,12 +2202,12 @@ EOF
           <span class="progress-label">Line Coverage Progress</span>
 EOF
     echo "          <span class=\"progress-percent $class\">${pct}%</span>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
         <div class="progress-bar">
 EOF
     echo "          <div class=\"progress-fill $class\" style=\"width: ${pct}%;\"></div>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
       </div>
       <div class="legend">
@@ -2138,19 +2215,19 @@ EOF
           <span class="legend-color covered"></span>
 EOF
     echo "          <span>${hit} lines covered</span>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
         <div class="legend-item">
           <span class="legend-color uncovered"></span>
 EOF
     echo "          <span>${uncovered} lines uncovered</span>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
         <div class="legend-item">
           <span class="legend-color neutral"></span>
 EOF
     echo "          <span>${non_executable} non-executable</span>"
-    cat << 'EOF'
+    cat <<'EOF'
         </div>
       </div>
     </div>
@@ -2162,7 +2239,7 @@ EOF
     functions_data=$(bashunit::coverage::extract_functions "$file")
 
     if [[ -n "$functions_data" ]]; then
-      cat << 'EOF'
+      cat <<'EOF'
   <div class="function-summary">
     <table class="function-table">
       <thead>
@@ -2203,9 +2280,9 @@ EOF
         fn_pct=$(bashunit::coverage::calculate_percentage "$fn_hit" "$fn_executable")
         fn_class=$(bashunit::coverage::get_coverage_class "$fn_pct")
         case "$fn_class" in
-          high)   row_class="fn-covered" ;;
-          medium) row_class="fn-partial" ;;
-          low)    row_class="fn-uncovered" ;;
+        high) row_class="fn-covered" ;;
+        medium) row_class="fn-partial" ;;
+        low) row_class="fn-uncovered" ;;
         esac
 
         echo "        <tr class=\"$row_class\">"
@@ -2218,16 +2295,16 @@ EOF
         echo "            </div>"
         echo "          </td>"
         echo "        </tr>"
-      done <<< "$functions_data"
+      done <<<"$functions_data"
 
-      cat << 'EOF'
+      cat <<'EOF'
       </tbody>
     </table>
   </div>
 EOF
     fi
 
-    cat << 'EOF'
+    cat <<'EOF'
   <div class="code-container">
     <div class="code-wrapper">
       <div class="code-header">
@@ -2236,13 +2313,14 @@ EOF
     echo "        <div class=\"code-stats\">"
     echo "          <span>${total_lines} total lines</span>"
     echo "        </div>"
-    cat << 'EOF'
+    cat <<'EOF'
       </div>
       <div class="code-body">
         <table class="code-table">
 EOF
 
     local lineno=0
+    local line
     while IFS= read -r line || [[ -n "$line" ]]; do
       ((lineno++))
 
@@ -2264,13 +2342,14 @@ EOF
           if [[ -n "$test_info" ]]; then
             # Build tooltip with test information
             local tooltip_html="<div class=\"hits-tooltip\"><div class=\"hits-tooltip-title\">Tests hitting this line</div><ul class=\"hits-tooltip-list\">"
+            local test_file test_fn
             while IFS=':' read -r test_file test_fn; do
               [[ -z "$test_file" ]] && continue
               local short_file
               short_file=$(basename "$test_file")
-              tooltip_html+="<li><span class=\"hits-tooltip-file\">${short_file}</span>:<span class=\"hits-tooltip-fn\">${test_fn}</span></li>"
-            done <<< "$test_info"
-            tooltip_html+="</ul></div>"
+              tooltip_html="$tooltip_html<li><span class=\"hits-tooltip-file\">${short_file}</span>:<span class=\"hits-tooltip-fn\">${test_fn}</span></li>"
+            done <<<"$test_info"
+            tooltip_html="$tooltip_html</ul></div>"
             hits_display="<span class=\"hits-badge has-tooltip\">${hits}×${tooltip_html}</span>"
           else
             hits_display="<span class=\"hits-badge\">${hits}×</span>"
@@ -2286,9 +2365,9 @@ EOF
       echo "            <td class=\"hits\">$hits_display</td>"
       echo "            <td class=\"code\">$escaped_line</td>"
       echo "          </tr>"
-    done < "$file"
+    done <"$file"
 
-    cat << 'EOF'
+    cat <<'EOF'
         </table>
       </div>
     </div>
@@ -2301,7 +2380,7 @@ EOF
 </body>
 </html>
 EOF
-  } > "$output_file"
+  } >"$output_file"
 }
 
 function bashunit::coverage::cleanup() {
@@ -2318,55 +2397,65 @@ _BASHUNIT_CLOCK_NOW_IMPL=""
 
 function bashunit::clock::_choose_impl() {
   local shell_time
-  local attempts=()
+  # Use explicit indices for Bash 3.0 compatibility (empty array access fails with set -u)
+  local attempts_count=0
+  local attempts
 
   # 1. Try Perl with Time::HiRes
-  attempts+=("Perl")
+  attempts[attempts_count]="Perl"
+  attempts_count=$((attempts_count + 1))
   if bashunit::dependencies::has_perl && perl -MTime::HiRes -e "" &>/dev/null; then
     _BASHUNIT_CLOCK_NOW_IMPL="perl"
     return 0
   fi
 
   # 2. Try Python 3 with time module
-  attempts+=("Python")
+  attempts[attempts_count]="Python"
+  attempts_count=$((attempts_count + 1))
   if bashunit::dependencies::has_python; then
     _BASHUNIT_CLOCK_NOW_IMPL="python"
     return 0
   fi
 
   # 3. Try Node.js
-  attempts+=("Node")
+  attempts[attempts_count]="Node"
+  attempts_count=$((attempts_count + 1))
   if bashunit::dependencies::has_node; then
     _BASHUNIT_CLOCK_NOW_IMPL="node"
     return 0
   fi
   # 4. Windows fallback with PowerShell
-  attempts+=("PowerShell")
+  attempts[attempts_count]="PowerShell"
+  attempts_count=$((attempts_count + 1))
   if bashunit::check_os::is_windows && bashunit::dependencies::has_powershell; then
     _BASHUNIT_CLOCK_NOW_IMPL="powershell"
     return 0
   fi
 
   # 5. Unix fallback using `date +%s%N` (if not macOS or Alpine)
-  attempts+=("date")
+  attempts[attempts_count]="date"
+  attempts_count=$((attempts_count + 1))
   if ! bashunit::check_os::is_macos && ! bashunit::check_os::is_alpine; then
     local result
     result=$(date +%s%N 2>/dev/null)
-    if [[ "$result" != *N && "$result" =~ ^[0-9]+$ ]]; then
+    local _re='^[0-9]+$'
+    if [[ "$result" != *N ]] && [[ "$result" =~ $_re ]]; then
       _BASHUNIT_CLOCK_NOW_IMPL="date"
       return 0
     fi
   fi
 
   # 6. Try using native shell EPOCHREALTIME (if available)
-  attempts+=("EPOCHREALTIME")
+  attempts[attempts_count]="EPOCHREALTIME"
+  attempts_count=$((attempts_count + 1))
   if shell_time="$(bashunit::clock::shell_time)"; then
     _BASHUNIT_CLOCK_NOW_IMPL="shell"
     return 0
   fi
 
   # 7. Very last fallback: seconds resolution only
-  attempts[${#attempts[@]}]="date-seconds"
+  attempts[attempts_count]="date-seconds"
+  attempts_count=$((attempts_count + 1))
   if date +%s &>/dev/null; then
     _BASHUNIT_CLOCK_NOW_IMPL="date-seconds"
     return 0
@@ -2384,46 +2473,46 @@ function bashunit::clock::now() {
   fi
 
   case "$_BASHUNIT_CLOCK_NOW_IMPL" in
-    perl)
-      perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000000000)'
-      ;;
-    python)
-      python - <<'EOF'
+  perl)
+    perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000000000)'
+    ;;
+  python)
+    python - <<'EOF'
 import time, sys
 sys.stdout.write(str(int(time.time() * 1000000000)))
 EOF
-      ;;
-    node)
-      node -e 'process.stdout.write((BigInt(Date.now()) * 1000000n).toString())'
-      ;;
-    powershell)
-      powershell -Command "\
+    ;;
+  node)
+    node -e 'process.stdout.write((BigInt(Date.now()) * 1000000n).toString())'
+    ;;
+  powershell)
+    powershell -Command "\
         \$unixEpoch = [DateTime]'1970-01-01 00:00:00';\
         \$now = [DateTime]::UtcNow;\
         \$ticksSinceEpoch = (\$now - \$unixEpoch).Ticks;\
         \$nanosecondsSinceEpoch = \$ticksSinceEpoch * 100;\
         Write-Output \$nanosecondsSinceEpoch\
       "
-      ;;
-    date)
-      date +%s%N
-      ;;
-    date-seconds)
-      local seconds
-      seconds=$(date +%s)
-      bashunit::math::calculate "$seconds * 1000000000"
-      ;;
-    shell)
-      # shellcheck disable=SC2155
-      local shell_time="$(bashunit::clock::shell_time)"
-      local seconds="${shell_time%%.*}"
-      local microseconds="${shell_time#*.}"
-      bashunit::math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
-      ;;
-    *)
-      bashunit::clock::_choose_impl || return 1
-      bashunit::clock::now
-      ;;
+    ;;
+  date)
+    date +%s%N
+    ;;
+  date-seconds)
+    local seconds
+    seconds=$(date +%s)
+    bashunit::math::calculate "$seconds * 1000000000"
+    ;;
+  shell)
+    # shellcheck disable=SC2155
+    local shell_time="$(bashunit::clock::shell_time)"
+    local seconds="${shell_time%%.*}"
+    local microseconds="${shell_time#*.}"
+    bashunit::math::calculate "($seconds * 1000000000) + ($microseconds * 1000)"
+    ;;
+  *)
+    bashunit::clock::_choose_impl || return 1
+    bashunit::clock::now
+    ;;
   esac
 }
 
@@ -2584,7 +2673,7 @@ function bashunit::state::set_file_with_duplicated_function_names() {
 }
 
 function bashunit::state::add_test_output() {
-  _BASHUNIT_TEST_OUTPUT+="$1"
+  _BASHUNIT_TEST_OUTPUT="$_BASHUNIT_TEST_OUTPUT$1"
 }
 
 function bashunit::state::get_test_exit_code() {
@@ -2644,7 +2733,7 @@ function bashunit::state::reset_test_hook_message() {
 }
 
 function bashunit::state::is_assertion_failed_in_test() {
-  (( _BASHUNIT_ASSERTION_FAILED_IN_TEST ))
+  ((_BASHUNIT_ASSERTION_FAILED_IN_TEST))
 }
 
 function bashunit::state::mark_assertion_failed_in_test() {
@@ -2658,16 +2747,16 @@ function bashunit::state::set_duplicated_functions_merged() {
 }
 
 function bashunit::state::initialize_assertions_count() {
-    _BASHUNIT_ASSERTIONS_PASSED=0
-    _BASHUNIT_ASSERTIONS_FAILED=0
-    _BASHUNIT_ASSERTIONS_SKIPPED=0
-    _BASHUNIT_ASSERTIONS_INCOMPLETE=0
-    _BASHUNIT_ASSERTIONS_SNAPSHOT=0
-    _BASHUNIT_TEST_OUTPUT=""
-    _BASHUNIT_TEST_TITLE=""
-    _BASHUNIT_TEST_HOOK_FAILURE=""
-    _BASHUNIT_TEST_HOOK_MESSAGE=""
-    _BASHUNIT_ASSERTION_FAILED_IN_TEST=0
+  _BASHUNIT_ASSERTIONS_PASSED=0
+  _BASHUNIT_ASSERTIONS_FAILED=0
+  _BASHUNIT_ASSERTIONS_SKIPPED=0
+  _BASHUNIT_ASSERTIONS_INCOMPLETE=0
+  _BASHUNIT_ASSERTIONS_SNAPSHOT=0
+  _BASHUNIT_TEST_OUTPUT=""
+  _BASHUNIT_TEST_TITLE=""
+  _BASHUNIT_TEST_HOOK_FAILURE=""
+  _BASHUNIT_TEST_HOOK_MESSAGE=""
+  _BASHUNIT_ASSERTION_FAILED_IN_TEST=0
 }
 
 function bashunit::state::export_subshell_context() {
@@ -2698,8 +2787,7 @@ function bashunit::state::export_subshell_context() {
 ##TEST_HOOK_FAILURE=$_BASHUNIT_TEST_HOOK_FAILURE\
 ##TEST_HOOK_MESSAGE=$encoded_test_hook_message\
 ##TEST_TITLE=$encoded_test_title\
-##TEST_OUTPUT=$encoded_test_output\
-##
+##TEST_OUTPUT=$encoded_test_output##
 EOF
 }
 
@@ -2710,8 +2798,9 @@ function bashunit::state::calculate_total_assertions() {
   local numbers
   numbers=$(echo "$input" | grep -oE '##ASSERTIONS_\w+=[0-9]+' | grep -oE '[0-9]+')
 
+  local number
   for number in $numbers; do
-    ((total += number))
+    total=$((total + number))
   done
 
   echo $total
@@ -2726,6 +2815,10 @@ function bashunit::state::print_line() {
 
   bashunit::state::add_test_output "[$type]$line"
 
+  if bashunit::env::is_no_progress_enabled; then
+    return
+  fi
+
   if ! bashunit::env::is_simple_output_enabled; then
     printf "%s\n" "$line"
     return
@@ -2733,21 +2826,21 @@ function bashunit::state::print_line() {
 
   local char
   case "$type" in
-    successful)       char="." ;;
-    failure)          char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
-    failed)           char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
-    failed_snapshot)  char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
-    skipped)          char="${_BASHUNIT_COLOR_SKIPPED}S${_BASHUNIT_COLOR_DEFAULT}" ;;
-    incomplete)       char="${_BASHUNIT_COLOR_INCOMPLETE}I${_BASHUNIT_COLOR_DEFAULT}" ;;
-    snapshot)         char="${_BASHUNIT_COLOR_SNAPSHOT}N${_BASHUNIT_COLOR_DEFAULT}" ;;
-    error)            char="${_BASHUNIT_COLOR_FAILED}E${_BASHUNIT_COLOR_DEFAULT}" ;;
-    *)                char="?" && bashunit::log "warning" "unknown test type '$type'" ;;
+  successful) char="." ;;
+  failure) char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
+  failed) char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
+  failed_snapshot) char="${_BASHUNIT_COLOR_FAILED}F${_BASHUNIT_COLOR_DEFAULT}" ;;
+  skipped) char="${_BASHUNIT_COLOR_SKIPPED}S${_BASHUNIT_COLOR_DEFAULT}" ;;
+  incomplete) char="${_BASHUNIT_COLOR_INCOMPLETE}I${_BASHUNIT_COLOR_DEFAULT}" ;;
+  snapshot) char="${_BASHUNIT_COLOR_SNAPSHOT}N${_BASHUNIT_COLOR_DEFAULT}" ;;
+  error) char="${_BASHUNIT_COLOR_FAILED}E${_BASHUNIT_COLOR_DEFAULT}" ;;
+  *) char="?" && bashunit::log "warning" "unknown test type '$type'" ;;
   esac
 
   if bashunit::parallel::is_enabled; then
-      printf "%s" "$char"
+    printf "%s" "$char"
   else
-    if (( _BASHUNIT_TOTAL_TESTS_COUNT % 50 == 0 )); then
+    if ((_BASHUNIT_TOTAL_TESTS_COUNT % 50 == 0)); then
       printf "%s\n" "$char"
     else
       printf "%s" "$char"
@@ -2767,6 +2860,7 @@ bashunit::sgr() {
   local codes=${1:-0}
   shift
 
+  local c
   for c in "$@"; do
     codes="$codes;$c"
   done
@@ -2810,39 +2904,39 @@ fi
 
 function bashunit::console_header::print_version_with_env() {
   local filter=${1:-}
-  local files=("${@:2}")
+  shift || true
 
   if ! bashunit::env::is_show_header_enabled; then
     return
   fi
 
-  bashunit::console_header::print_version "$filter" "${files[@]}"
+  bashunit::console_header::print_version "$filter" "$@"
 
   if bashunit::env::is_dev_mode_enabled; then
-    printf "%sDev log:%s %s\n" "${_BASHUNIT_COLOR_INCOMPLETE}" "${_BASHUNIT_COLOR_DEFAULT}" "$BASHUNIT_DEV_LOG"
+    printf "%sDev log:%s %s\n" \
+      "${_BASHUNIT_COLOR_INCOMPLETE}" "${_BASHUNIT_COLOR_DEFAULT}" "$BASHUNIT_DEV_LOG"
   fi
 }
 
 function bashunit::console_header::print_version() {
   local filter=${1:-}
-  if [[ -n "$filter" ]]; then
-   shift
-  fi
+  shift || true
 
-  local files=("$@")
+  # Bash 3.0 compatible: check argument count after shift
+  local files_count=$#
   local total_tests
-  if [[ ${#files[@]} -eq 0 ]]; then
+  if [[ "$files_count" -eq 0 ]]; then
     total_tests=0
   elif bashunit::parallel::is_enabled && bashunit::env::is_simple_output_enabled; then
     # Skip counting in parallel+simple mode for faster startup
     total_tests=0
   else
-    total_tests=$(bashunit::helper::find_total_tests "$filter" "${files[@]}")
+    total_tests=$(bashunit::helper::find_total_tests "$filter" "$@")
   fi
 
   if bashunit::env::is_header_ascii_art_enabled; then
     cat <<EOF
- _               _                   _
+_               _                   _
 | |__   __ _ ___| |__  __ __ ____ (_) |_
 | '_ \ / _' / __| '_ \| | | | '_ \| | __|
 | |_) | (_| \__ \ | | | |_| | | | | | |_
@@ -2860,14 +2954,14 @@ EOF
     printf "%s%sbashunit%s - %s\n" \
       "$_BASHUNIT_COLOR_BOLD" "$_BASHUNIT_COLOR_PASSED" "$_BASHUNIT_COLOR_DEFAULT" "$BASHUNIT_VERSION"
   else
-    printf "${_BASHUNIT_COLOR_BOLD}${_BASHUNIT_COLOR_PASSED}bashunit${_BASHUNIT_COLOR_DEFAULT} - %s | Tests: %s\n"\
-      "$BASHUNIT_VERSION"\
-      "$total_tests"
+    printf "%s%sbashunit%s - %s | Tests: %s\n" \
+      "${_BASHUNIT_COLOR_BOLD}" "${_BASHUNIT_COLOR_PASSED}" "${_BASHUNIT_COLOR_DEFAULT}" \
+      "$BASHUNIT_VERSION" "$total_tests"
   fi
 }
 
 function bashunit::console_header::print_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit <command> [arguments] [options]
 
 Commands:
@@ -2898,16 +2992,16 @@ EOF
 }
 
 function bashunit::console_header::print_test_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit test [path] [options]
-       bashunit [path] [options]
+  bashunit [path] [options]
 
 Run test files. If no path is provided, searches for tests in BASHUNIT_DEFAULT_PATH.
 
 Arguments:
   path                        File or directory containing tests
-                              - Directories: runs all '*test.sh' files
-                              - Wildcards: supported to match multiple files
+    - Directories: runs all '*test.sh' files
+    - Wildcards: supported to match multiple files
 
 Options:
   -a, --assert <fn> <args>    Run a standalone assert function (deprecated: use 'bashunit assert')
@@ -2925,6 +3019,9 @@ Options:
   --debug [file]              Enable shell debug mode
   --no-output                 Suppress all output
   --failures-only             Only show failures (suppress passed/skipped/incomplete)
+  --no-progress               Suppress real-time progress, show only final results
+  --show-output               Show test output on failure (default: enabled)
+  --no-output-on-failure      Hide test output on failure
   --strict                    Enable strict shell mode (set -euo pipefail)
   --skip-env-file             Skip .env loading, use shell environment only
   -l, --login                 Run tests in login shell context
@@ -2952,7 +3049,7 @@ EOF
 }
 
 function bashunit::console_header::print_bench_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit bench [path] [options]
 
 Run benchmark files. Searches for '*bench.sh' files.
@@ -2979,23 +3076,23 @@ EOF
 }
 
 function bashunit::console_header::print_doc_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit doc [filter]
 
 Display documentation for assertion functions.
 
 Arguments:
-  filter                      Optional filter to show only matching assertions
+filter                      Optional filter to show only matching assertions
 
 Examples:
-  bashunit doc                Show all assertions
-  bashunit doc equals         Show assertions containing 'equals'
-  bashunit doc file           Show file-related assertions
+bashunit doc                Show all assertions
+bashunit doc equals         Show assertions containing 'equals'
+bashunit doc file           Show file-related assertions
 EOF
 }
 
 function bashunit::console_header::print_init_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit init [directory]
 
 Initialize a new test directory with sample files.
@@ -3014,7 +3111,7 @@ EOF
 }
 
 function bashunit::console_header::print_learn_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit learn
 
 Start the interactive learning tutorial.
@@ -3036,7 +3133,7 @@ EOF
 }
 
 function bashunit::console_header::print_upgrade_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit upgrade
 
 Upgrade bashunit to the latest version.
@@ -3046,9 +3143,9 @@ EOF
 }
 
 function bashunit::console_header::print_assert_help() {
-    cat <<EOF
+  cat <<EOF
 Usage: bashunit assert <function> [args...]
-       bashunit assert "<command>" <assertion1> <arg1> [<assertion2> <arg2>...]
+  bashunit assert "<command>" <assertion1> <arg1> [<assertion2> <arg2>...]
 
 Run standalone assertion(s) without creating a test file.
 
@@ -3069,7 +3166,7 @@ Arguments:
   arg                         Expected value for the assertion
 
 Note: You can also use 'bashunit test --assert <fn> <args>' (deprecated).
-      The 'bashunit assert' subcommand is the recommended approach.
+  The 'bashunit assert' subcommand is the recommended approach.
 
 More info: https://bashunit.typeddevs.com/standalone
 EOF
@@ -3106,18 +3203,18 @@ function bashunit::console_results::render_result() {
   local assertions_failed=$_BASHUNIT_ASSERTIONS_FAILED
 
   local total_tests=0
-  ((total_tests += tests_passed)) || true
-  ((total_tests += tests_skipped)) || true
-  ((total_tests += tests_incomplete)) || true
-  ((total_tests += tests_snapshot)) || true
-  ((total_tests += tests_failed)) || true
+  total_tests=$((total_tests + tests_passed))
+  total_tests=$((total_tests + tests_skipped))
+  total_tests=$((total_tests + tests_incomplete))
+  total_tests=$((total_tests + tests_snapshot))
+  total_tests=$((total_tests + tests_failed))
 
   local total_assertions=0
-  ((total_assertions += assertions_passed)) || true
-  ((total_assertions += assertions_skipped)) || true
-  ((total_assertions += assertions_incomplete)) || true
-  ((total_assertions += assertions_snapshot)) || true
-  ((total_assertions += assertions_failed)) || true
+  total_assertions=$((total_assertions + assertions_passed))
+  total_assertions=$((total_assertions + assertions_skipped))
+  total_assertions=$((total_assertions + assertions_incomplete))
+  total_assertions=$((total_assertions + assertions_snapshot))
+  total_assertions=$((total_assertions + assertions_failed))
 
   printf "%sTests:     %s" "$_BASHUNIT_COLOR_FAINT" "$_BASHUNIT_COLOR_DEFAULT"
   if [[ "$tests_passed" -gt 0 ]] || [[ "$assertions_passed" -gt 0 ]]; then
@@ -3139,7 +3236,7 @@ function bashunit::console_results::render_result() {
 
   printf "%sAssertions:%s" "$_BASHUNIT_COLOR_FAINT" "$_BASHUNIT_COLOR_DEFAULT"
   if [[ "$tests_passed" -gt 0 ]] || [[ "$assertions_passed" -gt 0 ]]; then
-      printf " %s%s passed%s," "$_BASHUNIT_COLOR_PASSED" "$assertions_passed" "$_BASHUNIT_COLOR_DEFAULT"
+    printf " %s%s passed%s," "$_BASHUNIT_COLOR_PASSED" "$assertions_passed" "$_BASHUNIT_COLOR_DEFAULT"
   fi
   if [[ "$tests_skipped" -gt 0 ]] || [[ "$assertions_skipped" -gt 0 ]]; then
     printf " %s%s skipped%s," "$_BASHUNIT_COLOR_SKIPPED" "$assertions_skipped" "$_BASHUNIT_COLOR_DEFAULT"
@@ -3203,11 +3300,11 @@ function bashunit::console_results::print_execution_time() {
     return
   fi
 
-  local time_in_seconds=$(( time / 1000 ))
+  local time_in_seconds=$((time / 1000))
 
   if [[ "$time_in_seconds" -ge 60 ]]; then
-    local minutes=$(( time_in_seconds / 60 ))
-    local seconds=$(( time_in_seconds % 60 ))
+    local minutes=$((time_in_seconds / 60))
+    local seconds=$((time_in_seconds % 60))
     printf "${_BASHUNIT_COLOR_BOLD}%s${_BASHUNIT_COLOR_DEFAULT}\n" \
       "Time taken: ${minutes}m ${seconds}s"
     return
@@ -3224,9 +3321,9 @@ function bashunit::console_results::format_duration() {
   local duration_ms="$1"
 
   if [[ "$duration_ms" -ge 60000 ]]; then
-    local time_in_seconds=$(( duration_ms / 1000 ))
-    local minutes=$(( time_in_seconds / 60 ))
-    local seconds=$(( time_in_seconds % 60 ))
+    local time_in_seconds=$((duration_ms / 1000))
+    local minutes=$((time_in_seconds / 60))
+    local seconds=$((time_in_seconds % 60))
     echo "${minutes}m ${seconds}s"
   elif [[ "$duration_ms" -ge 1000 ]]; then
     local formatted_seconds
@@ -3246,6 +3343,10 @@ function bashunit::console_results::print_hook_completed() {
   fi
 
   if bashunit::env::is_failures_only_enabled; then
+    return
+  fi
+
+  if bashunit::env::is_no_progress_enabled; then
     return
   fi
 
@@ -3274,6 +3375,7 @@ function bashunit::console_results::print_successful_test() {
     line=$(printf "%s✓ Passed%s: %s" "$_BASHUNIT_COLOR_PASSED" "$_BASHUNIT_COLOR_DEFAULT" "$test_name")
   else
     local quoted_args=""
+    local arg
     for arg in "$@"; do
       if [[ -z "$quoted_args" ]]; then
         quoted_args="'$arg'"
@@ -3289,9 +3391,9 @@ function bashunit::console_results::print_successful_test() {
   if bashunit::env::is_show_execution_time_enabled; then
     local time_display
     if [[ "$duration" -ge 60000 ]]; then
-      local time_in_seconds=$(( duration / 1000 ))
-      local minutes=$(( time_in_seconds / 60 ))
-      local seconds=$(( time_in_seconds % 60 ))
+      local time_in_seconds=$((duration / 1000))
+      local minutes=$((time_in_seconds / 60))
+      local seconds=$((time_in_seconds % 60))
       time_display="${minutes}m ${seconds}s"
     elif [[ "$duration" -ge 1000 ]]; then
       local formatted_seconds
@@ -3313,7 +3415,8 @@ function bashunit::console_results::print_failure_message() {
   local line
   line="$(printf "\
 ${_BASHUNIT_COLOR_FAILED}✗ Failed${_BASHUNIT_COLOR_DEFAULT}: %s
-    ${_BASHUNIT_COLOR_FAINT}Message:${_BASHUNIT_COLOR_DEFAULT} ${_BASHUNIT_COLOR_BOLD}'%s'${_BASHUNIT_COLOR_DEFAULT}\n"\
+    ${_BASHUNIT_COLOR_FAINT}Message:${_BASHUNIT_COLOR_DEFAULT} \
+${_BASHUNIT_COLOR_BOLD}'%s'${_BASHUNIT_COLOR_DEFAULT}\n" \
     "${test_name}" "${failure_message}")"
 
   bashunit::state::print_line "failure" "$line"
@@ -3335,15 +3438,14 @@ ${_BASHUNIT_COLOR_FAILED}✗ Failed${_BASHUNIT_COLOR_DEFAULT}: %s
     "${function_name}" "${expected}" "${failure_condition_message}" "${actual}")"
 
   if [ -n "$extra_key" ]; then
-    line+="$(printf "\
+    line="$line$(printf "\
 
     ${_BASHUNIT_COLOR_FAINT}%s${_BASHUNIT_COLOR_DEFAULT} ${_BASHUNIT_COLOR_BOLD}'%s'${_BASHUNIT_COLOR_DEFAULT}\n" \
-    "${extra_key}" "${extra_value}")"
+      "${extra_key}" "${extra_value}")"
   fi
 
   bashunit::state::print_line "failed" "$line"
 }
-
 
 function bashunit::console_results::print_failed_snapshot_test() {
   local function_name=$1
@@ -3356,14 +3458,14 @@ function bashunit::console_results::print_failed_snapshot_test() {
 
   if bashunit::dependencies::has_git; then
     local actual_file="${snapshot_file}.tmp"
-    echo "$actual_content" > "$actual_file"
+    echo "$actual_content" >"$actual_file"
 
     local git_diff_output
     git_diff_output="$(git diff --no-index --word-diff --color=always \
-      "$snapshot_file" "$actual_file" 2>/dev/null \
-        | tail -n +6 | sed "s/^/    /")"
+      "$snapshot_file" "$actual_file" 2>/dev/null |
+      tail -n +6 | sed "s/^/    /")"
 
-    line+="$git_diff_output"
+    line="$line$git_diff_output"
     rm "$actual_file"
   fi
 
@@ -3378,7 +3480,7 @@ function bashunit::console_results::print_skipped_test() {
   line="$(printf "${_BASHUNIT_COLOR_SKIPPED}↷ Skipped${_BASHUNIT_COLOR_DEFAULT}: %s\n" "${function_name}")"
 
   if [[ -n "$reason" ]]; then
-    line+="$(printf "${_BASHUNIT_COLOR_FAINT}    %s${_BASHUNIT_COLOR_DEFAULT}\n" "${reason}")"
+    line="$line$(printf "${_BASHUNIT_COLOR_FAINT}    %s${_BASHUNIT_COLOR_DEFAULT}\n" "${reason}")"
   fi
 
   bashunit::state::print_line "skipped" "$line"
@@ -3392,7 +3494,7 @@ function bashunit::console_results::print_incomplete_test() {
   line="$(printf "${_BASHUNIT_COLOR_INCOMPLETE}✒ Incomplete${_BASHUNIT_COLOR_DEFAULT}: %s\n" "${function_name}")"
 
   if [[ -n "$pending" ]]; then
-    line+="$(printf "${_BASHUNIT_COLOR_FAINT}    %s${_BASHUNIT_COLOR_DEFAULT}\n" "${pending}")"
+    line="$line$(printf "${_BASHUNIT_COLOR_FAINT}    %s${_BASHUNIT_COLOR_DEFAULT}\n" "${pending}")"
   fi
 
   bashunit::state::print_line "incomplete" "$line"
@@ -3412,6 +3514,7 @@ function bashunit::console_results::print_snapshot_test() {
 function bashunit::console_results::print_error_test() {
   local function_name=$1
   local error="$2"
+  local raw_output="${3:-}"
 
   local test_name
   test_name=$(bashunit::helper::normalize_test_function_name "$function_name")
@@ -3419,6 +3522,14 @@ function bashunit::console_results::print_error_test() {
   local line
   line="$(printf "${_BASHUNIT_COLOR_FAILED}✗ Error${_BASHUNIT_COLOR_DEFAULT}: %s
     ${_BASHUNIT_COLOR_FAINT}%s${_BASHUNIT_COLOR_DEFAULT}\n" "${test_name}" "${error}")"
+
+  if [[ -n "$raw_output" ]] && bashunit::env::is_show_output_on_failure_enabled; then
+    line="$line$(printf "    %sOutput:%s\n" "${_BASHUNIT_COLOR_FAINT}" "${_BASHUNIT_COLOR_DEFAULT}")"
+    local output_line
+    while IFS= read -r output_line; do
+      line="$line$(printf "      %s\n" "$output_line")"
+    done <<<"$raw_output"
+  fi
 
   bashunit::state::print_line "error" "$line"
 }
@@ -3460,7 +3571,7 @@ function bashunit::console_results::print_skipped_tests_and_reset() {
       echo -e "${_BASHUNIT_COLOR_BOLD}There were $total_skipped skipped tests:${_BASHUNIT_COLOR_DEFAULT}\n"
     fi
 
-    tr -d '\r' < "$SKIPPED_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
+    tr -d '\r' <"$SKIPPED_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
     rm "$SKIPPED_OUTPUT_PATH"
 
     echo ""
@@ -3482,7 +3593,7 @@ function bashunit::console_results::print_incomplete_tests_and_reset() {
       echo -e "${_BASHUNIT_COLOR_BOLD}There were $total_incomplete incomplete tests:${_BASHUNIT_COLOR_DEFAULT}\n"
     fi
 
-    tr -d '\r' < "$INCOMPLETE_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
+    tr -d '\r' <"$INCOMPLETE_OUTPUT_PATH" | sed '/^[[:space:]]*$/d' | sed 's/^/|/'
     rm "$INCOMPLETE_OUTPUT_PATH"
 
     echo ""
@@ -3508,7 +3619,8 @@ function bashunit::helper::find_test_function_name() {
   for ((i = 0; i < ${#FUNCNAME[@]}; i++)); do
     local fn="${FUNCNAME[$i]}"
     # Check if function starts with "test_" or "test" followed by uppercase
-    if [[ "$fn" == test_* ]] || [[ "$fn" =~ ^test[A-Z] ]]; then
+    local _re='^test[A-Z]'
+    if [[ "$fn" == test_* ]] || [[ "$fn" =~ $_re ]]; then
       echo "$fn"
       return
     fi
@@ -3559,16 +3671,16 @@ function bashunit::helper::normalize_test_function_name() {
   fi
   # Replace underscores with spaces
   result="${result//_/ }"
-  # Capitalize the first letter (bash 3.2 compatible, no subprocess)
+  # Capitalize the first letter (bash 3.0 compatible, no subprocess)
   local first_char="${result:0:1}"
   case "$first_char" in
-    a) first_char='A' ;; b) first_char='B' ;; c) first_char='C' ;; d) first_char='D' ;;
-    e) first_char='E' ;; f) first_char='F' ;; g) first_char='G' ;; h) first_char='H' ;;
-    i) first_char='I' ;; j) first_char='J' ;; k) first_char='K' ;; l) first_char='L' ;;
-    m) first_char='M' ;; n) first_char='N' ;; o) first_char='O' ;; p) first_char='P' ;;
-    q) first_char='Q' ;; r) first_char='R' ;; s) first_char='S' ;; t) first_char='T' ;;
-    u) first_char='U' ;; v) first_char='V' ;; w) first_char='W' ;; x) first_char='X' ;;
-    y) first_char='Y' ;; z) first_char='Z' ;;
+  a) first_char='A' ;; b) first_char='B' ;; c) first_char='C' ;; d) first_char='D' ;;
+  e) first_char='E' ;; f) first_char='F' ;; g) first_char='G' ;; h) first_char='H' ;;
+  i) first_char='I' ;; j) first_char='J' ;; k) first_char='K' ;; l) first_char='L' ;;
+  m) first_char='M' ;; n) first_char='N' ;; o) first_char='O' ;; p) first_char='P' ;;
+  q) first_char='Q' ;; r) first_char='R' ;; s) first_char='S' ;; t) first_char='T' ;;
+  u) first_char='U' ;; v) first_char='V' ;; w) first_char='W' ;; x) first_char='X' ;;
+  y) first_char='Y' ;; z) first_char='Z' ;;
   esac
   result="${first_char}${result:1}"
 
@@ -3584,11 +3696,14 @@ function bashunit::helper::escape_single_quotes() {
 function bashunit::helper::interpolate_function_name() {
   local function_name="$1"
   shift
-  local args=("$@")
+  local -a args
+  local args_count=$#
+  args=("$@")
   local result="$function_name"
 
-  for ((i=0; i<${#args[@]}; i++)); do
-    local placeholder="::$((i+1))::"
+  local i
+  for ((i = 0; i < args_count; i++)); do
+    local placeholder="::$((i + 1))::"
     # shellcheck disable=SC2155
     local value="$(bashunit::helper::escape_single_quotes "${args[$i]}")"
     value="'$value'"
@@ -3601,6 +3716,12 @@ function bashunit::helper::interpolate_function_name() {
 function bashunit::helper::encode_base64() {
   local value="$1"
 
+  # Handle empty string specially - base64 of "" is "", which gets lost in line parsing
+  if [[ -z "$value" ]]; then
+    printf '%s' "_BASHUNIT_EMPTY_"
+    return
+  fi
+
   if command -v base64 >/dev/null; then
     printf '%s' "$value" | base64 -w 0 2>/dev/null || printf '%s' "$value" | base64 | tr -d '\n'
   else
@@ -3610,6 +3731,12 @@ function bashunit::helper::encode_base64() {
 
 function bashunit::helper::decode_base64() {
   local value="$1"
+
+  # Handle empty string marker
+  if [[ "$value" == "_BASHUNIT_EMPTY_" ]]; then
+    printf ''
+    return
+  fi
 
   if command -v base64 >/dev/null; then
     printf '%s' "$value" | base64 -d
@@ -3663,12 +3790,13 @@ function bashunit::helper::get_functions_to_run() {
 
   local filtered_functions=""
 
+  local fn
   for fn in $function_names; do
     if [[ $fn == ${prefix}_*${filter}* ]]; then
       if [[ $filtered_functions == *" $fn"* ]]; then
         return 1
       fi
-      filtered_functions+=" $fn"
+      filtered_functions="$filtered_functions $fn"
     fi
   done
 
@@ -3702,7 +3830,8 @@ function bashunit::helper::find_files_recursive() {
   local pattern="${2:-*[tT]est.sh}"
 
   local alt_pattern=""
-  if [[ $pattern == *test.sh ]] || [[ $pattern =~ \[tT\]est\.sh$ ]]; then
+  local _re='\[tT\]est\.sh$'
+  if [[ $pattern == *test.sh ]] || [[ "$pattern" =~ $_re ]]; then
     alt_pattern="${pattern%.sh}.bash"
   fi
 
@@ -3729,7 +3858,8 @@ function bashunit::helper::normalize_variable_name() {
 
   normalized_string="${input_string//[^a-zA-Z0-9_]/_}"
 
-  if [[ ! $normalized_string =~ ^[a-zA-Z_] ]]; then
+  local _re='^[a-zA-Z_]'
+  if ! [[ "$normalized_string" =~ $_re ]]; then
     normalized_string="_$normalized_string"
   fi
 
@@ -3753,8 +3883,8 @@ function bashunit::helper::get_provider_data() {
   local data_provider_function
   data_provider_function=$(
     # shellcheck disable=SC1087
-    grep -B 2 -E "function[[:space:]]+$function_name[[:space:]]*\(\)" "$script" 2>/dev/null | \
-    sed -nE 's/^[[:space:]]*# *@?data_provider[[:space:]]+//p'
+    grep -B 2 -E "(function[[:space:]]+)?$function_name[[:space:]]*\(\)" "$script" 2>/dev/null |
+      sed -nE 's/^[[:space:]]*# *@?data_provider[[:space:]]+//p'
   )
 
   if [[ -n "$data_provider_function" ]]; then
@@ -3786,95 +3916,96 @@ function bashunit::helper::get_latest_tag() {
 }
 
 function bashunit::helper::find_total_tests() {
-    local filter=${1:-}
-    local files=("${@:2}")
+  local filter=${1:-}
+  shift || true
 
-    if [[ ${#files[@]} -eq 0 ]]; then
-        echo 0
-        return
+  if [[ $# -eq 0 ]]; then
+    echo 0
+    return
+  fi
+
+  local total_count=0
+  local file
+
+  for file in "$@"; do
+    if [[ ! -f "$file" ]]; then
+      continue
     fi
 
-    local total_count=0
-    local file
+    local file_count
+    file_count=$( (
+      # shellcheck source=/dev/null
+      source "$file"
+      local all_fn_names
+      all_fn_names=$(declare -F | awk '{print $3}')
+      local filtered_functions
+      filtered_functions=$(bashunit::helper::get_functions_to_run "test" "$filter" "$all_fn_names") || true
 
-    for file in "${files[@]}"; do
-        if [[ ! -f "$file" ]]; then
-            continue
-        fi
+      local count=0
+      local IFS=$' \t\n'
+      if [[ -n "$filtered_functions" ]]; then
+        local -a functions_to_run=()
+        # shellcheck disable=SC2206
+        functions_to_run=($filtered_functions)
+        # shellcheck disable=SC2034
+        local -a provider_data=()
+        local provider_data_count=0
+        local fn_name line
+        for fn_name in "${functions_to_run[@]+"${functions_to_run[@]}"}"; do
+          provider_data=()
+          provider_data_count=0
+          while IFS=" " read -r line; do
+            [[ -z "$line" ]] && continue
+            # shellcheck disable=SC2034
+            provider_data[provider_data_count]="$line"
+            provider_data_count=$((provider_data_count + 1))
+          done <<<"$(bashunit::helper::get_provider_data "$fn_name" "$file")"
 
-        local file_count
-        file_count=$( (
-            # shellcheck source=/dev/null
-            source "$file"
-            local all_fn_names
-            all_fn_names=$(declare -F | awk '{print $3}')
-            local filtered_functions
-            filtered_functions=$(bashunit::helper::get_functions_to_run "test" "$filter" "$all_fn_names") || true
+          if [[ "$provider_data_count" -eq 0 ]]; then
+            count=$((count + 1))
+          else
+            count=$((count + provider_data_count))
+          fi
+        done
+      fi
 
-            local count=0
-            if [[ -n "$filtered_functions" ]]; then
-                # shellcheck disable=SC2206
-                # shellcheck disable=SC2207
-                local functions_to_run=($filtered_functions)
-                for fn_name in "${functions_to_run[@]}"; do
-                    local provider_data=()
-                    while IFS=" " read -r line; do
-                        provider_data+=("$line")
-                    done <<< "$(bashunit::helper::get_provider_data "$fn_name" "$file")"
+      echo "$count"
+    ))
 
-                    if [[ "${#provider_data[@]}" -eq 0 ]]; then
-                        count=$((count + 1))
-                    else
-                        count=$((count + ${#provider_data[@]}))
-                    fi
-                done
-            fi
+    total_count=$((total_count + file_count))
+  done
 
-            echo "$count"
-        ) )
-
-        total_count=$((total_count + file_count))
-    done
-
-    echo "$total_count"
+  echo "$total_count"
 }
 
 function bashunit::helper::load_test_files() {
-  local filter=$1
-  local files=("${@:2}")
+  local filter="${1:-}"
+  shift || true
+  # Bash 3.0 compatible: use $# after shift to check for files
+  local has_files=$#
 
-  local test_files=()
-
-  if [[ "${#files[@]}" -eq 0 ]]; then
-    if [[ -n "${BASHUNIT_DEFAULT_PATH}" ]]; then
-      while IFS='' read -r line; do
-        test_files+=("$line")
-      done < <(bashunit::helper::find_files_recursive "$BASHUNIT_DEFAULT_PATH")
+  if [[ "$has_files" -eq 0 ]]; then
+    if [[ -n "${BASHUNIT_DEFAULT_PATH:-}" ]]; then
+      bashunit::helper::find_files_recursive "$BASHUNIT_DEFAULT_PATH"
     fi
   else
-    test_files=("${files[@]}")
+    printf "%s\n" "$@"
   fi
-
-  printf "%s\n" "${test_files[@]}"
 }
 
 function bashunit::helper::load_bench_files() {
-  local filter=$1
-  local files=("${@:2}")
+  local filter="${1:-}"
+  shift || true
+  # Bash 3.0 compatible: use $# after shift to check for files
+  local has_files=$#
 
-  local bench_files=()
-
-  if [[ "${#files[@]}" -eq 0 ]]; then
-    if [[ -n "${BASHUNIT_DEFAULT_PATH}" ]]; then
-      while IFS='' read -r line; do
-        bench_files+=("$line")
-      done < <(bashunit::helper::find_files_recursive "$BASHUNIT_DEFAULT_PATH" '*[bB]ench.sh')
+  if [[ "$has_files" -eq 0 ]]; then
+    if [[ -n "${BASHUNIT_DEFAULT_PATH:-}" ]]; then
+      bashunit::helper::find_files_recursive "$BASHUNIT_DEFAULT_PATH" '*[bB]ench.sh'
     fi
   else
-    bench_files=("${files[@]}")
+    printf "%s\n" "$@"
   fi
-
-  printf "%s\n" "${bench_files[@]}"
 }
 
 #
@@ -3923,13 +4054,16 @@ function bashunit::helper::parse_file_path_filter() {
     file_path="${input%%::*}"
     filter="${input#*::}"
   # Check for :number syntax (line number filter)
-  elif [[ "$input" =~ ^(.+):([0-9]+)$ ]]; then
-    file_path="${BASH_REMATCH[1]}"
-    local line_number="${BASH_REMATCH[2]}"
-    # Line number will be resolved to function name later
-    filter="__line__:${line_number}"
   else
-    file_path="$input"
+    local _re='^(.+):([0-9]+)$'
+    if [[ "$input" =~ $_re ]]; then
+      file_path="${BASH_REMATCH[1]}"
+      local line_number="${BASH_REMATCH[2]}"
+      # Line number will be resolved to function name later
+      filter="__line__:${line_number}"
+    else
+      file_path="$input"
+    fi
   fi
 
   echo "$file_path"
@@ -3956,10 +4090,12 @@ function bashunit::helper::find_function_at_line() {
   local best_match=""
   local best_line=0
 
+  local line_num content
   while IFS=: read -r line_num content; do
     # Extract function name from the line
     local fn_name=""
-    if [[ "$content" =~ ^[[:space:]]*(function[[:space:]]+)?(test[a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\(\) ]]; then
+    local fn_pattern='^[[:space:]]*(function[[:space:]]+)?(test[a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\(\)'
+    if [[ "$content" =~ $fn_pattern ]]; then
       fn_name="${BASH_REMATCH[2]}"
     fi
 
@@ -4017,7 +4153,7 @@ function bashunit::assert::mark_failed() {
 
 # Guard clause to skip assertion if one already failed in test (when stop-on-assertion is enabled)
 function bashunit::assert::should_skip() {
-  bashunit::env::is_stop_on_assertion_failure_enabled && (( _BASHUNIT_ASSERTION_FAILED_IN_TEST ))
+  bashunit::env::is_stop_on_assertion_failure_enabled && ((_BASHUNIT_ASSERTION_FAILED_IN_TEST))
 }
 
 function bashunit::fail() {
@@ -4040,8 +4176,14 @@ function assert_true() {
 
   # Check for expected literal values first
   case "$actual" in
-    "true"|"0") bashunit::state::add_assertions_passed; return ;;
-    "false"|"1") bashunit::handle_bool_assertion_failure "true or 0" "$actual"; return ;;
+  "true" | "0")
+    bashunit::state::add_assertions_passed
+    return
+    ;;
+  "false" | "1")
+    bashunit::handle_bool_assertion_failure "true or 0" "$actual"
+    return
+    ;;
   esac
 
   # Run command or eval and check the exit code
@@ -4062,8 +4204,14 @@ function assert_false() {
 
   # Check for expected literal values first
   case "$actual" in
-    "false"|"1") bashunit::state::add_assertions_passed; return ;;
-    "true"|"0") bashunit::handle_bool_assertion_failure "false or 1" "$actual"; return ;;
+  "false" | "1")
+    bashunit::state::add_assertions_passed
+    return
+    ;;
+  "true" | "0")
+    bashunit::handle_bool_assertion_failure "false or 1" "$actual"
+    return
+    ;;
   esac
 
   # Run command or eval and check the exit code
@@ -4080,12 +4228,16 @@ function assert_false() {
 function bashunit::run_command_or_eval() {
   local cmd="$1"
 
-  if [[ "$cmd" =~ ^eval ]]; then
-    eval "${cmd#eval }" &> /dev/null
-  elif [[ "$(command -v "$cmd")" =~ ^alias ]]; then
-    eval "$cmd" &> /dev/null
+  local _re='^eval'
+  if [[ "$cmd" =~ $_re ]]; then
+    eval "${cmd#eval }" &>/dev/null
   else
-    "$cmd" &> /dev/null
+    _re='^alias'
+    if [[ "$(command -v "$cmd")" =~ $_re ]]; then
+      eval "$cmd" &>/dev/null
+    else
+      "$cmd" &>/dev/null
+    fi
   fi
   return $?
 }
@@ -4226,9 +4378,11 @@ function assert_not_same() {
 
 function assert_contains() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
@@ -4251,28 +4405,33 @@ function assert_contains_ignore_case() {
   local expected="$1"
   local actual="$2"
 
-  shopt -s nocasematch
+  # Bash 3.0 compatible: use tr for case-insensitive comparison
+  # (shopt nocasematch was introduced in Bash 3.1)
+  local expected_lower
+  local actual_lower
+  expected_lower=$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')
+  actual_lower=$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')
 
-  if ! [[ $actual =~ $expected ]]; then
+  if [[ "$actual_lower" != *"$expected_lower"* ]]; then
     local test_fn
     test_fn="$(bashunit::helper::find_test_function_name)"
     local label
     label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to contain" "${expected}"
-    shopt -u nocasematch
     return
   fi
 
-  shopt -u nocasematch
   bashunit::state::add_assertions_passed
 }
 
 function assert_not_contains() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
@@ -4291,13 +4450,15 @@ function assert_not_contains() {
 
 function assert_matches() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
-  if ! [[ $actual =~ $expected ]]; then
+  if ! [[ "$actual" =~ $expected ]]; then
     local test_fn
     test_fn="$(bashunit::helper::find_test_function_name)"
     local label
@@ -4312,13 +4473,15 @@ function assert_matches() {
 
 function assert_not_matches() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
-  if [[ $actual =~ $expected ]]; then
+  if [[ "$actual" =~ $expected ]]; then
     local test_fn
     test_fn="$(bashunit::helper::find_test_function_name)"
     local label
@@ -4345,23 +4508,23 @@ function assert_exec() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --exit)
-        expected_exit="$2"
-        shift 2
-        ;;
-      --stdout)
-        expected_stdout="$2"
-        check_stdout=true
-        shift 2
-        ;;
-      --stderr)
-        expected_stderr="$2"
-        check_stderr=true
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
+    --exit)
+      expected_exit="$2"
+      shift 2
+      ;;
+    --stdout)
+      expected_stdout="$2"
+      check_stdout=true
+      shift 2
+      ;;
+    --stderr)
+      expected_stderr="$2"
+      check_stderr=true
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
     esac
   done
 
@@ -4388,16 +4551,16 @@ function assert_exec() {
   fi
 
   if $check_stdout; then
-    expected_desc+=$'\n'"stdout: $expected_stdout"
-    actual_desc+=$'\n'"stdout: $stdout"
+    expected_desc="$expected_desc"$'\n'"stdout: $expected_stdout"
+    actual_desc="$actual_desc"$'\n'"stdout: $stdout"
     if [[ "$stdout" != "$expected_stdout" ]]; then
       failed=1
     fi
   fi
 
   if $check_stderr; then
-    expected_desc+=$'\n'"stderr: $expected_stderr"
-    actual_desc+=$'\n'"stderr: $stderr"
+    expected_desc="$expected_desc"$'\n'"stderr: $expected_stderr"
+    actual_desc="$actual_desc"$'\n'"stderr: $stderr"
     if [[ "$stderr" != "$expected_stderr" ]]; then
       failed=1
     fi
@@ -4417,7 +4580,7 @@ function assert_exec() {
 }
 
 function assert_exit_code() {
-  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  local actual_exit_code=${3-"$?"} # Capture $? before guard check
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code="$1"
@@ -4436,7 +4599,7 @@ function assert_exit_code() {
 }
 
 function assert_successful_code() {
-  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  local actual_exit_code=${3-"$?"} # Capture $? before guard check
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=0
@@ -4456,7 +4619,7 @@ function assert_successful_code() {
 }
 
 function assert_unsuccessful_code() {
-  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  local actual_exit_code=${3-"$?"} # Capture $? before guard check
   bashunit::assert::should_skip && return 0
 
   if [[ "$actual_exit_code" -eq 0 ]]; then
@@ -4473,7 +4636,7 @@ function assert_unsuccessful_code() {
 }
 
 function assert_general_error() {
-  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  local actual_exit_code=${3-"$?"} # Capture $? before guard check
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=1
@@ -4493,7 +4656,7 @@ function assert_general_error() {
 }
 
 function assert_command_not_found() {
-  local actual_exit_code=${3-"$?"}  # Capture $? before guard check
+  local actual_exit_code=${3-"$?"} # Capture $? before guard check
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=127
@@ -4514,9 +4677,11 @@ function assert_command_not_found() {
 
 function assert_string_starts_with() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
@@ -4554,9 +4719,11 @@ function assert_string_not_starts_with() {
 
 function assert_string_ends_with() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
@@ -4575,9 +4742,11 @@ function assert_string_ends_with() {
 
 function assert_string_not_ends_with() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local actual_arr=("${@:2}")
+  local -a actual_arr
+  actual_arr=("${@:2}")
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
@@ -4672,11 +4841,13 @@ function assert_greater_or_equal_than() {
 
 function assert_line_count() {
   bashunit::assert::should_skip && return 0
+  local IFS=$' \t\n'
 
   local expected="$1"
-  local input_arr=("${@:2}")
+  local -a input_arr
+  input_arr=("${@:2}")
   local input_str
-  input_str=$(printf '%s\n' "${input_arr[@]}")
+  input_str=$(printf '%s\n' ${input_arr+"${input_arr[@]}"})
 
   if [ -z "$input_str" ]; then
     local actual=0
@@ -4684,8 +4855,8 @@ function assert_line_count() {
     local actual
     actual=$(echo "$input_str" | wc -l | tr -d '[:blank:]')
     local additional_new_lines
-    additional_new_lines=$(grep -o '\\n' <<< "$input_str" | wc -l | tr -d '[:blank:]')
-    ((actual+=additional_new_lines))
+    additional_new_lines=$(grep -o '\\n' <<<"$input_str" | wc -l | tr -d '[:blank:]')
+    actual=$((actual + additional_new_lines))
   fi
 
   if [[ "$expected" != "$actual" ]]; then
@@ -4695,8 +4866,8 @@ function assert_line_count() {
     label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
 
     bashunit::assert::mark_failed
-    bashunit::console_results::print_failed_test "${label}" "${input_str}"\
-      "to contain number of lines equal to" "${expected}"\
+    bashunit::console_results::print_failed_test "${label}" "${input_str}" \
+      "to contain number of lines equal to" "${expected}" \
       "but found" "${actual}"
     return
   fi
@@ -4716,9 +4887,10 @@ function assert_array_contains() {
   label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
   shift
 
-  local actual=("${@}")
+  local -a actual
+  actual=("$@")
 
-  if ! [[ "${actual[*]}" == *"$expected"* ]]; then
+  if ! [[ "${actual[*]:-}" == *"$expected"* ]]; then
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual[*]}" "to contain" "${expected}"
     return
@@ -4736,9 +4908,10 @@ function assert_array_not_contains() {
   local label
   label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
   shift
-  local actual=("$@")
+  local -a actual
+  actual=("$@")
 
-  if [[ "${actual[*]}" == *"$expected"* ]]; then
+  if [[ "${actual[*]:-}" == *"$expected"* ]]; then
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual[*]}" "to not contain" "${expected}"
     return
@@ -4823,7 +4996,7 @@ function assert_files_equals() {
   local expected="$1"
   local actual="$2"
 
-  if [[ "$(diff -u "$expected" "$actual")" != '' ]] ; then
+  if [[ "$(diff -u "$expected" "$actual")" != '' ]]; then
     local test_fn
     test_fn="$(bashunit::helper::find_test_function_name)"
     local label
@@ -4831,7 +5004,7 @@ function assert_files_equals() {
     bashunit::assert::mark_failed
 
     bashunit::console_results::print_failed_test "${label}" "${expected}" "Compared" "${actual}" \
-        "Diff" "$(diff -u "$expected" "$actual" | sed '1,2d')"
+      "Diff" "$(diff -u "$expected" "$actual" | sed '1,2d')"
     return
   fi
 
@@ -4844,7 +5017,7 @@ function assert_files_not_equals() {
   local expected="$1"
   local actual="$2"
 
-  if [[ "$(diff -u "$expected" "$actual")" == '' ]] ; then
+  if [[ "$(diff -u "$expected" "$actual")" == '' ]]; then
     local test_fn
     test_fn="$(bashunit::helper::find_test_function_name)"
     local label
@@ -4852,7 +5025,7 @@ function assert_files_not_equals() {
     bashunit::assert::mark_failed
 
     bashunit::console_results::print_failed_test "${label}" "${expected}" "Compared" "${actual}" \
-        "Diff" "Files are equals"
+      "Diff" "Files are equals"
     return
   fi
 
@@ -5126,7 +5299,7 @@ function bashunit::snapshot::initialize() {
   local path="$1"
   local content="$2"
   mkdir -p "$(dirname "$path")"
-  echo "$content" > "$path"
+  echo "$content" >"$path"
   bashunit::state::add_assertions_snapshot
 }
 
@@ -5136,7 +5309,7 @@ function bashunit::snapshot::compare() {
   local func_name="$3"
 
   local snapshot
-  snapshot=$(tr -d '\r' < "$snapshot_path")
+  snapshot=$(tr -d '\r' <"$snapshot_path")
 
   if ! bashunit::snapshot::match_with_placeholder "$actual" "$snapshot"; then
     local label=$(bashunit::helper::normalize_test_function_name "$func_name")
@@ -5177,8 +5350,13 @@ declare -a _BASHUNIT_MOCKED_FUNCTIONS=()
 function bashunit::unmock() {
   local command=$1
 
+  if [ "${#_BASHUNIT_MOCKED_FUNCTIONS[@]}" -eq 0 ]; then
+    return
+  fi
+
+  local i
   for i in "${!_BASHUNIT_MOCKED_FUNCTIONS[@]}"; do
-    if [[ "${_BASHUNIT_MOCKED_FUNCTIONS[$i]}" == "$command" ]]; then
+    if [[ "${_BASHUNIT_MOCKED_FUNCTIONS[$i]:-}" == "$command" ]]; then
       unset "_BASHUNIT_MOCKED_FUNCTIONS[$i]"
       unset -f "$command"
       local variable
@@ -5206,7 +5384,7 @@ function bashunit::mock() {
 
   export -f "${command?}"
 
-  _BASHUNIT_MOCKED_FUNCTIONS+=("$command")
+  _BASHUNIT_MOCKED_FUNCTIONS[${#_BASHUNIT_MOCKED_FUNCTIONS[@]}]="$command"
 }
 
 function bashunit::spy() {
@@ -5218,8 +5396,8 @@ function bashunit::spy() {
   local test_id="${BASHUNIT_CURRENT_TEST_ID:-global}"
   times_file=$(bashunit::temp_file "${test_id}_${variable}_times")
   params_file=$(bashunit::temp_file "${test_id}_${variable}_params")
-  echo 0 > "$times_file"
-  : > "$params_file"
+  echo 0 >"$times_file"
+  : >"$params_file"
   export "${variable}_times_file"="$times_file"
   export "${variable}_params_file"="$params_file"
 
@@ -5228,7 +5406,7 @@ function bashunit::spy() {
     local serialized=\"\"
     local arg
     for arg in \"\$@\"; do
-      serialized+=\"\$(printf '%q' \"\$arg\")$'\\x1f'\"
+      serialized=\"\$serialized\$(printf '%q' \"\$arg\")$'\\x1f'\"
     done
     serialized=\${serialized%$'\\x1f'}
     printf '%s\x1e%s\\n' \"\$raw\" \"\$serialized\" >> '$params_file'
@@ -5240,7 +5418,7 @@ function bashunit::spy() {
 
   export -f "${command?}"
 
-  _BASHUNIT_MOCKED_FUNCTIONS+=("$command")
+  _BASHUNIT_MOCKED_FUNCTIONS[${#_BASHUNIT_MOCKED_FUNCTIONS[@]}]="$command"
 }
 
 function assert_have_been_called() {
@@ -5268,7 +5446,8 @@ function assert_have_been_called_with() {
   shift
 
   local index=""
-  if [[ ${!#} =~ ^[0-9]+$ ]]; then
+  local _re='^[0-9]+$'
+  if [[ "${!#}" =~ $_re ]]; then
     index=${!#}
     set -- "${@:1:$#-1}"
   fi
@@ -5367,11 +5546,11 @@ function bashunit::reports::add_test() {
   local assertions="$4"
   local status="$5"
 
-  _BASHUNIT_REPORTS_TEST_FILES+=("$file")
-  _BASHUNIT_REPORTS_TEST_NAMES+=("$test_name")
-  _BASHUNIT_REPORTS_TEST_STATUSES+=("$status")
-  _BASHUNIT_REPORTS_TEST_ASSERTIONS+=("$assertions")
-  _BASHUNIT_REPORTS_TEST_DURATIONS+=("$duration")
+  _BASHUNIT_REPORTS_TEST_FILES[${#_BASHUNIT_REPORTS_TEST_FILES[@]}]="$file"
+  _BASHUNIT_REPORTS_TEST_NAMES[${#_BASHUNIT_REPORTS_TEST_NAMES[@]}]="$test_name"
+  _BASHUNIT_REPORTS_TEST_STATUSES[${#_BASHUNIT_REPORTS_TEST_STATUSES[@]}]="$status"
+  _BASHUNIT_REPORTS_TEST_ASSERTIONS[${#_BASHUNIT_REPORTS_TEST_ASSERTIONS[@]}]="$assertions"
+  _BASHUNIT_REPORTS_TEST_DURATIONS[${#_BASHUNIT_REPORTS_TEST_DURATIONS[@]}]="$duration"
 }
 
 function bashunit::reports::generate_junit_xml() {
@@ -5392,12 +5571,13 @@ function bashunit::reports::generate_junit_xml() {
     echo "             skipped=\"$tests_skipped\" snapshot=\"$tests_snapshot\""
     echo "             time=\"$time\">"
 
+    local i
     for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
-      local file="${_BASHUNIT_REPORTS_TEST_FILES[$i]}"
-      local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]}"
-      local assertions="${_BASHUNIT_REPORTS_TEST_ASSERTIONS[$i]}"
-      local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]}"
-      local test_time="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]}"
+      local file="${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}"
+      local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
+      local assertions="${_BASHUNIT_REPORTS_TEST_ASSERTIONS[$i]:-}"
+      local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
+      local test_time="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]:-}"
 
       echo "    <testcase file=\"$file\""
       echo "        name=\"$name\""
@@ -5409,7 +5589,7 @@ function bashunit::reports::generate_junit_xml() {
 
     echo "  </testsuite>"
     echo "</testsuites>"
-  } > "$output_file"
+  } >"$output_file"
 }
 
 function bashunit::reports::generate_report_html() {
@@ -5426,15 +5606,16 @@ function bashunit::reports::generate_report_html() {
   local temp_file="temp_test_cases.txt"
 
   # Collect test cases by file
-  : > "$temp_file"  # Clear temp file if it exists
+  : >"$temp_file" # Clear temp file if it exists
+  local i
   for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
-    local file="${_BASHUNIT_REPORTS_TEST_FILES[$i]}"
-    local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]}"
-    local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]}"
-    local test_time="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]}"
+    local file="${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}"
+    local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
+    local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
+    local test_time="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]:-}"
     local test_case="$file|$name|$status|$test_time"
 
-    echo "$test_case" >> "$temp_file"
+    echo "$test_case" >>"$temp_file"
   done
 
   {
@@ -5486,6 +5667,7 @@ function bashunit::reports::generate_report_html() {
 
     # Read the temporary file and group by file
     local current_file=""
+    local file name status test_time
     while IFS='|' read -r file name status test_time; do
       if [ "$file" != "$current_file" ]; then
         if [ -n "$current_file" ]; then
@@ -5509,7 +5691,7 @@ function bashunit::reports::generate_report_html() {
       echo "        <td>$status</td>"
       echo "        <td>$test_time</td>"
       echo "      </tr>"
-    done < "$temp_file"
+    done <"$temp_file"
 
     # Close the last table
     if [ -n "$current_file" ]; then
@@ -5519,7 +5701,7 @@ function bashunit::reports::generate_report_html() {
 
     echo "</body>"
     echo "</html>"
-  } > "$output_file"
+  } >"$output_file"
 
   # Clean up temporary file
   rm -f "$temp_file"
@@ -5530,9 +5712,9 @@ function bashunit::reports::generate_report_html() {
 
 # Pre-compiled regex pattern for parsing test result assertions
 if [[ -z ${_BASHUNIT_RUNNER_PARSE_RESULT_REGEX+x} ]]; then
-  declare -r _BASHUNIT_RUNNER_PARSE_RESULT_REGEX='ASSERTIONS_FAILED=([0-9]*)##ASSERTIONS_PASSED=([0-9]*)##'\
-'ASSERTIONS_SKIPPED=([0-9]*)##ASSERTIONS_INCOMPLETE=([0-9]*)##ASSERTIONS_SNAPSHOT=([0-9]*)##'\
-'TEST_EXIT_CODE=([0-9]*)'
+  declare -r _BASHUNIT_RUNNER_PARSE_RESULT_REGEX='ASSERTIONS_FAILED=([0-9]*)##'\
+'ASSERTIONS_PASSED=([0-9]*)##ASSERTIONS_SKIPPED=([0-9]*)##'\
+'ASSERTIONS_INCOMPLETE=([0-9]*)##ASSERTIONS_SNAPSHOT=([0-9]*)##TEST_EXIT_CODE=([0-9]*)'
 fi
 
 function bashunit::runner::restore_workdir() {
@@ -5542,8 +5724,11 @@ function bashunit::runner::restore_workdir() {
 function bashunit::runner::load_test_files() {
   local filter=$1
   shift
-  local files=("${@}")
-  local scripts_ids=()
+  local IFS=$' \t\n'
+  local -a files
+  files=("$@")
+  local -a scripts_ids=()
+  local scripts_ids_count=0
 
   # Initialize coverage tracking if enabled
   if bashunit::env::is_coverage_enabled; then
@@ -5554,13 +5739,15 @@ function bashunit::runner::load_test_files() {
     bashunit::coverage::init
   fi
 
-  for test_file in "${files[@]}"; do
+  local test_file
+  for test_file in "${files[@]+"${files[@]}"}"; do
     if [[ ! -f $test_file ]]; then
       continue
     fi
     unset BASHUNIT_CURRENT_TEST_ID
     export BASHUNIT_CURRENT_SCRIPT_ID="$(bashunit::helper::generate_id "${test_file}")"
-    scripts_ids+=("${BASHUNIT_CURRENT_SCRIPT_ID}")
+    scripts_ids[scripts_ids_count]="${BASHUNIT_CURRENT_SCRIPT_ID}"
+    scripts_ids_count=$((scripts_ids_count + 1))
     bashunit::internal_log "Loading file" "$test_file"
     # shellcheck source=/dev/null
     source "$test_file"
@@ -5587,9 +5774,12 @@ function bashunit::runner::load_test_files() {
       local filtered_functions
       filtered_functions=$(bashunit::helper::get_functions_to_run "test" "$filter" "$_BASHUNIT_CACHED_ALL_FUNCTIONS")
       if [[ -n "$filtered_functions" ]]; then
+        # Bash 3.0 compatible: separate declaration and assignment for arrays
+        local functions_to_run
         # shellcheck disable=SC2206
-        local functions_to_run=($filtered_functions)
+        functions_to_run=($filtered_functions)
         local additional_failures=$((${#functions_to_run[@]} - 1))
+        local i
         for ((i = 0; i < additional_failures; i++)); do
           bashunit::state::add_tests_failed
         done
@@ -5621,9 +5811,11 @@ function bashunit::runner::load_test_files() {
     local spinner_pid=$!
     bashunit::parallel::aggregate_test_results "$TEMP_DIR_PARALLEL_TEST_SUITE"
     # Kill the spinner once the aggregation finishes
-    disown "$spinner_pid" && kill "$spinner_pid" &>/dev/null
+    disown "$spinner_pid" 2>/dev/null || true
+    kill "$spinner_pid" 2>/dev/null || true
     printf "\r  \r" # Clear the spinner output
-    for script_id in "${scripts_ids[@]}"; do
+    local script_id
+    for script_id in "${scripts_ids[@]+"${scripts_ids[@]}"}"; do
       export BASHUNIT_CURRENT_SCRIPT_ID="${script_id}"
       bashunit::cleanup_script_temp_files
     done
@@ -5633,9 +5825,12 @@ function bashunit::runner::load_test_files() {
 function bashunit::runner::load_bench_files() {
   local filter=$1
   shift
-  local files=("${@}")
+  local IFS=$' \t\n'
+  local -a files
+  files=("$@")
 
-  for bench_file in "${files[@]}"; do
+  local bench_file
+  for bench_file in "${files[@]+"${files[@]}"}"; do
     [[ -f $bench_file ]] || continue
     unset BASHUNIT_CURRENT_TEST_ID
     export BASHUNIT_CURRENT_SCRIPT_ID="$(bashunit::helper::generate_id "${bench_file}")"
@@ -5652,9 +5847,12 @@ function bashunit::runner::load_bench_files() {
       local filtered_functions
       filtered_functions=$(bashunit::helper::get_functions_to_run "bench" "$filter" "$_BASHUNIT_CACHED_ALL_FUNCTIONS")
       if [[ -n "$filtered_functions" ]]; then
+        # Bash 3.0 compatible: separate declaration and assignment for arrays
+        local functions_to_run
         # shellcheck disable=SC2206
-        local functions_to_run=($filtered_functions)
+        functions_to_run=($filtered_functions)
         local additional_failures=$((${#functions_to_run[@]} - 1))
+        local i
         for ((i = 0; i < additional_failures; i++)); do
           bashunit::state::add_tests_failed
         done
@@ -5680,6 +5878,12 @@ function bashunit::runner::spinner() {
     return
   fi
 
+  # Don't show spinner in no-progress mode
+  if bashunit::env::is_no_progress_enabled; then
+    while true; do sleep 1; done
+    return
+  fi
+
   if bashunit::env::is_simple_output_enabled; then
     printf "\n"
   fi
@@ -5687,7 +5891,8 @@ function bashunit::runner::spinner() {
   local delay=0.1
   local spin_chars="|/-\\"
   while true; do
-    for ((i=0; i<${#spin_chars}; i++)); do
+    local i
+    for ((i = 0; i < ${#spin_chars}; i++)); do
       printf "\r%s" "${spin_chars:$i:1}"
       sleep "$delay"
     done
@@ -5712,93 +5917,112 @@ function bashunit::runner::parse_data_provider_args() {
   local input="$1"
   local current_arg=""
   local in_quotes=false
+  local had_quotes=false # Track if arg was quoted (to preserve empty quoted strings)
   local quote_char=""
   local escaped=false
-  local i
-  local arg
+  local IFS=$' \t\n'
+  local i=0
+  local arg=""
   local encoded_arg
   local -a args=()
+  local args_count=0
 
   # Check for shell metacharacters that would break eval or cause globbing
   local has_metachar=false
-  if [[ "$input" =~ [^\\][\|\&\;\*] ]] || [[ "$input" =~ ^[\|\&\;\*] ]]; then
+  local _re1='[^\\][\|\&\;\*]'
+  local _re2='^[\|\&\;\*]'
+  if [[ "$input" =~ $_re1 ]] || [[ "$input" =~ $_re2 ]]; then
     has_metachar=true
   fi
 
   # Try eval first (needed for $'...' from printf '%q'), unless metacharacters present
-  if [[ "$has_metachar" == false ]] && eval "args=($input)" 2>/dev/null && [[ ${#args[@]} -gt 0 ]]; then
-    # Successfully parsed - remove sentinel if present
-    local last_idx=$((${#args[@]} - 1))
-    if [[ -z "${args[$last_idx]}" ]]; then
-      unset 'args[$last_idx]'
+  if [[ "$has_metachar" == false ]] && eval "args=($input)" 2>/dev/null; then
+    # Check if args has elements after eval
+    args_count=0
+    local _tmp arg
+    for _tmp in ${args+"${args[@]}"}; do args_count=$((args_count + 1)); done
+    if [[ "$args_count" -gt 0 ]]; then
+      # Successfully parsed - remove sentinel if present
+      local last_idx=$((args_count - 1))
+      if [[ -z "${args[$last_idx]}" ]]; then
+        unset 'args[$last_idx]'
+      fi
+      # Print args and return early
+      for arg in "${args[@]+"${args[@]}"}"; do
+        encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
+        printf '%s\n' "$encoded_arg"
+      done
+      return
     fi
-    # Print args and return early
-    for arg in "${args[@]}"; do
-      encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
-      printf '%s\n' "$encoded_arg"
-    done
-    return
   fi
 
   # Fallback: parse args from the input string into an array, respecting quotes and escapes
-  for ((i=0; i<${#input}; i++)); do
+  local i
+  for ((i = 0; i < ${#input}; i++)); do
     local char="${input:$i:1}"
     if [ "$escaped" = true ]; then
       case "$char" in
-        t) current_arg+=$'\t' ;;
-        n) current_arg+=$'\n' ;;
-        *) current_arg+="$char" ;;
+      t) current_arg="$current_arg"$'\t' ;;
+      n) current_arg="$current_arg"$'\n' ;;
+      *) current_arg="$current_arg$char" ;;
       esac
       escaped=false
     elif [ "$char" = "\\" ]; then
       escaped=true
     elif [ "$in_quotes" = false ]; then
       case "$char" in
-        "$")
-          # Handle $'...' syntax
-          if [[ "${input:$i:2}" == "$'" ]]; then
-            in_quotes=true
-            quote_char="'"
-            # Skip the $
-            i=$((i + 1))
-          else
-            current_arg+="$char"
-          fi
-          ;;
-        "'" | '"')
+      "$")
+        # Handle $'...' syntax
+        if [[ "${input:$i:2}" == "$'" ]]; then
           in_quotes=true
-          quote_char="$char"
-          ;;
-        " " | $'\t')
-          # Only add non-empty arguments to avoid duplicates from consecutive separators
-          if [[ -n "$current_arg" ]]; then
-            args+=("$current_arg")
-          fi
-          current_arg=""
-          ;;
-        *)
-          current_arg+="$char"
-          ;;
+          had_quotes=true
+          quote_char="'"
+          # Skip the $
+          i=$((i + 1))
+        else
+          current_arg="$current_arg$char"
+        fi
+        ;;
+      "'" | '"')
+        in_quotes=true
+        had_quotes=true
+        quote_char="$char"
+        ;;
+      " " | $'\t')
+        # Add if non-empty OR if was quoted (to preserve empty quoted strings like '')
+        if [[ -n "$current_arg" || "$had_quotes" == true ]]; then
+          args[args_count]="$current_arg"
+          args_count=$((args_count + 1))
+        fi
+        current_arg=""
+        had_quotes=false
+        ;;
+      *)
+        current_arg="$current_arg$char"
+        ;;
       esac
     elif [ "$char" = "$quote_char" ]; then
       in_quotes=false
       quote_char=""
     else
-      current_arg+="$char"
+      current_arg="$current_arg$char"
     fi
   done
-  args+=("$current_arg")
+  args[args_count]="$current_arg"
+  args_count=$((args_count + 1))
   # Remove all trailing empty strings
-  while [[ ${#args[@]} -gt 0 ]]; do
-    local last_idx=$((${#args[@]} - 1))
+  while [[ "$args_count" -gt 0 ]]; do
+    local last_idx=$((args_count - 1))
     if [[ -z "${args[$last_idx]}" ]]; then
       unset 'args[$last_idx]'
+      args_count=$((args_count - 1))
     else
       break
     fi
   done
   # Print one arg per line to stdout, base64-encoded to preserve newlines in the data
-  for arg in "${args[@]+"${args[@]}"}"; do
+  local arg
+  for arg in ${args+"${args[@]}"}; do
     encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
     printf '%s\n' "$encoded_arg"
   done
@@ -5807,62 +6031,109 @@ function bashunit::runner::parse_data_provider_args() {
 function bashunit::runner::call_test_functions() {
   local script="$1"
   local filter="$2"
+  local IFS=$' \t\n'
   local prefix="test"
   # Use cached function names for better performance
   local filtered_functions
   filtered_functions=$(bashunit::helper::get_functions_to_run \
     "$prefix" "$filter" "$_BASHUNIT_CACHED_ALL_FUNCTIONS")
-  # shellcheck disable=SC2207
-  local functions_to_run=($(bashunit::runner::functions_for_script "$script" "$filtered_functions"))
+  local -a functions_to_run=()
+  local functions_to_run_count=0
+  local _fn
+  while IFS= read -r _fn; do
+    [[ -z "$_fn" ]] && continue
+    functions_to_run[functions_to_run_count]="$_fn"
+    functions_to_run_count=$((functions_to_run_count + 1))
+  done < <(bashunit::runner::functions_for_script "$script" "$filtered_functions")
 
-  if [[ "${#functions_to_run[@]}" -le 0 ]]; then
+  if [[ "$functions_to_run_count" -le 0 ]]; then
     return
   fi
 
   bashunit::helper::check_duplicate_functions "$script" || true
 
-  for fn_name in "${functions_to_run[@]}"; do
+  # Check if test file opts out of test-level parallelism
+  local allow_test_parallel=true
+  if grep -q "^# bashunit: no-parallel-tests" "$script" 2>/dev/null; then
+    allow_test_parallel=false
+  fi
+
+  local -a provider_data=()
+  local provider_data_count=0
+  local -a parsed_data=()
+  local parsed_data_count=0
+
+  for fn_name in "${functions_to_run[@]+"${functions_to_run[@]}"}"; do
     if bashunit::parallel::is_enabled && bashunit::parallel::must_stop_on_failure; then
       break
     fi
 
-    local provider_data=()
+    provider_data=()
+    provider_data_count=0
+    local line
     while IFS=" " read -r line; do
-      provider_data+=("$line")
-    done <<< "$(bashunit::helper::get_provider_data "$fn_name" "$script")"
+      [[ -z "$line" ]] && continue
+      provider_data[provider_data_count]="$line"
+      provider_data_count=$((provider_data_count + 1))
+    done <<<"$(bashunit::helper::get_provider_data "$fn_name" "$script")"
 
     # No data provider found
-    if [[ "${#provider_data[@]}" -eq 0 ]]; then
-      bashunit::runner::run_test "$script" "$fn_name"
-      unset fn_name
+    if [ "$provider_data_count" -eq 0 ]; then
+      if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
+        bashunit::runner::run_test "$script" "$fn_name" &
+      else
+        bashunit::runner::run_test "$script" "$fn_name"
+      fi
+      unset -v fn_name
       continue
     fi
 
     # Execute the test function for each line of data
-    for data in "${provider_data[@]}"; do
-      local parsed_data=()
+    local data
+    for data in "${provider_data[@]+"${provider_data[@]}"}"; do
+      parsed_data=()
+      parsed_data_count=0
+      local line
       while IFS= read -r line; do
-        parsed_data+=( "$(bashunit::helper::decode_base64 "${line}")" )
-      done <<< "$(bashunit::runner::parse_data_provider_args "$data")"
-      bashunit::runner::run_test "$script" "$fn_name" "${parsed_data[@]}"
+        [ -z "$line" ] && continue
+        parsed_data[parsed_data_count]="$(bashunit::helper::decode_base64 "${line}")"
+        parsed_data_count=$((parsed_data_count + 1))
+      done <<<"$(bashunit::runner::parse_data_provider_args "$data")"
+      if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
+        bashunit::runner::run_test "$script" "$fn_name" ${parsed_data+"${parsed_data[@]}"} &
+      else
+        bashunit::runner::run_test "$script" "$fn_name" ${parsed_data+"${parsed_data[@]}"}
+      fi
     done
-    unset fn_name
+    unset -v fn_name
   done
+
+  # Wait for all parallel tests within this file to complete
+  if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
+    wait
+  fi
 }
 
 function bashunit::runner::call_bench_functions() {
   local script="$1"
   local filter="$2"
+  local IFS=$' \t\n'
   local prefix="bench"
 
   # Use cached function names for better performance
   local filtered_functions
   filtered_functions=$(bashunit::helper::get_functions_to_run \
     "$prefix" "$filter" "$_BASHUNIT_CACHED_ALL_FUNCTIONS")
-  # shellcheck disable=SC2207
-  local functions_to_run=($(bashunit::runner::functions_for_script "$script" "$filtered_functions"))
+  local -a functions_to_run=()
+  local functions_to_run_count=0
+  local _fn
+  while IFS= read -r _fn; do
+    [[ -z "$_fn" ]] && continue
+    functions_to_run[functions_to_run_count]="$_fn"
+    functions_to_run_count=$((functions_to_run_count + 1))
+  done < <(bashunit::runner::functions_for_script "$script" "$filtered_functions")
 
-  if [[ "${#functions_to_run[@]}" -le 0 ]]; then
+  if [[ "$functions_to_run_count" -le 0 ]]; then
     return
   fi
 
@@ -5870,10 +6141,11 @@ function bashunit::runner::call_bench_functions() {
     bashunit::runner::render_running_file_header "$script"
   fi
 
-  for fn_name in "${functions_to_run[@]}"; do
-    read -r revs its max_ms <<< "$(bashunit::benchmark::parse_annotations "$fn_name" "$script")"
+  local fn_name
+  for fn_name in "${functions_to_run[@]+"${functions_to_run[@]}"}"; do
+    read -r revs its max_ms <<<"$(bashunit::benchmark::parse_annotations "$fn_name" "$script")"
     bashunit::benchmark::run_function "$fn_name" "$revs" "$its" "$max_ms"
-    unset fn_name
+    unset -v fn_name
   done
 
   if ! bashunit::env::is_simple_output_enabled; then
@@ -5893,6 +6165,11 @@ function bashunit::runner::render_running_file_header() {
 
   # Suppress file headers in failures-only mode
   if bashunit::env::is_failures_only_enabled; then
+    return
+  fi
+
+  # Suppress file headers in no-progress mode
+  if bashunit::env::is_no_progress_enabled; then
     return
   fi
 
@@ -5947,7 +6224,7 @@ function bashunit::runner::run_test() {
 
   local test_execution_result=$(
     # shellcheck disable=SC2064
-    trap 'exit_code=$?; bashunit::runner::cleanup_on_exit "$test_file" "$exit_code"' EXIT
+    trap "exit_code=\$?; bashunit::runner::cleanup_on_exit \"$test_file\" \"\$exit_code\"" EXIT
     bashunit::state::initialize_assertions_count
 
     # Source login shell profiles if enabled
@@ -6019,9 +6296,9 @@ function bashunit::runner::run_test() {
     local line="${subshell_output#*]}"  # Remove everything before and including "]"
 
     # Replace [type] with a newline to split the messages
-    line="${line//\[failed\]/$'\n'}"       # Replace [failed] with newline
-    line="${line//\[skipped\]/$'\n'}"      # Replace [skipped] with newline
-    line="${line//\[incomplete\]/$'\n'}"   # Replace [incomplete] with newline
+    line=${line//\[failed\]/$'\n'}     # Replace [failed] with newline
+    line=${line//\[skipped\]/$'\n'}    # Replace [skipped] with newline
+    line=${line//\[incomplete\]/$'\n'} # Replace [incomplete] with newline
 
     if ! bashunit::env::is_failures_only_enabled; then
       bashunit::state::print_line "$type" "$line"
@@ -6033,15 +6310,16 @@ function bashunit::runner::run_test() {
   local runtime_output="${test_execution_result%%##ASSERTIONS_*}"
 
   local runtime_error=""
+  local error=""
   for error in "command not found" "unbound variable" "permission denied" \
-      "no such file or directory" "syntax error" "bad substitution" \
-      "division by 0" "cannot allocate memory" "bad file descriptor" \
-      "segmentation fault" "illegal option" "argument list too long" \
-      "readonly variable" "missing keyword" "killed" \
-      "cannot execute binary file" "invalid arithmetic operator"; do
+    "no such file or directory" "syntax error" "bad substitution" \
+    "division by 0" "cannot allocate memory" "bad file descriptor" \
+    "segmentation fault" "illegal option" "argument list too long" \
+    "readonly variable" "missing keyword" "killed" \
+    "cannot execute binary file" "invalid arithmetic operator"; do
     if [[ "$runtime_output" == *"$error"* ]]; then
-      runtime_error="${runtime_output#*: }"      # Remove everything up to and including ": "
-      runtime_error="${runtime_error//$'\n'/}"   # Remove all newlines using parameter expansion
+      runtime_error="${runtime_output#*: }"  # Remove everything up to and including ": "
+      runtime_error=${runtime_error//$'\n'/} # Remove all newlines using parameter expansion
       break
     fi
   done
@@ -6094,9 +6372,9 @@ function bashunit::runner::run_test() {
     elif [[ -z "$error_message" && -n "$hook_message" ]]; then
       error_message="$hook_message"
     fi
-    bashunit::console_results::print_error_test "$failure_function" "$error_message"
+    bashunit::console_results::print_error_test "$failure_function" "$error_message" "$runtime_output"
     bashunit::reports::add_test_failed "$test_file" "$failure_label" "$duration" "$total_assertions"
-    bashunit::runner::write_failure_result_output "$test_file" "$failure_function" "$error_message"
+    bashunit::runner::write_failure_result_output "$test_file" "$failure_function" "$error_message" "$runtime_output"
     bashunit::internal_log "Test error" "$failure_label" "$error_message"
     return
   fi
@@ -6196,10 +6474,12 @@ function bashunit::runner::parse_result() {
   shift
   local execution_result=$1
   shift
-  local args=("$@")
+  local IFS=$' \t\n'
+  local -a args
+  args=("$@")
 
   if bashunit::parallel::is_enabled; then
-    bashunit::runner::parse_result_parallel "$fn_name" "$execution_result" "${args[@]}"
+    bashunit::runner::parse_result_parallel "$fn_name" "$execution_result" ${args+"${args[@]}"}
   else
     bashunit::runner::parse_result_sync "$fn_name" "$execution_result"
   fi
@@ -6210,13 +6490,15 @@ function bashunit::runner::parse_result_parallel() {
   shift
   local execution_result=$1
   shift
-  local args=("$@")
+  local IFS=$' \t\n'
+  local -a args
+  args=("$@")
 
   local test_suite_dir="${TEMP_DIR_PARALLEL_TEST_SUITE}/$(basename "$test_file" .sh)"
   mkdir -p "$test_suite_dir"
 
   local sanitized_args
-  sanitized_args=$(echo "${args[*]}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//')
+  sanitized_args=$(echo "${args[*]+"${args[*]}"}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//')
   local template
   if [[ -z "$sanitized_args" ]]; then
     template="${fn_name}.XXXXXX"
@@ -6237,7 +6519,7 @@ function bashunit::runner::parse_result_parallel() {
 
   bashunit::runner::parse_result_sync "$fn_name" "$execution_result"
 
-  echo "$execution_result" > "$unique_test_result_file"
+  echo "$execution_result" >"$unique_test_result_file"
 }
 
 # shellcheck disable=SC2295
@@ -6256,7 +6538,7 @@ function bashunit::runner::parse_result_sync() {
   local test_exit_code=0
 
   # Use pre-compiled regex constant
-  if [[ $result_line =~ $_BASHUNIT_RUNNER_PARSE_RESULT_REGEX ]]; then
+  if [[ "$result_line" =~ $_BASHUNIT_RUNNER_PARSE_RESULT_REGEX ]]; then
     assertions_failed="${BASH_REMATCH[1]}"
     assertions_passed="${BASH_REMATCH[2]}"
     assertions_skipped="${BASH_REMATCH[3]}"
@@ -6267,12 +6549,12 @@ function bashunit::runner::parse_result_sync() {
 
   bashunit::internal_log "[SYNC]" "fn_name:$fn_name" "execution_result:$execution_result"
 
-  ((_BASHUNIT_ASSERTIONS_PASSED += assertions_passed)) || true
-  ((_BASHUNIT_ASSERTIONS_FAILED += assertions_failed)) || true
-  ((_BASHUNIT_ASSERTIONS_SKIPPED += assertions_skipped)) || true
-  ((_BASHUNIT_ASSERTIONS_INCOMPLETE += assertions_incomplete)) || true
-  ((_BASHUNIT_ASSERTIONS_SNAPSHOT += assertions_snapshot)) || true
-  ((_BASHUNIT_TEST_EXIT_CODE += test_exit_code)) || true
+  _BASHUNIT_ASSERTIONS_PASSED=$((_BASHUNIT_ASSERTIONS_PASSED + assertions_passed))
+  _BASHUNIT_ASSERTIONS_FAILED=$((_BASHUNIT_ASSERTIONS_FAILED + assertions_failed))
+  _BASHUNIT_ASSERTIONS_SKIPPED=$((_BASHUNIT_ASSERTIONS_SKIPPED + assertions_skipped))
+  _BASHUNIT_ASSERTIONS_INCOMPLETE=$((_BASHUNIT_ASSERTIONS_INCOMPLETE + assertions_incomplete))
+  _BASHUNIT_ASSERTIONS_SNAPSHOT=$((_BASHUNIT_ASSERTIONS_SNAPSHOT + assertions_snapshot))
+  _BASHUNIT_TEST_EXIT_CODE=$((_BASHUNIT_TEST_EXIT_CODE + test_exit_code))
 
   bashunit::internal_log "result_summary" \
     "failed:$assertions_failed" \
@@ -6287,6 +6569,7 @@ function bashunit::runner::write_failure_result_output() {
   local test_file=$1
   local fn_name=$2
   local error_msg=$3
+  local raw_output="${4:-}"
 
   local line_number
   line_number=$(bashunit::helper::get_function_line_number "$fn_name")
@@ -6296,7 +6579,12 @@ function bashunit::runner::write_failure_result_output() {
     test_nr=$(bashunit::state::get_tests_failed)
   fi
 
-  echo -e "$test_nr) $test_file:$line_number\n$error_msg" >> "$FAILURES_OUTPUT_PATH"
+  local output_section=""
+  if [[ -n "$raw_output" ]] && bashunit::env::is_show_output_on_failure_enabled; then
+    output_section="\n    Output:\n$raw_output"
+  fi
+
+  echo -e "$test_nr) $test_file:$line_number\n$error_msg$output_section" >>"$FAILURES_OUTPUT_PATH"
 }
 
 function bashunit::runner::write_skipped_result_output() {
@@ -6312,7 +6600,7 @@ function bashunit::runner::write_skipped_result_output() {
     test_nr=$(bashunit::state::get_tests_skipped)
   fi
 
-  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >> "$SKIPPED_OUTPUT_PATH"
+  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >>"$SKIPPED_OUTPUT_PATH"
 }
 
 function bashunit::runner::write_incomplete_result_output() {
@@ -6328,7 +6616,7 @@ function bashunit::runner::write_incomplete_result_output() {
     test_nr=$(bashunit::state::get_tests_incomplete)
   fi
 
-  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >> "$INCOMPLETE_OUTPUT_PATH"
+  echo -e "$test_nr) $test_file:$line_number\n$output_msg" >>"$INCOMPLETE_OUTPUT_PATH"
 }
 
 function bashunit::runner::record_file_hook_failure() {
@@ -6387,9 +6675,10 @@ function bashunit::runner::execute_file_hook() {
 
   if [[ -f "$hook_output_file" ]]; then
     hook_output=""
+    local line
     while IFS= read -r line; do
       [[ -z "$hook_output" ]] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
-    done < "$hook_output_file"
+    done <"$hook_output_file"
     rm -f "$hook_output_file"
   fi
 
@@ -6477,9 +6766,10 @@ function bashunit::runner::execute_test_hook() {
 
   if [[ -f "$hook_output_file" ]]; then
     hook_output=""
+    local line
     while IFS= read -r line; do
       [[ -z "$hook_output" ]] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
-    done < "$hook_output_file"
+    done <"$hook_output_file"
     rm -f "$hook_output_file"
   fi
 
@@ -6518,8 +6808,13 @@ function bashunit::runner::record_test_hook_failure() {
 }
 
 function bashunit::runner::clear_mocks() {
+  if [ "${#_BASHUNIT_MOCKED_FUNCTIONS[@]}" -eq 0 ]; then
+    return
+  fi
+
+  local i
   for i in "${!_BASHUNIT_MOCKED_FUNCTIONS[@]}"; do
-    bashunit::unmock "${_BASHUNIT_MOCKED_FUNCTIONS[$i]}"
+    bashunit::unmock "${_BASHUNIT_MOCKED_FUNCTIONS[$i]:-}"
   done
 }
 
@@ -6530,9 +6825,10 @@ function bashunit::runner::run_tear_down_after_script() {
   # Check if hook exists first
   if ! declare -F "tear_down_after_script" >/dev/null 2>&1; then
     # Add blank line after tests if no tear_down hook
-    if ! bashunit::env::is_simple_output_enabled && \
-        ! bashunit::env::is_failures_only_enabled && \
-        ! bashunit::parallel::is_enabled; then
+    if ! bashunit::env::is_simple_output_enabled &&
+      ! bashunit::env::is_failures_only_enabled &&
+      ! bashunit::env::is_no_progress_enabled &&
+      ! bashunit::parallel::is_enabled; then
       echo ""
     fi
     return 0
@@ -6556,9 +6852,10 @@ function bashunit::runner::run_tear_down_after_script() {
   fi
 
   # Add blank line after tear_down output
-  if ! bashunit::env::is_simple_output_enabled && \
-      ! bashunit::env::is_failures_only_enabled && \
-      ! bashunit::parallel::is_enabled; then
+  if ! bashunit::env::is_simple_output_enabled &&
+    ! bashunit::env::is_failures_only_enabled &&
+    ! bashunit::env::is_no_progress_enabled &&
+    ! bashunit::parallel::is_enabled; then
     echo ""
   fi
 
@@ -6591,22 +6888,34 @@ function bashunit::benchmark::parse_annotations() {
   local annotation
   annotation=$(awk "/function[[:space:]]+${fn_name}[[:space:]]*\(/ {print prev; exit} {prev=\$0}" "$script")
 
-  if [[ $annotation =~ @revs=([0-9]+) ]]; then
+  local _re='@revs=([0-9]+)'
+  if [[ "$annotation" =~ $_re ]]; then
     revs="${BASH_REMATCH[1]}"
-  elif [[ $annotation =~ @revolutions=([0-9]+) ]]; then
-    revs="${BASH_REMATCH[1]}"
+  else
+    _re='@revolutions=([0-9]+)'
+    if [[ "$annotation" =~ $_re ]]; then
+      revs="${BASH_REMATCH[1]}"
+    fi
   fi
 
-  if [[ $annotation =~ @its=([0-9]+) ]]; then
+  _re='@its=([0-9]+)'
+  if [[ "$annotation" =~ $_re ]]; then
     its="${BASH_REMATCH[1]}"
-  elif [[ $annotation =~ @iterations=([0-9]+) ]]; then
-    its="${BASH_REMATCH[1]}"
+  else
+    _re='@iterations=([0-9]+)'
+    if [[ "$annotation" =~ $_re ]]; then
+      its="${BASH_REMATCH[1]}"
+    fi
   fi
 
-  if [[ $annotation =~ @max_ms=([0-9.]+) ]]; then
+  _re='@max_ms=([0-9.]+)'
+  if [[ "$annotation" =~ $_re ]]; then
     max_ms="${BASH_REMATCH[1]}"
-  elif [[ $annotation =~ @max_ms=([0-9.]+) ]]; then
-    max_ms="${BASH_REMATCH[1]}"
+  else
+    _re='@max_ms=([0-9.]+)'
+    if [[ "$annotation" =~ $_re ]]; then
+      max_ms="${BASH_REMATCH[1]}"
+    fi
   fi
 
   if [[ -n "$max_ms" ]]; then
@@ -6617,11 +6926,11 @@ function bashunit::benchmark::parse_annotations() {
 }
 
 function bashunit::benchmark::add_result() {
-  _BASHUNIT_BENCH_NAMES+=("$1")
-  _BASHUNIT_BENCH_REVS+=("$2")
-  _BASHUNIT_BENCH_ITS+=("$3")
-  _BASHUNIT_BENCH_AVERAGES+=("$4")
-  _BASHUNIT_BENCH_MAX_MILLIS+=("$5")
+  _BASHUNIT_BENCH_NAMES[${#_BASHUNIT_BENCH_NAMES[@]}]="$1"
+  _BASHUNIT_BENCH_REVS[${#_BASHUNIT_BENCH_REVS[@]}]="$2"
+  _BASHUNIT_BENCH_ITS[${#_BASHUNIT_BENCH_ITS[@]}]="$3"
+  _BASHUNIT_BENCH_AVERAGES[${#_BASHUNIT_BENCH_AVERAGES[@]}]="$4"
+  _BASHUNIT_BENCH_MAX_MILLIS[${#_BASHUNIT_BENCH_MAX_MILLIS[@]}]="$5"
 }
 
 # shellcheck disable=SC2155
@@ -6630,19 +6939,23 @@ function bashunit::benchmark::run_function() {
   local revs=$2
   local its=$3
   local max_ms=$4
-  local durations=()
+  local IFS=$' \t\n'
+  local -a durations=()
+  local durations_count=0
+  local i r
 
-  for ((i=1; i<=its; i++)); do
+  for ((i = 1; i <= its; i++)); do
     local start_time=$(bashunit::clock::now)
     (
-      for ((r=1; r<=revs; r++)); do
+      for ((r = 1; r <= revs; r++)); do
         "$fn_name" >/dev/null 2>&1
       done
     )
     local end_time=$(bashunit::clock::now)
     local dur_ns=$(bashunit::math::calculate "($end_time - $start_time)")
     local dur_ms=$(bashunit::math::calculate "$dur_ns / 1000000")
-    durations+=("$dur_ms")
+    durations[durations_count]="$dur_ms"
+    durations_count=$((durations_count + 1))
 
     if bashunit::env::is_bench_mode_enabled; then
       local label="$(bashunit::helper::normalize_test_function_name "$fn_name")"
@@ -6652,7 +6965,8 @@ function bashunit::benchmark::run_function() {
   done
 
   local sum=0
-  for d in "${durations[@]}"; do
+  local d
+  for d in "${durations[@]+"${durations[@]}"}"; do
     sum=$(bashunit::math::calculate "$sum + $d")
   done
   local avg=$(bashunit::math::calculate "$sum / ${#durations[@]}")
@@ -6664,7 +6978,7 @@ function bashunit::benchmark::print_results() {
     return
   fi
 
-  if (( ${#_BASHUNIT_BENCH_NAMES[@]} == 0 )); then
+  if ((${#_BASHUNIT_BENCH_NAMES[@]} == 0)); then
     return
   fi
 
@@ -6676,8 +6990,10 @@ function bashunit::benchmark::print_results() {
   bashunit::print_line 80 "="
   printf "\n"
 
+  local IFS=$' \t\n'
   local has_threshold=false
-  for val in "${_BASHUNIT_BENCH_MAX_MILLIS[@]}"; do
+  local val
+  for val in "${_BASHUNIT_BENCH_MAX_MILLIS[@]+"${_BASHUNIT_BENCH_MAX_MILLIS[@]}"}"; do
     if [[ -n "$val" ]]; then
       has_threshold=true
       break
@@ -6690,12 +7006,13 @@ function bashunit::benchmark::print_results() {
     printf '%-40s %6s %6s %10s\n' "Name" "Revs" "Its" "Avg(ms)"
   fi
 
+  local i
   for i in "${!_BASHUNIT_BENCH_NAMES[@]}"; do
-    local name="${_BASHUNIT_BENCH_NAMES[$i]}"
-    local revs="${_BASHUNIT_BENCH_REVS[$i]}"
-    local its="${_BASHUNIT_BENCH_ITS[$i]}"
-    local avg="${_BASHUNIT_BENCH_AVERAGES[$i]}"
-    local max_ms="${_BASHUNIT_BENCH_MAX_MILLIS[$i]}"
+    local name="${_BASHUNIT_BENCH_NAMES[$i]:-}"
+    local revs="${_BASHUNIT_BENCH_REVS[$i]:-}"
+    local its="${_BASHUNIT_BENCH_ITS[$i]:-}"
+    local avg="${_BASHUNIT_BENCH_AVERAGES[$i]:-}"
+    local max_ms="${_BASHUNIT_BENCH_MAX_MILLIS[$i]:-}"
 
     if [[ -z "$max_ms" ]]; then
       printf '%-40s %6s %6s %10s\n' "$name" "$revs" "$its" "$avg"
@@ -6704,13 +7021,15 @@ function bashunit::benchmark::print_results() {
 
     if [[ "$avg" -le "$max_ms" ]]; then
       local raw="≤ ${max_ms}"
-      printf -v padded "%14s" "$raw"
+      local padded
+      padded=$(printf "%14s" "$raw")
       printf '%-40s %6s %6s %10s %12s\n' "$name" "$revs" "$its" "$avg" "$padded"
       continue
     fi
 
     local raw="> ${max_ms}"
-    printf -v padded "%12s" "$raw"
+    local padded
+    padded=$(printf "%12s" "$raw")
     printf '%-40s %6s %6s %10s %s%s%s\n' \
       "$name" "$revs" "$its" "$avg" \
       "$_BASHUNIT_COLOR_FAILED" "$padded" "${_BASHUNIT_COLOR_DEFAULT}"
@@ -6759,9 +7078,9 @@ SH
         sed -i -e "s/^BASHUNIT_BOOTSTRAP=/#&/" "$env_file"
       fi
     fi
-    echo "$env_line" >> "$env_file"
+    echo "$env_line" >>"$env_file"
   else
-    echo "$env_line" > "$env_file"
+    echo "$env_line" >"$env_file"
   fi
 
   echo "> bashunit initialized in $tests_dir"
@@ -6836,25 +7155,25 @@ function bashunit::learn::start() {
     echo ""
 
     case "$choice" in
-      1) bashunit::learn::lesson_basics || true ;;
-      2) bashunit::learn::lesson_assertions || true ;;
-      3) bashunit::learn::lesson_lifecycle || true ;;
-      4) bashunit::learn::lesson_functions || true ;;
-      5) bashunit::learn::lesson_scripts || true ;;
-      6) bashunit::learn::lesson_mocking || true ;;
-      7) bashunit::learn::lesson_spies || true ;;
-      8) bashunit::learn::lesson_data_providers || true ;;
-      9) bashunit::learn::lesson_exit_codes || true ;;
-      10) bashunit::learn::lesson_challenge || true ;;
-      p) bashunit::learn::show_progress ;;
-      r) bashunit::learn::reset_progress ;;
-      q)
-        echo "${_BASHUNIT_COLOR_PASSED}Happy testing!${_BASHUNIT_COLOR_DEFAULT}"
-        break
-        ;;
-      *)
-        echo "${_BASHUNIT_COLOR_FAILED}Invalid choice. Please try again.${_BASHUNIT_COLOR_DEFAULT}"
-        ;;
+    1) bashunit::learn::lesson_basics || true ;;
+    2) bashunit::learn::lesson_assertions || true ;;
+    3) bashunit::learn::lesson_lifecycle || true ;;
+    4) bashunit::learn::lesson_functions || true ;;
+    5) bashunit::learn::lesson_scripts || true ;;
+    6) bashunit::learn::lesson_mocking || true ;;
+    7) bashunit::learn::lesson_spies || true ;;
+    8) bashunit::learn::lesson_data_providers || true ;;
+    9) bashunit::learn::lesson_exit_codes || true ;;
+    10) bashunit::learn::lesson_challenge || true ;;
+    p) bashunit::learn::show_progress ;;
+    r) bashunit::learn::reset_progress ;;
+    q)
+      echo "${_BASHUNIT_COLOR_PASSED}Happy testing!${_BASHUNIT_COLOR_DEFAULT}"
+      break
+      ;;
+    *)
+      echo "${_BASHUNIT_COLOR_FAILED}Invalid choice. Please try again.${_BASHUNIT_COLOR_DEFAULT}"
+      ;;
     esac
   done
 
@@ -6866,7 +7185,7 @@ function bashunit::learn::start() {
 ##
 function bashunit::learn::mark_completed() {
   local lesson=$1
-  echo "$lesson" >> "$LEARN_PROGRESS_FILE"
+  echo "$lesson" >>"$LEARN_PROGRESS_FILE"
 }
 
 ##
@@ -6892,6 +7211,7 @@ function bashunit::learn::show_progress() {
   local total_lessons=10
   local completed=0
 
+  local i
   for i in $(seq 1 $total_lessons); do
     if bashunit::learn::is_completed "lesson_$i"; then
       echo "  ${_BASHUNIT_COLOR_PASSED}✓${_BASHUNIT_COLOR_DEFAULT} Lesson $i completed"
@@ -6932,7 +7252,7 @@ function bashunit::learn::create_example_file() {
 
   echo ""
   echo "Creating example file ${_BASHUNIT_COLOR_BOLD}$filename${_BASHUNIT_COLOR_DEFAULT}..."
-  echo "$content" > "$filename"
+  echo "$content" >"$filename"
   chmod +x "$filename"
   echo "${_BASHUNIT_COLOR_PASSED}✓ Created $filename${_BASHUNIT_COLOR_DEFAULT}"
   echo ""
@@ -7102,9 +7422,9 @@ function test_multiple_assertions() {
     return 1
   fi
 
-  if ! grep -q "assert_contains" "$test_file" || \
-      ! grep -q "assert_matches" "$test_file" || \
-      ! grep -q "assert_not_empty" "$test_file"; then
+  if ! grep -q "assert_contains" "$test_file" ||
+    ! grep -q "assert_matches" "$test_file" ||
+    ! grep -q "assert_not_empty" "$test_file"; then
     echo "${_BASHUNIT_COLOR_FAILED}Your test should use all three assertion types${_BASHUNIT_COLOR_DEFAULT}"
     read -p "Press Enter to continue..." -r
     return 1
@@ -7195,8 +7515,8 @@ function test_file_has_content() {
     return 1
   fi
 
-  if ! grep -q "function set_up()" "$test_file" || \
-      ! grep -q "function tear_down()" "$test_file"; then
+  if ! grep -q "function set_up()" "$test_file" ||
+    ! grep -q "function tear_down()" "$test_file"; then
     echo "${_BASHUNIT_COLOR_FAILED}Your test should define set_up and tear_down functions${_BASHUNIT_COLOR_DEFAULT}"
     read -p "Press Enter to continue..." -r
     return 1
@@ -7627,7 +7947,8 @@ File: validator.sh
 #!/usr/bin/env bash
 
 function is_valid_email() {
-  [[ $1 =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
+  local email_pattern='^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+  [[ $1 =~ $email_pattern ]]
 }
 ───────────────────────────────────────────────────────────────
 
@@ -7926,17 +8247,20 @@ function test_backup_failure_when_source_missing() {
   fi
 
   # Verify the test has key components
-  local missing_components=()
+  local -a missing_components=()
+  local missing_components_count=0
 
   if ! grep -q "function set_up()" "$test_file"; then
-    missing_components+=("set_up function")
+    missing_components[missing_components_count]="set_up function"
+    missing_components_count=$((missing_components_count + 1))
   fi
 
   if ! grep -q "function tear_down()" "$test_file"; then
-    missing_components+=("tear_down function")
+    missing_components[missing_components_count]="tear_down function"
+    missing_components_count=$((missing_components_count + 1))
   fi
 
-  if [[ ${#missing_components[@]} -gt 0 ]]; then
+  if [[ "$missing_components_count" -gt 0 ]]; then
     echo "${_BASHUNIT_COLOR_FAILED}Missing required components:${_BASHUNIT_COLOR_DEFAULT}"
     printf "  - %s\n" "${missing_components[@]}"
     read -p "Press Enter to continue..." -r
@@ -9174,13 +9498,14 @@ __BASHUNIT_DOCS_EOF__
 
 function bashunit::doc::print_asserts() {
   local filter="${1:-}"
-  local line
   local docstring=""
   local fn=""
   local should_print=0
 
+  local line
   while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [[ $line =~ ^##\ ([A-Za-z0-9_]+) ]]; then
+    local _re='^## ([A-Za-z0-9_]+)'
+    if [[ "$line" =~ $_re ]]; then
       fn="${BASH_REMATCH[1]}"
       if [[ -z "$filter" || "$fn" == *"$filter"* ]]; then
         should_print=1
@@ -9192,8 +9517,10 @@ function bashunit::doc::print_asserts() {
       continue
     fi
 
-    if (( should_print )); then
-      if [[ "$line" =~ ^\`\`\` ]]; then
+    if ((should_print)); then
+      # Check for code fence using pattern matching instead of regex
+      # Avoids backtick escaping issues in Bash 3.0
+      if [[ "$line" == '```'* ]]; then
         echo "--------------"
         echo "$docstring"
         should_print=0
@@ -9204,10 +9531,10 @@ function bashunit::doc::print_asserts() {
 
       # Remove markdown link brackets and anchor tags
       line="${line//[\[\]]/}"
-      line="$(sed -E 's/ *\(#[-a-z0-9]+\)//g' <<< "$line")"
-      docstring+="$line"$'\n'
+      line="$(sed -E 's/ *\(#[-a-z0-9]+\)//g' <<<"$line")"
+      docstring="$docstring$line"$'\n'
     fi
-  done <<< "$(bashunit::doc::get_embedded_docs)"
+  done <<<"$(bashunit::doc::get_embedded_docs)"
 }
 
 # bashunit.sh
@@ -9245,144 +9572,161 @@ function bashunit::assertion_passed() {
 #############################
 function bashunit::main::cmd_test() {
   local filter=""
-  local raw_args=()
-  local args=()
+  local IFS=$' \t\n'
+  local -a raw_args=()
+  local raw_args_count=0
+  local -a args=()
+  local args_count=0
   local assert_fn=""
   local _bashunit_coverage_opt_set=false
 
   # Parse test-specific options
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -a|--assert)
-        assert_fn="$2"
+    -a | --assert)
+      assert_fn="$2"
+      shift
+      ;;
+    -f | --filter)
+      filter="$2"
+      shift
+      ;;
+    -s | --simple)
+      export BASHUNIT_SIMPLE_OUTPUT=true
+      ;;
+    --detailed)
+      export BASHUNIT_SIMPLE_OUTPUT=false
+      ;;
+    --debug)
+      local output_file="${2:-}"
+      if [[ -n "$output_file" && "${output_file:0:1}" != "-" ]]; then
+        exec >"$output_file" 2>&1
         shift
-        ;;
-      -f|--filter)
-        filter="$2"
+      fi
+      set -x
+      ;;
+    -S | --stop-on-failure)
+      export BASHUNIT_STOP_ON_FAILURE=true
+      ;;
+    -p | --parallel)
+      export BASHUNIT_PARALLEL_RUN=true
+      ;;
+    --no-parallel)
+      export BASHUNIT_PARALLEL_RUN=false
+      ;;
+    -e | --env | --boot)
+      # Support: --env "bootstrap.sh arg1 arg2"
+      local boot_file="${2%% *}"
+      local boot_args="${2#* }"
+      if [[ "$boot_args" != "$2" ]]; then
+        export BASHUNIT_BOOTSTRAP_ARGS="$boot_args"
+      fi
+      # Export all variables from the env file so they're available in subshells
+      # (e.g., process substitution used in load_test_files)
+      set -o allexport
+      # shellcheck disable=SC1090,SC2086
+      source "$boot_file" ${BASHUNIT_BOOTSTRAP_ARGS:-}
+      set +o allexport
+      shift
+      ;;
+    --log-junit)
+      export BASHUNIT_LOG_JUNIT="$2"
+      shift
+      ;;
+    -r | --report-html)
+      export BASHUNIT_REPORT_HTML="$2"
+      shift
+      ;;
+    --no-output)
+      export BASHUNIT_NO_OUTPUT=true
+      ;;
+    -vvv | --verbose)
+      export BASHUNIT_VERBOSE=true
+      ;;
+    -h | --help)
+      bashunit::console_header::print_test_help
+      exit 0
+      ;;
+    --show-skipped)
+      export BASHUNIT_SHOW_SKIPPED=true
+      ;;
+    --show-incomplete)
+      export BASHUNIT_SHOW_INCOMPLETE=true
+      ;;
+    --failures-only)
+      export BASHUNIT_FAILURES_ONLY=true
+      ;;
+    --show-output)
+      export BASHUNIT_SHOW_OUTPUT_ON_FAILURE=true
+      ;;
+    --no-output-on-failure)
+      export BASHUNIT_SHOW_OUTPUT_ON_FAILURE=false
+      ;;
+    --no-progress)
+      export BASHUNIT_NO_PROGRESS=true
+      ;;
+    --strict)
+      export BASHUNIT_STRICT_MODE=true
+      ;;
+    -R | --run-all)
+      export BASHUNIT_STOP_ON_ASSERTION_FAILURE=false
+      ;;
+    --skip-env-file)
+      export BASHUNIT_SKIP_ENV_FILE=true
+      ;;
+    -l | --login)
+      export BASHUNIT_LOGIN_SHELL=true
+      ;;
+    --no-color)
+      # shellcheck disable=SC2034
+      BASHUNIT_NO_COLOR=true
+      ;;
+    --coverage)
+      # Don't export - prevents nested bashunit runs from inheriting coverage
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE=true
+      ;;
+    --coverage-paths)
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE_PATHS="$2"
+      shift
+      ;;
+    --coverage-exclude)
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE_EXCLUDE="$2"
+      shift
+      ;;
+    --coverage-report)
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE_REPORT="$2"
+      _bashunit_coverage_opt_set=true
+      shift
+      ;;
+    --coverage-min)
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE_MIN="$2"
+      _bashunit_coverage_opt_set=true
+      shift
+      ;;
+    --no-coverage-report)
+      # shellcheck disable=SC2034
+      BASHUNIT_COVERAGE_REPORT=""
+      ;;
+    --coverage-report-html)
+      # shellcheck disable=SC2034
+      # Use default if no value provided or next arg is a flag
+      if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
+        BASHUNIT_COVERAGE_REPORT_HTML="coverage/html"
+      else
+        BASHUNIT_COVERAGE_REPORT_HTML="$2"
         shift
-        ;;
-      -s|--simple)
-        export BASHUNIT_SIMPLE_OUTPUT=true
-        ;;
-      --detailed)
-        export BASHUNIT_SIMPLE_OUTPUT=false
-        ;;
-      --debug)
-        local output_file="${2:-}"
-        if [[ -n "$output_file" && "${output_file:0:1}" != "-" ]]; then
-          exec > "$output_file" 2>&1
-          shift
-        fi
-        set -x
-        ;;
-      -S|--stop-on-failure)
-        export BASHUNIT_STOP_ON_FAILURE=true
-        ;;
-      -p|--parallel)
-        export BASHUNIT_PARALLEL_RUN=true
-        ;;
-      --no-parallel)
-        export BASHUNIT_PARALLEL_RUN=false
-        ;;
-      -e|--env|--boot)
-        # Support: --env "bootstrap.sh arg1 arg2"
-        local boot_file="${2%% *}"
-        local boot_args="${2#* }"
-        if [[ "$boot_args" != "$2" ]]; then
-          export BASHUNIT_BOOTSTRAP_ARGS="$boot_args"
-        fi
-        # shellcheck disable=SC1090,SC2086
-        source "$boot_file" ${BASHUNIT_BOOTSTRAP_ARGS:-}
-        shift
-        ;;
-      --log-junit)
-        export BASHUNIT_LOG_JUNIT="$2"
-        shift
-        ;;
-      -r|--report-html)
-        export BASHUNIT_REPORT_HTML="$2"
-        shift
-        ;;
-      --no-output)
-        export BASHUNIT_NO_OUTPUT=true
-        ;;
-      -vvv|--verbose)
-        export BASHUNIT_VERBOSE=true
-        ;;
-      -h|--help)
-        bashunit::console_header::print_test_help
-        exit 0
-        ;;
-      --show-skipped)
-        export BASHUNIT_SHOW_SKIPPED=true
-        ;;
-      --show-incomplete)
-        export BASHUNIT_SHOW_INCOMPLETE=true
-        ;;
-      --failures-only)
-        export BASHUNIT_FAILURES_ONLY=true
-        ;;
-      --strict)
-        export BASHUNIT_STRICT_MODE=true
-        ;;
-      -R|--run-all)
-        export BASHUNIT_STOP_ON_ASSERTION_FAILURE=false
-        ;;
-      --skip-env-file)
-        export BASHUNIT_SKIP_ENV_FILE=true
-        ;;
-      -l|--login)
-        export BASHUNIT_LOGIN_SHELL=true
-        ;;
-      --no-color)
-        # shellcheck disable=SC2034
-        BASHUNIT_NO_COLOR=true
-        ;;
-      --coverage)
-        # Don't export - prevents nested bashunit runs from inheriting coverage
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE=true
-        ;;
-      --coverage-paths)
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE_PATHS="$2"
-        shift
-        ;;
-      --coverage-exclude)
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE_EXCLUDE="$2"
-        shift
-        ;;
-      --coverage-report)
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE_REPORT="$2"
-        _bashunit_coverage_opt_set=true
-        shift
-        ;;
-      --coverage-min)
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE_MIN="$2"
-        _bashunit_coverage_opt_set=true
-        shift
-        ;;
-      --no-coverage-report)
-        # shellcheck disable=SC2034
-        BASHUNIT_COVERAGE_REPORT=""
-        ;;
-      --coverage-report-html)
-        # shellcheck disable=SC2034
-        # Use default if no value provided or next arg is a flag
-        if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
-          BASHUNIT_COVERAGE_REPORT_HTML="coverage/html"
-        else
-          BASHUNIT_COVERAGE_REPORT_HTML="$2"
-          shift
-        fi
-        _bashunit_coverage_opt_set=true
-        ;;
-      *)
-        raw_args+=("$1")
-        ;;
+      fi
+      _bashunit_coverage_opt_set=true
+      ;;
+    *)
+      raw_args[raw_args_count]="$1"
+      raw_args_count=$((raw_args_count + 1))
+      ;;
     esac
     shift
   done
@@ -9397,13 +9741,15 @@ function bashunit::main::cmd_test() {
   # Skip filter parsing for assert mode - args are not file paths
   local inline_filter=""
   local inline_filter_file=""
-  if [[ ${#raw_args[@]} -gt 0 ]]; then
+  if [[ "$raw_args_count" -gt 0 ]]; then
     if [[ -n "$assert_fn" ]]; then
       # Assert mode: pass args as-is without file path processing
       args=("${raw_args[@]}")
+      args_count="$raw_args_count"
     else
       # Test mode: process file paths and extract inline filters
-      for arg in "${raw_args[@]}"; do
+      local arg
+      for arg in "${raw_args[@]+"${raw_args[@]}"}"; do
         local parsed_path parsed_filter
         {
           read -r parsed_path
@@ -9416,8 +9762,10 @@ function bashunit::main::cmd_test() {
           inline_filter_file="$parsed_path"
         fi
 
+        local file
         while IFS= read -r file; do
-          args+=("$file")
+          args[args_count]="$file"
+          args_count=$((args_count + 1))
         done < <(bashunit::helper::find_files_recursive "$parsed_path" '*[tT]est.sh')
       done
 
@@ -9427,7 +9775,7 @@ function bashunit::main::cmd_test() {
         local resolved_file="${inline_filter_file}"
 
         # If the file path was a pattern, use the first resolved file
-        if [[ ${#args[@]} -gt 0 ]]; then
+        if [[ "$args_count" -gt 0 ]]; then
           resolved_file="${args[0]}"
         fi
 
@@ -9464,9 +9812,15 @@ function bashunit::main::cmd_test() {
     # not tracking code coverage. This also prevents issues when parent bashunit
     # runs with coverage and calls subprocess bashunit with -a flag.
     export BASHUNIT_COVERAGE=false
-    bashunit::main::exec_assert "$assert_fn" "${args[@]}"
+    bashunit::main::exec_assert "$assert_fn" ${args+"${args[@]}"}
   else
-    bashunit::main::exec_tests "$filter" "${args[@]}"
+    # Bash 3.0 compatible: only pass args if we have files
+    # (local args without =() creates a scalar, not an empty array)
+    if [[ "$args_count" -gt 0 ]]; then
+      bashunit::main::exec_tests "$filter" "${args[@]}"
+    else
+      bashunit::main::exec_tests "$filter"
+    fi
   fi
 }
 
@@ -9475,64 +9829,74 @@ function bashunit::main::cmd_test() {
 #############################
 function bashunit::main::cmd_bench() {
   local filter=""
-  local raw_args=()
-  local args=()
+  local IFS=$' \t\n'
+  local -a raw_args=()
+  local raw_args_count=0
+  local -a args=()
+  local args_count=0
 
   export BASHUNIT_BENCH_MODE=true
 
   # Parse bench-specific options
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -f|--filter)
-        filter="$2"
-        shift
-        ;;
-      -s|--simple)
-        export BASHUNIT_SIMPLE_OUTPUT=true
-        ;;
-      --detailed)
-        export BASHUNIT_SIMPLE_OUTPUT=false
-        ;;
-      -e|--env|--boot)
-        # Support: --env "bootstrap.sh arg1 arg2"
-        local boot_file="${2%% *}"
-        local boot_args="${2#* }"
-        if [[ "$boot_args" != "$2" ]]; then
-          export BASHUNIT_BOOTSTRAP_ARGS="$boot_args"
-        fi
-        # shellcheck disable=SC1090,SC2086
-        source "$boot_file" ${BASHUNIT_BOOTSTRAP_ARGS:-}
-        shift
-        ;;
-      -vvv|--verbose)
-        export BASHUNIT_VERBOSE=true
-        ;;
-      --skip-env-file)
-        export BASHUNIT_SKIP_ENV_FILE=true
-        ;;
-      -l|--login)
-        export BASHUNIT_LOGIN_SHELL=true
-        ;;
-      --no-color)
-        # shellcheck disable=SC2034
-        BASHUNIT_NO_COLOR=true
-        ;;
-      -h|--help)
-        bashunit::console_header::print_bench_help
-        exit 0
-        ;;
-      *)
-        raw_args+=("$1")
-        ;;
+    -f | --filter)
+      filter="$2"
+      shift
+      ;;
+    -s | --simple)
+      export BASHUNIT_SIMPLE_OUTPUT=true
+      ;;
+    --detailed)
+      export BASHUNIT_SIMPLE_OUTPUT=false
+      ;;
+    -e | --env | --boot)
+      # Support: --env "bootstrap.sh arg1 arg2"
+      local boot_file="${2%% *}"
+      local boot_args="${2#* }"
+      if [[ "$boot_args" != "$2" ]]; then
+        export BASHUNIT_BOOTSTRAP_ARGS="$boot_args"
+      fi
+      # Export all variables from the env file so they're available in subshells
+      # (e.g., process substitution used in load_test_files)
+      set -o allexport
+      # shellcheck disable=SC1090,SC2086
+      source "$boot_file" ${BASHUNIT_BOOTSTRAP_ARGS:-}
+      set +o allexport
+      shift
+      ;;
+    -vvv | --verbose)
+      export BASHUNIT_VERBOSE=true
+      ;;
+    --skip-env-file)
+      export BASHUNIT_SKIP_ENV_FILE=true
+      ;;
+    -l | --login)
+      export BASHUNIT_LOGIN_SHELL=true
+      ;;
+    --no-color)
+      # shellcheck disable=SC2034
+      BASHUNIT_NO_COLOR=true
+      ;;
+    -h | --help)
+      bashunit::console_header::print_bench_help
+      exit 0
+      ;;
+    *)
+      raw_args[raw_args_count]="$1"
+      raw_args_count=$((raw_args_count + 1))
+      ;;
     esac
     shift
   done
 
   # Expand positional arguments
-  if [[ ${#raw_args[@]} -gt 0 ]]; then
-    for arg in "${raw_args[@]}"; do
+  if [[ "$raw_args_count" -gt 0 ]]; then
+    local arg file
+    for arg in "${raw_args[@]+"${raw_args[@]}"}"; do
       while IFS= read -r file; do
-        args+=("$file")
+        args[args_count]="$file"
+        args_count=$((args_count + 1))
       done < <(bashunit::helper::find_files_recursive "$arg" '*[bB]ench.sh')
     done
   fi
@@ -9543,7 +9907,12 @@ function bashunit::main::cmd_bench() {
 
   set +euo pipefail
 
-  bashunit::main::exec_benchmarks "$filter" "${args[@]}"
+  # Bash 3.0 compatible: only pass args if we have files
+  if [[ "$args_count" -gt 0 ]]; then
+    bashunit::main::exec_benchmarks "$filter" "${args[@]}"
+  else
+    bashunit::main::exec_benchmarks "$filter"
+  fi
 }
 
 #############################
@@ -9612,12 +9981,12 @@ function bashunit::main::is_assertion_function() {
 function bashunit::main::is_exit_code_assertion() {
   local name="$1"
   case "$name" in
-    exit_code|successful_code|unsuccessful_code|general_error|command_not_found)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
+  exit_code | successful_code | unsuccessful_code | general_error | command_not_found)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
   esac
 }
 
@@ -9660,16 +10029,21 @@ function bashunit::main::cmd_assert() {
 #############################
 function bashunit::main::exec_tests() {
   local filter=$1
-  local files=("${@:2}")
+  shift
 
-  local test_files=()
-  while IFS= read -r line; do
-    test_files+=("$line")
-  done < <(bashunit::helper::load_test_files "$filter" "${files[@]}")
+  # Bash 3.0 compatible: collect files into array
+  local test_files
+  local test_files_count=0
+  local _line
+  while IFS= read -r _line; do
+    [[ -z "$_line" ]] && continue
+    test_files[test_files_count]="$_line"
+    test_files_count=$((test_files_count + 1))
+  done < <(bashunit::helper::load_test_files "$filter" "$@")
 
-  bashunit::internal_log "exec_tests" "filter:$filter" "files:${test_files[*]}"
+  bashunit::internal_log "exec_tests" "filter:$filter" "files:${test_files[*]:-}"
 
-  if [[ ${#test_files[@]} -eq 0 || -z "${test_files[0]}" ]]; then
+  if [[ "$test_files_count" -eq 0 ]]; then
     printf "%sError: At least one file path is required.%s\n" "${_BASHUNIT_COLOR_FAILED}" "${_BASHUNIT_COLOR_DEFAULT}"
     bashunit::console_header::print_help
     exit 1
@@ -9713,7 +10087,7 @@ function bashunit::main::exec_tests() {
   fi
 
   if bashunit::parallel::is_enabled && bashunit::parallel::must_stop_on_failure; then
-    printf "\r%sStop on failure enabled...%s\n"  "${_BASHUNIT_COLOR_SKIPPED}" "${_BASHUNIT_COLOR_DEFAULT}"
+    printf "\r%sStop on failure enabled...%s\n" "${_BASHUNIT_COLOR_SKIPPED}" "${_BASHUNIT_COLOR_DEFAULT}"
   fi
 
   bashunit::console_results::print_failing_tests_and_reset
@@ -9765,16 +10139,21 @@ function bashunit::main::exec_tests() {
 
 function bashunit::main::exec_benchmarks() {
   local filter=$1
-  local files=("${@:2}")
+  shift
 
-  local bench_files=()
-  while IFS= read -r line; do
-    bench_files+=("$line")
-  done < <(bashunit::helper::load_bench_files "$filter" "${files[@]}")
+  # Bash 3.0 compatible: collect files into array
+  local bench_files
+  local bench_files_count=0
+  local _line
+  while IFS= read -r _line; do
+    [[ -z "$_line" ]] && continue
+    bench_files[bench_files_count]="$_line"
+    bench_files_count=$((bench_files_count + 1))
+  done < <(bashunit::helper::load_bench_files "$filter" "$@")
 
-  bashunit::internal_log "exec_benchmarks" "filter:$filter" "files:${bench_files[*]}"
+  bashunit::internal_log "exec_benchmarks" "filter:$filter" "files:${bench_files[*]:-}"
 
-  if [[ ${#bench_files[@]} -eq 0 || -z "${bench_files[0]}" ]]; then
+  if [[ "$bench_files_count" -eq 0 ]]; then
     printf "%sError: At least one file path is required.%s\n" "${_BASHUNIT_COLOR_FAILED}" "${_BASHUNIT_COLOR_DEFAULT}"
     bashunit::console_header::print_help
     exit 1
@@ -9802,7 +10181,7 @@ function bashunit::main::cleanup() {
 }
 
 function bashunit::main::handle_stop_on_failure_sync() {
-  printf "\n%sStop on failure enabled...%s\n"  "${_BASHUNIT_COLOR_SKIPPED}" "${_BASHUNIT_COLOR_DEFAULT}"
+  printf "\n%sStop on failure enabled...%s\n" "${_BASHUNIT_COLOR_SKIPPED}" "${_BASHUNIT_COLOR_DEFAULT}"
   bashunit::console_results::print_failing_tests_and_reset
   bashunit::console_results::print_incomplete_tests_and_reset
   bashunit::console_results::print_skipped_tests_and_reset
@@ -9816,21 +10195,23 @@ function bashunit::main::handle_stop_on_failure_sync() {
 
 function bashunit::main::exec_assert() {
   local original_assert_fn=$1
-  local args=("${@:2}")
+  local -a args=()
+  local args_count=$(($# - 1))
+  [[ $# -gt 1 ]] && args=("${@:2}")
 
   local assert_fn=$original_assert_fn
 
   # Check if the function exists
-  if ! type "$assert_fn" > /dev/null 2>&1; then
+  if ! type "$assert_fn" >/dev/null 2>&1; then
     assert_fn="assert_$assert_fn"
-    if ! type "$assert_fn" > /dev/null 2>&1; then
+    if ! type "$assert_fn" >/dev/null 2>&1; then
       echo "Function $original_assert_fn does not exist." 1>&2
       exit 127
     fi
   fi
 
   # Get the last argument safely by calculating the array length
-  local last_index=$((${#args[@]} - 1))
+  local last_index=$((args_count - 1))
   local last_arg="${args[$last_index]}"
   local output=""
   local inner_exit_code=0
@@ -9838,16 +10219,16 @@ function bashunit::main::exec_assert() {
 
   # Handle different assert_* functions
   case "$assert_fn" in
-    assert_exit_code)
-      output=$(bashunit::main::handle_assert_exit_code "$last_arg")
-      inner_exit_code=$?
-      # Remove the last argument and append the exit code
-      args=("${args[@]:0:last_index}")
-      args+=("$inner_exit_code")
-      ;;
-    *)
-      # Add more cases here for other assert_* handlers if needed
-      ;;
+  assert_exit_code)
+    output=$(bashunit::main::handle_assert_exit_code "$last_arg")
+    inner_exit_code=$?
+    # Remove the last argument and append the exit code
+    args=("${args[@]:0:last_index}")
+    args[last_index]="$inner_exit_code"
+    ;;
+  *)
+    # Add more cases here for other assert_* handlers if needed
+    ;;
   esac
 
   if [[ -n "$output" ]]; then
@@ -9880,7 +10261,8 @@ function bashunit::main::handle_assert_exit_code() {
     last_line=$(echo "$output" | tail -n 1)
     if echo "$last_line" | grep -q 'inner_exit_code:[0-9]*'; then
       inner_exit_code=$(echo "$last_line" | grep -o 'inner_exit_code:[0-9]*' | cut -d':' -f2)
-      if ! [[ $inner_exit_code =~ ^[0-9]+$ ]]; then
+      local _re='^[0-9]+$'
+      if ! [[ "$inner_exit_code" =~ $_re ]]; then
         inner_exit_code=1
       fi
       output=$(echo "$output" | sed '$d')
@@ -9974,7 +10356,7 @@ function bashunit::main::exec_multi_assert() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-declare -r BASHUNIT_MIN_BASH_VERSION="3.2"
+declare -r BASHUNIT_MIN_BASH_VERSION="3.0"
 
 function _check_bash_version() {
   local current_version
@@ -9985,14 +10367,14 @@ function _check_bash_version() {
     # Checks if the special Bash array BASH_VERSINFO exists. This array is only defined in Bash.
     current_version="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
   else
-    # If not in Bash (e.g., running from Zsh). The pipeline extracts just the major.minor version (e.g., 3.2).
+    # If not in Bash (e.g., running from Zsh). The pipeline extracts just the major.minor version (e.g., 3.0).
     current_version="$(bash --version | head -n1 | cut -d' ' -f4 | cut -d. -f1,2)"
   fi
 
-  local major minor
-  IFS=. read -r major minor _ <<< "$current_version"
+  local major
+  IFS=. read -r major _ <<<"$current_version"
 
-  if (( major < 3 )) || { (( major == 3 )) && (( minor < 2 )); }; then
+  if ((major < 3)); then
     printf 'Bashunit requires Bash >= %s. Current version: %s\n' "$BASHUNIT_MIN_BASH_VERSION" "$current_version" >&2
     exit 1
   fi
@@ -10001,7 +10383,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.32.0"
+declare -r BASHUNIT_VERSION="0.33.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
@@ -10014,16 +10396,16 @@ export BASHUNIT_WORKING_DIR
 # Early scan for flags that must be set before loading env.sh
 for arg in "$@"; do
   case "$arg" in
-    --skip-env-file)
-      export BASHUNIT_SKIP_ENV_FILE=true
-      ;;
-    -l|--login)
-      export BASHUNIT_LOGIN_SHELL=true
-      ;;
-    --no-color)
-      # shellcheck disable=SC2034
-      BASHUNIT_NO_COLOR=true
-      ;;
+  --skip-env-file)
+    export BASHUNIT_SKIP_ENV_FILE=true
+    ;;
+  -l | --login)
+    export BASHUNIT_LOGIN_SHELL=true
+    ;;
+  --no-color)
+    # shellcheck disable=SC2034
+    BASHUNIT_NO_COLOR=true
+    ;;
   esac
 done
 
@@ -10035,15 +10417,15 @@ bashunit::clock::init
 _SUBCOMMAND=""
 
 case "${1:-}" in
-  test|bench|doc|init|learn|upgrade|assert)
+  test | bench | doc | init | learn | upgrade | assert)
     _SUBCOMMAND="$1"
     shift
     ;;
-  -v|--version)
+  -v | --version)
     bashunit::console_header::print_version
     exit 0
     ;;
-  -h|--help)
+  -h | --help)
     bashunit::console_header::print_help
     exit 0
     ;;
@@ -10063,11 +10445,11 @@ esac
 
 # Route to subcommand handler
 case "$_SUBCOMMAND" in
-  test)    bashunit::main::cmd_test "$@" ;;
-  bench)   bashunit::main::cmd_bench "$@" ;;
-  doc)     bashunit::main::cmd_doc "$@" ;;
-  init)    bashunit::main::cmd_init "$@" ;;
-  learn)   bashunit::main::cmd_learn "$@" ;;
+  test) bashunit::main::cmd_test "$@" ;;
+  bench) bashunit::main::cmd_bench "$@" ;;
+  doc) bashunit::main::cmd_doc "$@" ;;
+  init) bashunit::main::cmd_init "$@" ;;
+  learn) bashunit::main::cmd_learn "$@" ;;
   upgrade) bashunit::main::cmd_upgrade "$@" ;;
-  assert)  bashunit::main::cmd_assert "$@" ;;
+  assert) bashunit::main::cmd_assert "$@" ;;
 esac
