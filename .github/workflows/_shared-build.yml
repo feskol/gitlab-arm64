@@ -120,7 +120,7 @@ jobs:
         run: ./scripts/workflows/build/setup_build_files.sh
 
       - name: Docker login to docker.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         if: inputs.is_test == false
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
@@ -128,7 +128,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker login GitHubs container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         if: inputs.is_test == false
         with:
           registry: ${{ env.GITHUB_REGISTRY }}
@@ -190,7 +190,7 @@ jobs:
           fi
 
       - name: Docker login to ${{ matrix.platform }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         if: inputs.is_test == false
         with:
           registry: ${{ env.REGISTRY }}
@@ -199,7 +199,7 @@ jobs:
 
       - name: GitHub Container Registry manifest fix 1/3 (Docker login to docker.io)
         if: inputs.is_test == false && matrix.platform == 'GITHUB'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
