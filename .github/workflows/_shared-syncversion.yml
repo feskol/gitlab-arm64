@@ -102,7 +102,7 @@ jobs:
 
       - name: Trigger builds for new versions
         if: ${{ env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true' }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             function isGutlabsOfficialArm64ImageAvailable(versionStr) {
