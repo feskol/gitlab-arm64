@@ -126,17 +126,17 @@ function bashunit::str::rpad() {
     if [ "$original_char" = $'\x1b' ]; then
       while [ "${left_text:$j:1}" != "m" ] && [ $j -lt ${#left_text} ]; do
         result_left_text="$result_left_text${left_text:$j:1}"
-        ((j++))
+        ((++j))
       done
       result_left_text="$result_left_text${left_text:$j:1}" # Append the final 'm'
-      ((j++))
+      ((++j))
     elif [ "$char" = "$original_char" ]; then
       # Match the actual character
       result_left_text="$result_left_text$char"
-      ((i++))
-      ((j++))
+      ((++i))
+      ((++j))
     else
-      ((j++))
+      ((++j))
     fi
   done
 
@@ -481,7 +481,11 @@ function bashunit::parallel::aggregate_test_results() {
       # Check for risky test (zero assertions, no error)
       local total_for_test=$((failed + passed + skipped + incomplete + snapshot))
       if [ "$total_for_test" -eq 0 ] && [ "${exit_code:-0}" -eq 0 ]; then
-        bashunit::state::add_tests_risky
+        if bashunit::env::is_fail_on_risky_enabled; then
+          bashunit::state::add_tests_failed
+        else
+          bashunit::state::add_tests_risky
+        fi
         continue
       fi
 
@@ -526,7 +530,8 @@ function bashunit::parallel::is_enabled() {
     "requested:$BASHUNIT_PARALLEL_RUN" "os:${_BASHUNIT_OS:-Unknown}"
 
   if bashunit::env::is_parallel_run_enabled &&
-    (bashunit::check_os::is_macos || bashunit::check_os::is_ubuntu || bashunit::check_os::is_windows); then
+    (bashunit::check_os::is_macos || bashunit::check_os::is_ubuntu ||
+      bashunit::check_os::is_alpine || bashunit::check_os::is_windows); then
     return 0
   fi
   return 1
@@ -548,6 +553,7 @@ _BASHUNIT_DEFAULT_DEFAULT_PATH="tests"
 _BASHUNIT_DEFAULT_BOOTSTRAP="tests/bootstrap.sh"
 _BASHUNIT_DEFAULT_DEV_LOG=""
 _BASHUNIT_DEFAULT_LOG_JUNIT=""
+_BASHUNIT_DEFAULT_LOG_GHA=""
 _BASHUNIT_DEFAULT_REPORT_HTML=""
 
 # Coverage defaults (following kcov, bashcov, SimpleCov conventions)
@@ -565,6 +571,7 @@ _BASHUNIT_DEFAULT_COVERAGE_THRESHOLD_HIGH="80"
 : "${BASHUNIT_BOOTSTRAP:=${BOOTSTRAP:=$_BASHUNIT_DEFAULT_BOOTSTRAP}}"
 : "${BASHUNIT_BOOTSTRAP_ARGS:=${BOOTSTRAP_ARGS:=}}"
 : "${BASHUNIT_LOG_JUNIT:=${LOG_JUNIT:=$_BASHUNIT_DEFAULT_LOG_JUNIT}}"
+: "${BASHUNIT_LOG_GHA:=${LOG_GHA:=$_BASHUNIT_DEFAULT_LOG_GHA}}"
 : "${BASHUNIT_REPORT_HTML:=${REPORT_HTML:=$_BASHUNIT_DEFAULT_REPORT_HTML}}"
 
 # Coverage
@@ -599,6 +606,7 @@ _BASHUNIT_DEFAULT_NO_COLOR="false"
 _BASHUNIT_DEFAULT_SHOW_OUTPUT_ON_FAILURE="true"
 _BASHUNIT_DEFAULT_NO_PROGRESS="false"
 _BASHUNIT_DEFAULT_OUTPUT_FORMAT=""
+_BASHUNIT_DEFAULT_FAIL_ON_RISKY="false"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_BASHUNIT_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_PARALLEL_JOBS:=0}"
@@ -621,6 +629,7 @@ _BASHUNIT_DEFAULT_OUTPUT_FORMAT=""
 : "${BASHUNIT_SHOW_OUTPUT_ON_FAILURE:=${SHOW_OUTPUT_ON_FAILURE:=$_BASHUNIT_DEFAULT_SHOW_OUTPUT_ON_FAILURE}}"
 : "${BASHUNIT_NO_PROGRESS:=${NO_PROGRESS:=$_BASHUNIT_DEFAULT_NO_PROGRESS}}"
 : "${BASHUNIT_OUTPUT_FORMAT:=${OUTPUT_FORMAT:=$_BASHUNIT_DEFAULT_OUTPUT_FORMAT}}"
+: "${BASHUNIT_FAIL_ON_RISKY:=${FAIL_ON_RISKY:=$_BASHUNIT_DEFAULT_FAIL_ON_RISKY}}"
 # Support NO_COLOR standard (https://no-color.org)
 if [ -n "${NO_COLOR:-}" ]; then
   BASHUNIT_NO_COLOR="true"
@@ -720,6 +729,10 @@ function bashunit::env::is_tap_output_enabled() {
   [ "$BASHUNIT_OUTPUT_FORMAT" = "tap" ]
 }
 
+function bashunit::env::is_fail_on_risky_enabled() {
+  [ "$BASHUNIT_FAIL_ON_RISKY" = "true" ]
+}
+
 function bashunit::env::active_internet_connection() {
   if [ "${BASHUNIT_NO_NETWORK:-}" = "true" ]; then
     return 1
@@ -764,6 +777,7 @@ function bashunit::env::print_verbose() {
     "BASHUNIT_BOOTSTRAP"
     "BASHUNIT_BOOTSTRAP_ARGS"
     "BASHUNIT_LOG_JUNIT"
+    "BASHUNIT_LOG_GHA"
     "BASHUNIT_REPORT_HTML"
     "BASHUNIT_PARALLEL_RUN"
     "BASHUNIT_SHOW_HEADER"
@@ -1272,8 +1286,11 @@ function bashunit::coverage::is_executable_line() {
   # Skip control flow keywords (then, else, fi, do, done, esac, in, ;;, ;&, ;;&)
   [ "$(echo "$line" | "$GREP" -cE '^[[:space:]]*(then|else|fi|do|done|esac|in|;;|;;&|;&)[[:space:]]*(#.*)?$' || true)" -gt 0 ] && return 1
 
-  # Skip case patterns like "--option)" or "*)"
-  [ "$(echo "$line" | "$GREP" -cE '^[[:space:]]*[^\)]+\)[[:space:]]*$' || true)" -gt 0 ] && return 1
+  # Skip loop terminator with trailing redirection/pipe/fd (e.g. "done < file", "done | sort", "done 2>&1", "done &")
+  [ "$(echo "$line" | "$GREP" -cE '^[[:space:]]*done[[:space:]]+[^[:space:]#].*$' || true)" -gt 0 ] && return 1
+
+  # Skip case patterns like "--option)" or "*) # comment"
+  [ "$(echo "$line" | "$GREP" -cE '^[[:space:]]*[^\)]+\)[[:space:]]*(#.*)?$' || true)" -gt 0 ] && return 1
 
   # Skip standalone ) for arrays/subshells
   [ "$(echo "$line" | "$GREP" -cE '^[[:space:]]*\)[[:space:]]*(#.*)?$' || true)" -gt 0 ] && return 1
@@ -1288,8 +1305,8 @@ function bashunit::coverage::get_executable_lines() {
   local line
 
   while IFS= read -r line || [ -n "$line" ]; do
-    ((lineno++))
-    bashunit::coverage::is_executable_line "$line" "$lineno" && ((count++))
+    ((++lineno))
+    bashunit::coverage::is_executable_line "$line" "$lineno" && ((++count))
   done <"$file"
 
   echo "$count"
@@ -1321,7 +1338,7 @@ function bashunit::coverage::get_hit_lines() {
     local line_content
     line_content=$(sed -n "${line_num}p" "$file" 2>/dev/null) || continue
     if bashunit::coverage::is_executable_line "$line_content" "$line_num"; then
-      ((count++))
+      ((++count))
     fi
   done
 
@@ -1388,7 +1405,7 @@ function bashunit::coverage::extract_functions() {
   local line
 
   while IFS= read -r line || [ -n "$line" ]; do
-    ((lineno++))
+    ((++lineno))
 
     # Check for function definition patterns
     # Pattern 1: function name() { or function name {
@@ -1467,10 +1484,10 @@ function bashunit::coverage::get_function_coverage() {
     line_content=$(sed -n "${lineno}p" "$file" 2>/dev/null) || continue
 
     if bashunit::coverage::is_executable_line "$line_content" "$lineno"; then
-      ((executable++))
+      ((++executable))
       local line_hits=${_hits_ref[$lineno]:-0}
       if [ "$line_hits" -gt 0 ]; then
-        ((hit++))
+        ((++hit))
       fi
     fi
   done
@@ -1601,7 +1618,7 @@ function bashunit::coverage::report_lcov() {
       local line
       # shellcheck disable=SC2094
       while IFS= read -r line || [ -n "$line" ]; do
-        ((lineno++))
+        ((++lineno))
         bashunit::coverage::is_executable_line "$line" "$lineno" || continue
         echo "DA:${lineno},$(bashunit::coverage::get_line_hits "$file" "$lineno")"
       done <"$file"
@@ -2366,10 +2383,10 @@ EOF
           local ln_content
           ln_content=$(sed -n "${ln}p" "$file" 2>/dev/null) || continue
           if bashunit::coverage::is_executable_line "$ln_content" "$ln"; then
-            ((fn_executable++))
+            ((++fn_executable))
             local ln_hits=${hits_by_line[$ln]:-0}
             if [ "$ln_hits" -gt 0 ]; then
-              ((fn_hit++))
+              ((++fn_hit))
             fi
           fi
         done
@@ -2420,7 +2437,7 @@ EOF
     local lineno=0
     local line
     while IFS= read -r line || [ -n "$line" ]; do
-      ((lineno++))
+      ((++lineno))
 
       local escaped_line
       escaped_line=$(bashunit::coverage::html_escape "$line")
@@ -2604,8 +2621,11 @@ EOF
   shell)
     # shellcheck disable=SC2155
     local shell_time="$(bashunit::clock::shell_time)"
-    local seconds="${shell_time%%.*}"
-    local microseconds="${shell_time#*.}"
+    local seconds="${shell_time%%[.,]*}"
+    local microseconds="${shell_time#*[.,]}"
+    if [ "$seconds" = "$shell_time" ]; then
+      microseconds=""
+    fi
     # Pad to 6 digits and strip leading zeros for arithmetic
     microseconds="${microseconds}000000"
     microseconds="${microseconds:0:6}"
@@ -3075,7 +3095,9 @@ if bashunit::env::is_no_color_enabled; then
   _BASHUNIT_COLOR_DEFAULT=""
 else
   _BASHUNIT_COLOR_BOLD="$(bashunit::sgr 1)"
-  _BASHUNIT_COLOR_FAINT="$(bashunit::sgr 2)"
+  # Use SGR 90 (bright black / gray) instead of SGR 2 (faint), since
+  # GitHub Actions' log renderer does not render the faint attribute.
+  _BASHUNIT_COLOR_FAINT="$(bashunit::sgr 90)"
   _BASHUNIT_COLOR_BLACK="$(bashunit::sgr 30)"
   _BASHUNIT_COLOR_FAILED="$(bashunit::sgr 31)"
   _BASHUNIT_COLOR_PASSED="$(bashunit::sgr 32)"
@@ -3216,6 +3238,7 @@ Options:
   --debug [file]              Enable shell debug mode
   --no-output                 Suppress all output
   --failures-only             Only show failures (suppress passed/skipped/incomplete)
+  --fail-on-risky             Treat risky tests (no assertions) as failures
   --no-progress               Suppress real-time progress, show only final results
   --show-output               Show test output on failure (default: enabled)
   --no-output-on-failure      Hide test output on failure
@@ -4170,11 +4193,11 @@ function bashunit::helper::normalize_variable_name() {
   normalized_string="${input_string//[^a-zA-Z0-9_]/_}"
 
   local _re='^[a-zA-Z_]'
-  if [ "$(echo "$normalized_string" | "$GREP" -cE "$_re" || true)" -eq 0 ]; then
+  if [ "$(builtin echo "$normalized_string" | "$GREP" -cE "$_re" || true)" -eq 0 ]; then
     normalized_string="_$normalized_string"
   fi
 
-  echo "$normalized_string"
+  builtin echo "$normalized_string"
 }
 
 function bashunit::helper::get_provider_data() {
@@ -4582,6 +4605,18 @@ function bashunit::assert::should_skip() {
   bashunit::env::is_stop_on_assertion_failure_enabled && ((_BASHUNIT_ASSERTION_FAILED_IN_TEST))
 }
 
+# Resolve assertion label: use custom label if provided, otherwise derive from test function name
+function bashunit::assert::label() {
+  local custom_label="${1:-}"
+  if [ -n "$custom_label" ]; then
+    builtin echo "$custom_label"
+    return
+  fi
+  local test_fn
+  test_fn="$(bashunit::helper::find_test_function_name)"
+  bashunit::helper::normalize_test_function_name "$test_fn"
+}
+
 function bashunit::fail() {
   bashunit::assert::should_skip && return 0
 
@@ -4602,6 +4637,10 @@ function assert_true() {
 
   # Check for expected literal values first
   case "$actual" in
+  "")
+    bashunit::handle_bool_assertion_failure "true or 0" "$actual"
+    return
+    ;;
   "true" | "0")
     bashunit::state::add_assertions_passed
     return
@@ -4630,6 +4669,10 @@ function assert_false() {
 
   # Check for expected literal values first
   case "$actual" in
+  "")
+    bashunit::handle_bool_assertion_failure "false or 1" "$actual"
+    return
+    ;;
   "false" | "1")
     bashunit::state::add_assertions_passed
     return
@@ -4686,12 +4729,11 @@ function assert_same() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if [ "$expected" != "$actual" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${expected}" "but got " "${actual}"
     return
@@ -4705,6 +4747,7 @@ function assert_equals() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   local actual_cleaned
   actual_cleaned=$(bashunit::str::strip_ansi "$actual")
@@ -4712,10 +4755,8 @@ function assert_equals() {
   expected_cleaned=$(bashunit::str::strip_ansi "$expected")
 
   if [ "$expected_cleaned" != "$actual_cleaned" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${expected_cleaned}" "but got " "${actual_cleaned}"
     return
@@ -4729,6 +4770,7 @@ function assert_not_equals() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   local actual_cleaned
   actual_cleaned=$(bashunit::str::strip_ansi "$actual")
@@ -4736,10 +4778,8 @@ function assert_not_equals() {
   expected_cleaned=$(bashunit::str::strip_ansi "$expected")
 
   if [ "$expected_cleaned" = "$actual_cleaned" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${expected_cleaned}" "to not be" "${actual_cleaned}"
     return
@@ -4752,12 +4792,11 @@ function assert_empty() {
   bashunit::assert::should_skip && return 0
 
   local expected="$1"
+  local label_override="${2:-}"
 
   if [ "$expected" != "" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "to be empty" "but got " "${expected}"
     return
@@ -4770,12 +4809,11 @@ function assert_not_empty() {
   bashunit::assert::should_skip && return 0
 
   local expected="$1"
+  local label_override="${2:-}"
 
   if [ "$expected" = "" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "to not be empty" "but got " "${expected}"
     return
@@ -4789,12 +4827,11 @@ function assert_not_same() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if [ "$expected" = "$actual" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${expected}" "to not be" "${actual}"
     return
@@ -4810,16 +4847,20 @@ function assert_contains() {
   local expected="$1"
   local -a actual_arr
   actual_arr=("${@:2}")
+  local label_override=""
+  local label_override=""
+  local label_override=""
+  local label_override=""
+  local label_override=""
+  local label_override=""
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
 
   case "$actual" in
   *"$expected"*) ;;
   *)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to contain" "${expected}"
     return
@@ -4834,6 +4875,7 @@ function assert_contains_ignore_case() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   # Bash 3.0 compatible: use tr for case-insensitive comparison
   # (shopt nocasematch was introduced in Bash 3.1)
@@ -4845,10 +4887,8 @@ function assert_contains_ignore_case() {
   case "$actual_lower" in
   *"$expected_lower"*) ;;
   *)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to contain" "${expected}"
     return
@@ -4859,6 +4899,7 @@ function assert_contains_ignore_case() {
 }
 
 function assert_not_contains() {
+  local label_override=""
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
 
@@ -4870,10 +4911,8 @@ function assert_not_contains() {
 
   case "$actual" in
   *"$expected"*)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to not contain" "${expected}"
     return
@@ -4910,6 +4949,7 @@ function assert_matches() {
 }
 
 function assert_not_matches() {
+  local label_override=""
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
 
@@ -4922,10 +4962,8 @@ function assert_not_matches() {
   # Check both line-by-line and with newlines collapsed for cross-line patterns
   if [ "$(printf '%s' "$actual" | "$GREP" -cE "$expected" || true)" -gt 0 ] ||
     [ "$(printf '%s' "$actual" | tr '\n' ' ' | "$GREP" -cE "$expected" || true)" -gt 0 ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to not match" "${expected}"
     return
@@ -4936,6 +4974,7 @@ function assert_not_matches() {
 
 function assert_exec() {
   bashunit::assert::should_skip && return 0
+  local label_override=""
 
   local cmd="$1"
   shift
@@ -4943,8 +4982,18 @@ function assert_exec() {
   local expected_exit=0
   local expected_stdout=""
   local expected_stderr=""
+  local stdout_needle=""
+  local stdout_no_needle=""
+  local stderr_needle=""
+  local stderr_no_needle=""
+  local stdin_input=""
   local check_stdout=false
   local check_stderr=false
+  local check_stdout_contains=false
+  local check_stdout_not_contains=false
+  local check_stderr_contains=false
+  local check_stderr_not_contains=false
+  local check_stdin=false
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -4962,6 +5011,31 @@ function assert_exec() {
       check_stderr=true
       shift 2
       ;;
+    --stdout-contains)
+      stdout_needle="$2"
+      check_stdout_contains=true
+      shift 2
+      ;;
+    --stdout-not-contains)
+      stdout_no_needle="$2"
+      check_stdout_not_contains=true
+      shift 2
+      ;;
+    --stderr-contains)
+      stderr_needle="$2"
+      check_stderr_contains=true
+      shift 2
+      ;;
+    --stderr-not-contains)
+      stderr_no_needle="$2"
+      check_stderr_not_contains=true
+      shift 2
+      ;;
+    --stdin)
+      stdin_input="$2"
+      check_stdin=true
+      shift 2
+      ;;
     *)
       shift
       ;;
@@ -4972,8 +5046,17 @@ function assert_exec() {
   stdout_file=$("$MKTEMP")
   stderr_file=$("$MKTEMP")
 
-  eval "$cmd" >"$stdout_file" 2>"$stderr_file"
-  local exit_code=$?
+  if $check_stdin; then
+    local stdin_file
+    stdin_file=$("$MKTEMP")
+    printf '%s' "$stdin_input" >"$stdin_file"
+    eval "$cmd" <"$stdin_file" >"$stdout_file" 2>"$stderr_file"
+    local exit_code=$?
+    rm -f "$stdin_file"
+  else
+    eval "$cmd" >"$stdout_file" 2>"$stderr_file"
+    local exit_code=$?
+  fi
 
   local stdout
   stdout=$(cat "$stdout_file")
@@ -4998,6 +5081,23 @@ function assert_exec() {
     fi
   fi
 
+  if $check_stdout_contains; then
+    expected_desc="$expected_desc"$'\n'"stdout contains: $stdout_needle"
+    actual_desc="$actual_desc"$'\n'"stdout: $stdout"
+    case "$stdout" in
+    *"$stdout_needle"*) ;;
+    *) failed=1 ;;
+    esac
+  fi
+
+  if $check_stdout_not_contains; then
+    expected_desc="$expected_desc"$'\n'"stdout not contains: $stdout_no_needle"
+    actual_desc="$actual_desc"$'\n'"stdout: $stdout"
+    case "$stdout" in
+    *"$stdout_no_needle"*) failed=1 ;;
+    esac
+  fi
+
   if $check_stderr; then
     expected_desc="$expected_desc"$'\n'"stderr: $expected_stderr"
     actual_desc="$actual_desc"$'\n'"stderr: $stderr"
@@ -5006,11 +5106,26 @@ function assert_exec() {
     fi
   fi
 
+  if $check_stderr_contains; then
+    expected_desc="$expected_desc"$'\n'"stderr contains: $stderr_needle"
+    actual_desc="$actual_desc"$'\n'"stderr: $stderr"
+    case "$stderr" in
+    *"$stderr_needle"*) ;;
+    *) failed=1 ;;
+    esac
+  fi
+
+  if $check_stderr_not_contains; then
+    expected_desc="$expected_desc"$'\n'"stderr not contains: $stderr_no_needle"
+    actual_desc="$actual_desc"$'\n'"stderr: $stderr"
+    case "$stderr" in
+    *"$stderr_no_needle"*) failed=1 ;;
+    esac
+  fi
+
   if [ "$failed" -eq 1 ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "$label" "$expected_desc" "but got " "$actual_desc"
     return
@@ -5021,15 +5136,14 @@ function assert_exec() {
 
 function assert_exit_code() {
   local actual_exit_code=${3-"$?"} # Capture $? before guard check
+  local label_override=""
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code="$1"
 
   if [ "$actual_exit_code" -ne "$expected_exit_code" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual_exit_code}" "to be" "${expected_exit_code}"
     return
@@ -5040,15 +5154,14 @@ function assert_exit_code() {
 
 function assert_successful_code() {
   local actual_exit_code=${3-"$?"} # Capture $? before guard check
+  local label_override=""
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=0
 
   if [ "$actual_exit_code" -ne "$expected_exit_code" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test \
       "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
@@ -5060,13 +5173,12 @@ function assert_successful_code() {
 
 function assert_unsuccessful_code() {
   local actual_exit_code=${3-"$?"} # Capture $? before guard check
+  local label_override=""
   bashunit::assert::should_skip && return 0
 
   if [ "$actual_exit_code" -eq 0 ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual_exit_code}" "to be non-zero" "but was 0"
     return
@@ -5077,15 +5189,14 @@ function assert_unsuccessful_code() {
 
 function assert_general_error() {
   local actual_exit_code=${3-"$?"} # Capture $? before guard check
+  local label_override=""
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=1
 
   if [ "$actual_exit_code" -ne "$expected_exit_code" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test \
       "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
@@ -5097,15 +5208,14 @@ function assert_general_error() {
 
 function assert_command_not_found() {
   local actual_exit_code=${3-"$?"} # Capture $? before guard check
+  local label_override=""
   bashunit::assert::should_skip && return 0
 
   local expected_exit_code=127
 
   if [ "$actual_exit_code" -ne "$expected_exit_code" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test \
       "${label}" "${actual_exit_code}" "to be exactly" "${expected_exit_code}"
@@ -5116,6 +5226,7 @@ function assert_command_not_found() {
 }
 
 function assert_string_starts_with() {
+  local label_override=""
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
 
@@ -5128,10 +5239,8 @@ function assert_string_starts_with() {
   case "$actual" in
   "$expected"*) ;;
   *)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to start with" "${expected}"
     return
@@ -5146,13 +5255,12 @@ function assert_string_not_starts_with() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   case "$actual" in
   "$expected"*)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to not start with" "${expected}"
     return
@@ -5163,6 +5271,7 @@ function assert_string_not_starts_with() {
 }
 
 function assert_string_ends_with() {
+  local label_override=""
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
 
@@ -5175,10 +5284,8 @@ function assert_string_ends_with() {
   case "$actual" in
   *"$expected") ;;
   *)
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to end with" "${expected}"
     return
@@ -5189,6 +5296,7 @@ function assert_string_ends_with() {
 }
 
 function assert_string_not_ends_with() {
+  local label_override=""
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
 
@@ -5200,10 +5308,8 @@ function assert_string_not_ends_with() {
 
   case "$actual" in
   *"$expected")
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to not end with" "${expected}"
     return
@@ -5218,12 +5324,11 @@ function assert_less_than() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if ! [ "$actual" -lt "$expected" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to be less than" "${expected}"
     return
@@ -5237,12 +5342,11 @@ function assert_less_or_equal_than() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if ! [ "$actual" -le "$expected" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to be less or equal than" "${expected}"
     return
@@ -5256,12 +5360,11 @@ function assert_greater_than() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if ! [ "$actual" -gt "$expected" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to be greater than" "${expected}"
     return
@@ -5275,12 +5378,11 @@ function assert_greater_or_equal_than() {
 
   local expected="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   if ! [ "$actual" -ge "$expected" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to be greater or equal than" "${expected}"
     return
@@ -5296,6 +5398,7 @@ function assert_line_count() {
   local expected="$1"
   local -a input_arr
   input_arr=("${@:2}")
+  local label_override=""
   local input_str
   input_str=$(printf '%s\n' ${input_arr+"${input_arr[@]}"})
 
@@ -5310,10 +5413,8 @@ function assert_line_count() {
   fi
 
   if [ "$expected" != "$actual" ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
 
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${input_str}" \
@@ -5372,15 +5473,14 @@ function assert_string_matches_format() {
 
   local format="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   local regex
   regex="$(bashunit::format_to_regex "$format")"
 
   if [ "$(printf '%s' "$actual" | "$GREP" -cE "$regex" || true)" -eq 0 ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to match format" "${format}"
     return
@@ -5394,15 +5494,14 @@ function assert_string_not_matches_format() {
 
   local format="$1"
   local actual="$2"
+  local label_override="${3:-}"
 
   local regex
   regex="$(bashunit::format_to_regex "$format")"
 
   if [ "$(printf '%s' "$actual" | "$GREP" -cE "$regex" || true)" -gt 0 ]; then
-    local test_fn
-    test_fn="$(bashunit::helper::find_test_function_name)"
     local label
-    label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+    label="$(bashunit::assert::label "${label_override:-}")"
     bashunit::assert::mark_failed
     bashunit::console_results::print_failed_test "${label}" "${actual}" "to not match format" "${format}"
     return
@@ -5476,10 +5575,25 @@ function bashunit::date::to_epoch() {
     ;;
   esac
 
-  # Normalize ISO 8601: replace T with space, strip Z suffix, strip tz offset
+  # Handle Z (UTC) suffix explicitly: BusyBox needs TZ=UTC, BSD needs +0000
+  case "$input" in
+  *Z)
+    local utc_input="${input%Z}"
+    local utc_norm="${utc_input/T/ }"
+    local epoch
+    # GNU/BusyBox: parse in explicit UTC
+    epoch=$(TZ=UTC date -d "$utc_input" +%s 2>/dev/null) && { echo "$epoch"; return 0; }
+    epoch=$(TZ=UTC date -d "$utc_norm" +%s 2>/dev/null) && { echo "$epoch"; return 0; }
+    # BSD: use +0000 offset which %z understands
+    epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "${utc_input}+0000" +%s 2>/dev/null) && { echo "$epoch"; return 0; }
+    echo "$input"
+    return 1
+    ;;
+  esac
+
+  # Normalize ISO 8601: replace T with space, strip tz offset
   local normalized="$input"
   normalized="${normalized/T/ }"
-  normalized="${normalized%Z}"
   # Strip timezone offset (+HHMM or -HHMM) at end for initial parsing
   case "$normalized" in
   *[+-][0-9][0-9][0-9][0-9])
@@ -5494,6 +5608,24 @@ function bashunit::date::to_epoch() {
     echo "$epoch"
     return 0
   }
+  # If input has timezone offset, parse in UTC and adjust manually (BusyBox)
+  case "$input" in
+  *[+-][0-9][0-9][0-9][0-9])
+    epoch=$(TZ=UTC date -d "$normalized" +%s 2>/dev/null) && {
+      local ilen=${#input}
+      local ostart=$((ilen - 5))
+      local osign="${input:$ostart:1}"
+      local ohh="${input:$((ostart + 1)):2}"
+      local omm="${input:$((ostart + 3)):2}"
+      local osecs=$(( (10#$ohh * 3600) + (10#$omm * 60) ))
+      if [ "$osign" = "+" ]; then
+        osecs=$(( -osecs ))
+      fi
+      echo $(( epoch + osecs ))
+      return 0
+    }
+    ;;
+  esac
   # Try GNU date with normalized (space-separated) input
   if [ "$normalized" != "$input" ]; then
     epoch=$(date -d "$normalized" +%s 2>/dev/null) && {
@@ -6272,7 +6404,7 @@ function bashunit::mock() {
   if [ $# -gt 0 ]; then
     eval "function $command() { $* \"\$@\"; }"
   else
-    eval "function $command() { echo \"$($CAT)\" ; }"
+    eval "function $command() { builtin echo \"$($CAT)\" ; }"
   fi
 
   export -f "${command?}"
@@ -6282,6 +6414,7 @@ function bashunit::mock() {
 
 function bashunit::spy() {
   local command=$1
+  local exit_code_or_impl="${2:-}"
   local variable
   variable="$(bashunit::helper::normalize_variable_name "$command")"
 
@@ -6294,19 +6427,27 @@ function bashunit::spy() {
   export "${variable}_times_file"="$times_file"
   export "${variable}_params_file"="$params_file"
 
+  local body_suffix=""
+  if [[ "$exit_code_or_impl" =~ ^[0-9]+$ ]]; then
+    body_suffix="return $exit_code_or_impl"
+  elif [ -n "$exit_code_or_impl" ]; then
+    body_suffix="$exit_code_or_impl \"\$@\""
+  fi
+
   eval "function $command() {
     local raw=\"\$*\"
     local serialized=\"\"
     local arg
     for arg in \"\$@\"; do
-      serialized=\"\$serialized\$(printf '%q' \"\$arg\")$'\\x1f'\"
+      serialized=\"\$serialized\$(builtin printf '%q' \"\$arg\")$'\\x1f'\"
     done
     serialized=\${serialized%$'\\x1f'}
-    printf '%s\x1e%s\\n' \"\$raw\" \"\$serialized\" >> '$params_file'
+    builtin printf '%s\x1e%s\\n' \"\$raw\" \"\$serialized\" >> '$params_file'
     local _c
-    _c=\$(cat '$times_file' 2>/dev/null || echo 0)
+    _c=\$(cat '$times_file' 2>/dev/null || builtin echo 0)
     _c=\$((_c+1))
-    echo \"\$_c\" > '$times_file'
+    builtin echo \"\$_c\" > '$times_file'
+    $body_suffix
   }"
 
   export -f "${command?}"
@@ -6321,7 +6462,7 @@ function assert_have_been_called() {
   local file_var="${variable}_times_file"
   local times=0
   if [ -f "${!file_var-}" ]; then
-    times=$(cat "${!file_var}" 2>/dev/null || echo 0)
+    times=$(cat "${!file_var}" 2>/dev/null || builtin echo 0)
   fi
   local label="${2:-$(bashunit::helper::normalize_test_function_name "${FUNCNAME[1]}")}"
 
@@ -6379,7 +6520,7 @@ function assert_have_been_called_times() {
   local file_var="${variable}_times_file"
   local times=0
   if [ -f "${!file_var-}" ]; then
-    times=$(cat "${!file_var}" 2>/dev/null || echo 0)
+    times=$(cat "${!file_var}" 2>/dev/null || builtin echo 0)
   fi
   local label="${3:-$(bashunit::helper::normalize_test_function_name "${FUNCNAME[1]}")}"
   if [ "$times" -ne "$expected_count" ]; then
@@ -6408,7 +6549,7 @@ function assert_have_been_called_nth_with() {
 
   local times=0
   if [ -f "${!times_file_var-}" ]; then
-    times=$(cat "${!times_file_var}" 2>/dev/null || echo 0)
+    times=$(cat "${!times_file_var}" 2>/dev/null || builtin echo 0)
   fi
 
   if [ "$nth" -gt "$times" ]; then
@@ -6478,7 +6619,11 @@ function bashunit::reports::add_test_failed() {
 
 function bashunit::reports::add_test() {
   # Skip tracking when no report output is requested
-  { [ -n "${BASHUNIT_LOG_JUNIT:-}" ] || [ -n "${BASHUNIT_REPORT_HTML:-}" ]; } || return 0
+  {
+    [ -n "${BASHUNIT_LOG_JUNIT:-}" ] ||
+      [ -n "${BASHUNIT_REPORT_HTML:-}" ] ||
+      [ -n "${BASHUNIT_LOG_GHA:-}" ]
+  } || return 0
 
   local file="$1"
   local test_name="$2"
@@ -6556,6 +6701,56 @@ function bashunit::reports::generate_junit_xml() {
     echo "  </testsuite>"
     echo "</testsuites>"
   } >"$output_file"
+}
+
+function bashunit::reports::__gha_encode() {
+  local text="$1"
+  # Strip ANSI escape sequences first (one sed call)
+  text=$(printf '%s' "$text" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+  # Percent-encode reserved chars per GHA workflow-commands spec.
+  # Bash 3.0+ parameter expansion avoids extra awk/sed calls.
+  # Order matters: encode '%' first so the sequences we inject stay literal.
+  text="${text//%/%25}"
+  text="${text//$'\r'/%0D}"
+  text="${text//$'\n'/%0A}"
+  printf '%s' "$text"
+}
+
+function bashunit::reports::generate_gha_log() {
+  local output_file="$1"
+
+  : >"$output_file"
+
+  local i
+  for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
+    local file="${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}"
+    local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
+    local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
+    local failure_message="${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}"
+    local level="" message=""
+
+    case "$status" in
+      failed)
+        level="error"
+        message="$failure_message"
+        ;;
+      risky)
+        level="warning"
+        message="Test has no assertions (risky)"
+        ;;
+      incomplete)
+        level="notice"
+        message="Test incomplete"
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    local encoded_message
+    encoded_message=$(bashunit::reports::__gha_encode "$message")
+    echo "::${level} file=${file},title=${name}::${encoded_message}" >>"$output_file"
+  done
 }
 
 function bashunit::reports::generate_report_html() {
@@ -6695,13 +6890,23 @@ function bashunit::runner::wait_for_job_slot() {
     return 0
   fi
 
+  # Adaptive backoff: start at 50ms, grow to 200ms to reduce `jobs -r` overhead
+  # on long-running tests while keeping short tests responsive.
+  local delay="0.05"
+  local iterations=0
   while true; do
     local running_jobs
     running_jobs=$(jobs -r | wc -l)
     if [ "$running_jobs" -lt "$max_jobs" ]; then
       break
     fi
-    sleep 0.05
+    sleep "$delay"
+    iterations=$((iterations + 1))
+    if [ "$iterations" -eq 4 ]; then
+      delay="0.1"
+    elif [ "$iterations" -eq 20 ]; then
+      delay="0.2"
+    fi
   done
 }
 
@@ -6739,8 +6944,26 @@ function bashunit::runner::load_test_files() {
     scripts_ids[scripts_ids_count]="${BASHUNIT_CURRENT_SCRIPT_ID}"
     scripts_ids_count=$((scripts_ids_count + 1))
     bashunit::internal_log "Loading file" "$test_file"
+    local source_err_file source_err source_status
+    source_err_file="$(bashunit::temp_file "source_err")"
     # shellcheck source=/dev/null
-    source "$test_file"
+    source "$test_file" 2>"$source_err_file"
+    source_status=$?
+    source_err=""
+    if [ -s "$source_err_file" ]; then
+      source_err="$(cat "$source_err_file")"
+    fi
+    rm -f "$source_err_file"
+    if [ "$source_status" -ne 0 ] || [ "$(printf '%s' "$source_err" \
+      | "$GREP" -cE 'syntax error|unexpected EOF' || true)" -gt 0 ]; then
+      local message="$source_err"
+      [ -z "$message" ] && message="Failed to source '$test_file' (exit $source_status)"
+      bashunit::runner::record_file_hook_failure \
+        "source" "$test_file" "$message" 1 true
+      bashunit::runner::clean_set_up_and_tear_down_after_script
+      bashunit::runner::restore_workdir
+      continue
+    fi
     # Update function cache after sourcing new test file
     _BASHUNIT_CACHED_ALL_FUNCTIONS=$(declare -F | awk '{print $3}')
     # Check if any tests match the filter before rendering header or running hooks
@@ -6936,12 +7159,11 @@ function bashunit::runner::parse_data_provider_args() {
   local -a args=()
   local args_count=0
 
-  # Check for shell metacharacters that would break eval or cause globbing
+  # Check for unescaped shell metacharacters that would break eval or cause
+  # globbing. Combines the leading-metachar case and the embedded-metachar
+  # case into a single regex to avoid a second grep subprocess per call.
   local has_metachar=false
-  local _re1='[^\\][\|\&\;\*]'
-  local _re2='^[\|\&\;\*]'
-  if [ "$(echo "$input" | "$GREP" -cE "$_re1" || true)" -gt 0 ] \
-    || [ "$(echo "$input" | "$GREP" -cE "$_re2" || true)" -gt 0 ]; then
+  if [ "$(echo "$input" | "$GREP" -cE '(^|[^\])[|&;*]' || true)" -gt 0 ]; then
     has_metachar=true
   fi
 
@@ -7450,6 +7672,14 @@ function bashunit::runner::run_test() {
     bashunit::reports::add_test_failed "$test_file" "$failure_label" "$duration" "$total_assertions" "$error_message"
     bashunit::runner::write_failure_result_output "$test_file" "$failure_function" "$error_message" "$runtime_output"
     bashunit::internal_log "Test error" "$failure_label" "$error_message"
+
+    if bashunit::env::is_stop_on_failure_enabled; then
+      if bashunit::parallel::is_enabled; then
+        bashunit::parallel::mark_stop_on_failure
+      else
+        exit "$EXIT_CODE_STOP_ON_FAILURE"
+      fi
+    fi
     return
   fi
 
@@ -7499,6 +7729,22 @@ function bashunit::runner::run_test() {
 
   # Check for risky test (zero assertions)
   if [ "$total_assertions" -eq 0 ]; then
+    if bashunit::env::is_fail_on_risky_enabled; then
+      local risky_msg="Test has no assertions (risky)"
+      bashunit::state::add_tests_failed
+      bashunit::console_results::print_error_test "$fn_name" "$risky_msg"
+      bashunit::reports::add_test_failed "$test_file" "$label" "$duration" "$total_assertions" "$risky_msg"
+      bashunit::runner::write_failure_result_output "$test_file" "$fn_name" "$risky_msg"
+      bashunit::internal_log "Test failed (risky)" "$label"
+      if bashunit::env::is_stop_on_failure_enabled; then
+        if bashunit::parallel::is_enabled; then
+          bashunit::parallel::mark_stop_on_failure
+        else
+          exit "$EXIT_CODE_STOP_ON_FAILURE"
+        fi
+      fi
+      return
+    fi
     bashunit::state::add_tests_risky
     if ! bashunit::env::is_failures_only_enabled; then
       bashunit::console_results::print_risky_test "${label}" "$duration"
@@ -7643,16 +7889,32 @@ function bashunit::runner::parse_result_sync() {
   local assertions_snapshot=0
   local test_exit_code=0
 
-  # Extract values using sed instead of BASH_REMATCH for Bash 3.0+ compatibility
-  # shellcheck disable=SC2001
-  if [ "$(echo "$result_line" | "$GREP" -cE 'ASSERTIONS_FAILED=[0-9]*##ASSERTIONS_PASSED=[0-9]*' || true)" -gt 0 ]; then
-    assertions_failed=$(echo "$result_line" | sed 's/.*ASSERTIONS_FAILED=\([0-9]*\)##.*/\1/')
-    assertions_passed=$(echo "$result_line" | sed 's/.*ASSERTIONS_PASSED=\([0-9]*\)##.*/\1/')
-    assertions_skipped=$(echo "$result_line" | sed 's/.*ASSERTIONS_SKIPPED=\([0-9]*\)##.*/\1/')
-    assertions_incomplete=$(echo "$result_line" | sed 's/.*ASSERTIONS_INCOMPLETE=\([0-9]*\)##.*/\1/')
-    assertions_snapshot=$(echo "$result_line" | sed 's/.*ASSERTIONS_SNAPSHOT=\([0-9]*\)##.*/\1/')
-    test_exit_code=$(echo "$result_line" | sed 's/.*TEST_EXIT_CODE=\([0-9]*\).*/\1/')
-  fi
+  # Extract values using parameter expansion instead of spawning grep/sed subprocesses
+  case "$result_line" in
+  *"ASSERTIONS_FAILED="*"##ASSERTIONS_PASSED="*)
+    local _tail
+    _tail="${result_line##*ASSERTIONS_FAILED=}"
+    assertions_failed="${_tail%%##*}"
+    _tail="${result_line##*ASSERTIONS_PASSED=}"
+    assertions_passed="${_tail%%##*}"
+    _tail="${result_line##*ASSERTIONS_SKIPPED=}"
+    assertions_skipped="${_tail%%##*}"
+    _tail="${result_line##*ASSERTIONS_INCOMPLETE=}"
+    assertions_incomplete="${_tail%%##*}"
+    _tail="${result_line##*ASSERTIONS_SNAPSHOT=}"
+    assertions_snapshot="${_tail%%##*}"
+    _tail="${result_line##*TEST_EXIT_CODE=}"
+    test_exit_code="${_tail%%##*}"
+    # Strip any trailing non-digit suffix (end of line) from the final field
+    test_exit_code="${test_exit_code%%[!0-9]*}"
+    : "${assertions_failed:=0}"
+    : "${assertions_passed:=0}"
+    : "${assertions_skipped:=0}"
+    : "${assertions_incomplete:=0}"
+    : "${assertions_snapshot:=0}"
+    : "${test_exit_code:=0}"
+    ;;
+  esac
 
   bashunit::internal_log "[SYNC]" "fn_name:$fn_name" "execution_result:$execution_result"
 
@@ -8401,7 +8663,7 @@ function bashunit::learn::show_progress() {
   for i in $(seq 1 $total_lessons); do
     if bashunit::learn::is_completed "lesson_$i"; then
       echo "  ${_BASHUNIT_COLOR_PASSED}✓${_BASHUNIT_COLOR_DEFAULT} Lesson $i completed"
-      ((completed++)) || true
+      ((++completed)) || true
     else
       echo "  ${_BASHUNIT_COLOR_INCOMPLETE}○${_BASHUNIT_COLOR_DEFAULT} Lesson $i"
     fi
@@ -10006,11 +10268,17 @@ function test_failure() {
 :::
 
 ## assert_exec
-> `assert_exec "command" [--exit <code>] [--stdout "text"] [--stderr "text"]`
+> `assert_exec "command" [--exit <code>] [--stdout "text"] [--stderr "text"] [--stdout-contains "needle"] [--stdout-not-contains "needle"] [--stderr-contains "needle"] [--stderr-not-contains "needle"] [--stdin "input"]`
 
 Runs `command` capturing its exit status, standard output and standard error and
 checks all provided expectations. When `--exit` is omitted the expected exit
 status defaults to `0`.
+
+Use `--stdin` to feed input into interactive commands (e.g. commands using
+`read`). Multiple answers can be passed by separating them with newlines.
+
+Use `--stdout-contains` / `--stdout-not-contains` (and the `stderr-*` variants)
+for substring matching when you don't want to assert against the full output.
 
 ::: code-group
 ```bash [Example]
@@ -10026,6 +10294,23 @@ function test_success() {
 
 function test_failure() {
   assert_exec sample --exit 0 --stdout "out" --stderr "err"
+}
+```
+
+```bash [Interactive]
+function question() {
+  local name lang
+  read -r name
+  read -r lang
+  echo "Your name is $name and you prefer $lang."
+}
+
+function test_interactive_prompt() {
+  assert_exec question \
+    --stdin "Chemaclass"$'\n'"Phel-Lang"$'\n' \
+    --stdout-contains "Your name is Chemaclass and you prefer Phel-Lang." \
+    --stdout-not-contains "Delphi" \
+    --exit 0
 }
 ```
 :::
@@ -11123,6 +11408,10 @@ function bashunit::main::cmd_test() {
       export BASHUNIT_LOG_JUNIT="$2"
       shift
       ;;
+    --log-gha)
+      export BASHUNIT_LOG_GHA="$2"
+      shift
+      ;;
     -r | --report-html)
       export BASHUNIT_REPORT_HTML="$2"
       shift
@@ -11145,6 +11434,9 @@ function bashunit::main::cmd_test() {
       ;;
     --failures-only)
       export BASHUNIT_FAILURES_ONLY=true
+      ;;
+    --fail-on-risky)
+      export BASHUNIT_FAIL_ON_RISKY=true
       ;;
     --show-output)
       export BASHUNIT_SHOW_OUTPUT_ON_FAILURE=true
@@ -11570,14 +11862,14 @@ function bashunit::main::watch_get_checksum() {
     if [ -d "$file" ]; then
       local found
       found=$(find "$file" -name '*.sh' -type f \
-        -exec stat -f '%m %N' {} + 2>/dev/null ||
+        -exec stat -c '%Y %n' {} + 2>/dev/null ||
         find "$file" -name '*.sh' -type f \
-          -exec stat -c '%Y %n' {} + 2>/dev/null) || true
+          -exec stat -f '%m %N' {} + 2>/dev/null) || true
       checksum="${checksum}${found}"
     elif [ -f "$file" ]; then
       local mtime
-      mtime=$(stat -f '%m' "$file" 2>/dev/null ||
-        stat -c '%Y' "$file" 2>/dev/null) || true
+      mtime=$(stat -c '%Y' "$file" 2>/dev/null ||
+        stat -f '%m' "$file" 2>/dev/null) || true
       checksum="${checksum}${mtime} ${file}"
     fi
   done
@@ -11714,6 +12006,10 @@ function bashunit::main::exec_tests() {
 
   if [ -n "$BASHUNIT_LOG_JUNIT" ]; then
     bashunit::reports::generate_junit_xml "$BASHUNIT_LOG_JUNIT"
+  fi
+
+  if [ -n "$BASHUNIT_LOG_GHA" ]; then
+    bashunit::reports::generate_gha_log "$BASHUNIT_LOG_GHA"
   fi
 
   if [ -n "$BASHUNIT_REPORT_HTML" ]; then
@@ -12000,7 +12296,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.34.1"
+declare -r BASHUNIT_VERSION="0.35.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
