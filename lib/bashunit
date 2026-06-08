@@ -539,7 +539,16 @@ function bashunit::parallel::must_stop_on_failure() {
 
 function bashunit::parallel::cleanup() {
   # shellcheck disable=SC2153
-  rm -rf "$TEMP_DIR_PARALLEL_TEST_SUITE"
+  local target="$TEMP_DIR_PARALLEL_TEST_SUITE"
+  case "$target" in
+  */bashunit/parallel/*)
+    rm -rf "$target"
+    ;;
+  *)
+    bashunit::internal_log "parallel::cleanup" "refused unsafe path:$target"
+    return 1
+    ;;
+  esac
 }
 
 function bashunit::parallel::init() {
@@ -563,8 +572,53 @@ function bashunit::parallel::is_enabled() {
 
 # shellcheck disable=SC2034
 
+##
+# Loads a project config file of `KEY=value` lines (comments with `#` and blank
+# lines are ignored). Each key is only applied when not already set in the
+# environment, so real env vars and CLI flags keep precedence over the file.
+# Surrounding single/double quotes and an optional `export ` prefix are stripped.
+# Arguments: $1 path to the config file
+##
+function bashunit::env::load_config_file() {
+  local file=$1
+  [ -f "$file" ] || return 0
+
+  local line key val
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Trim leading whitespace
+    line=${line#"${line%%[![:space:]]*}"}
+    case "$line" in
+    '' | '#'*) continue ;;
+    esac
+    case "$line" in export\ *) line=${line#export } ;; esac
+    case "$line" in
+    *=*) ;;
+    *) continue ;;
+    esac
+
+    key=${line%%=*}
+    val=${line#*=}
+
+    # Only accept valid shell identifiers (defends the eval below)
+    case "$key" in
+    '' | *[!A-Za-z0-9_]* | [0-9]*) continue ;;
+    esac
+
+    # Strip surrounding matching quotes
+    case "$val" in
+    \"*\") val=${val#\"} val=${val%\"} ;;
+    \'*\') val=${val#\'} val=${val%\'} ;;
+    esac
+
+    # Apply only when unset: env var / CLI flag > config file
+    eval "export $key=\"\${$key:-\$val}\""
+  done <"$file"
+}
+
+# Load project config (lower precedence than env vars, .env and CLI flags).
 # Load .env file (skip if --skip-env-file is used to keep shell environment intact)
 if [ "${BASHUNIT_SKIP_ENV_FILE:-false}" != "true" ]; then
+  bashunit::env::load_config_file ".bashunitrc"
   set -o allexport
   # shellcheck source=/dev/null
   [ -f ".env" ] && source .env
@@ -629,6 +683,8 @@ _BASHUNIT_DEFAULT_SHOW_OUTPUT_ON_FAILURE="true"
 _BASHUNIT_DEFAULT_NO_PROGRESS="false"
 _BASHUNIT_DEFAULT_OUTPUT_FORMAT=""
 _BASHUNIT_DEFAULT_FAIL_ON_RISKY="false"
+_BASHUNIT_DEFAULT_PROFILE="false"
+_BASHUNIT_DEFAULT_PROFILE_COUNT="10"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_BASHUNIT_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_PARALLEL_JOBS:=0}"
@@ -652,6 +708,8 @@ _BASHUNIT_DEFAULT_FAIL_ON_RISKY="false"
 : "${BASHUNIT_NO_PROGRESS:=${NO_PROGRESS:=$_BASHUNIT_DEFAULT_NO_PROGRESS}}"
 : "${BASHUNIT_OUTPUT_FORMAT:=${OUTPUT_FORMAT:=$_BASHUNIT_DEFAULT_OUTPUT_FORMAT}}"
 : "${BASHUNIT_FAIL_ON_RISKY:=${FAIL_ON_RISKY:=$_BASHUNIT_DEFAULT_FAIL_ON_RISKY}}"
+: "${BASHUNIT_PROFILE:=${PROFILE:=$_BASHUNIT_DEFAULT_PROFILE}}"
+: "${BASHUNIT_PROFILE_COUNT:=${PROFILE_COUNT:=$_BASHUNIT_DEFAULT_PROFILE_COUNT}}"
 # Support NO_COLOR standard (https://no-color.org)
 if [ -n "${NO_COLOR:-}" ]; then
   BASHUNIT_NO_COLOR="true"
@@ -781,6 +839,10 @@ function bashunit::env::is_fail_on_risky_enabled() {
   [ "$BASHUNIT_FAIL_ON_RISKY" = "true" ]
 }
 
+function bashunit::env::is_profile_enabled() {
+  [ "$BASHUNIT_PROFILE" = "true" ]
+}
+
 function bashunit::env::active_internet_connection() {
   if [ "${BASHUNIT_NO_NETWORK:-}" = "true" ]; then
     return 1
@@ -874,6 +936,7 @@ FAILURES_OUTPUT_PATH=$("$MKTEMP")
 SKIPPED_OUTPUT_PATH=$("$MKTEMP")
 INCOMPLETE_OUTPUT_PATH=$("$MKTEMP")
 RISKY_OUTPUT_PATH=$("$MKTEMP")
+PROFILE_OUTPUT_PATH=$("$MKTEMP")
 
 # Initialize temp directory once at startup for performance
 BASHUNIT_TEMP_DIR="${TMPDIR:-/tmp}/bashunit/tmp"
@@ -960,11 +1023,10 @@ function bashunit::coverage::init() {
     return 0
   fi
 
-  # Create coverage data directory with unique name
-  # Use $$ (PID) + $RANDOM to avoid conflicts when tests call coverage::init
+  # Create coverage data directory with unique name via mktemp -d
+  # (avoids $$-$RANDOM collisions and symlink races in shared temp dirs)
   local coverage_dir
-  coverage_dir="${BASHUNIT_TEMP_DIR:-/tmp}/bashunit-coverage-$$-$RANDOM"
-  mkdir -p "$coverage_dir"
+  coverage_dir=$("${MKTEMP:-mktemp}" -d "${BASHUNIT_TEMP_DIR:-${TMPDIR:-/tmp}}/bashunit-coverage.XXXXXXXX")
 
   _BASHUNIT_COVERAGE_DATA_FILE="${coverage_dir}/hits.dat"
   _BASHUNIT_COVERAGE_TRACKED_FILES="${coverage_dir}/files.dat"
@@ -3823,6 +3885,7 @@ Options:
   --no-output                 Suppress all output
   --failures-only             Only show failures (suppress passed/skipped/incomplete)
   --fail-on-risky             Treat risky tests (no assertions) as failures
+  --profile                   Report the slowest tests (count: BASHUNIT_PROFILE_COUNT, default 10)
   --no-progress               Suppress real-time progress, show only final results
   --show-output               Show test output on failure (default: enabled)
   --no-output-on-failure      Hide test output on failure
@@ -4271,6 +4334,20 @@ function bashunit::console_results::print_successful_test() {
   bashunit::state::print_line "successful" "$full_line"
 }
 
+##
+# Returns a faint "    at <file>:<line>" suffix (preceded by a newline) pointing
+# at the currently running test function, or an empty string when the location
+# is unknown. Used to append source context to failure output.
+##
+function bashunit::console_results::test_location_suffix() {
+  local location=${_BASHUNIT_TEST_LOCATION:-}
+  if [ -z "$location" ]; then
+    return 0
+  fi
+
+  printf "\n    ${_BASHUNIT_COLOR_FAINT}at %s${_BASHUNIT_COLOR_DEFAULT}" "$location"
+}
+
 function bashunit::console_results::print_failure_message() {
   local test_name=$1
   local failure_message=$2
@@ -4281,6 +4358,8 @@ ${_BASHUNIT_COLOR_FAILED}✗ Failed${_BASHUNIT_COLOR_DEFAULT}: %s
     ${_BASHUNIT_COLOR_FAINT}Message:${_BASHUNIT_COLOR_DEFAULT} \
 ${_BASHUNIT_COLOR_BOLD}'%s'${_BASHUNIT_COLOR_DEFAULT}\n" \
     "${test_name}" "${failure_message}")"
+
+  line="$line$(bashunit::console_results::test_location_suffix)"
 
   bashunit::state::print_line "failure" "$line"
 }
@@ -4307,6 +4386,8 @@ ${_BASHUNIT_COLOR_FAILED}✗ Failed${_BASHUNIT_COLOR_DEFAULT}: %s
       "${extra_key}" "${extra_value}")"
   fi
 
+  line="$line$(bashunit::console_results::test_location_suffix)"
+
   bashunit::state::print_line "failed" "$line"
 }
 
@@ -4323,16 +4404,88 @@ function bashunit::console_results::print_failed_snapshot_test() {
     local actual_file="${snapshot_file}.tmp"
     echo "$actual_content" >"$actual_file"
 
+    # `git diff` exits non-zero when the files differ; guard with `|| true` so
+    # the assignment does not trip `set -e`/`pipefail` under --strict.
     local git_diff_output
     git_diff_output="$(git diff --no-index --word-diff --color=always \
       "$snapshot_file" "$actual_file" 2>/dev/null |
-      tail -n +6 | sed "s/^/    /")"
+      tail -n +6 | sed "s/^/    /")" || true
 
     line="$line$git_diff_output"
     rm "$actual_file"
+  else
+    line="$line$(bashunit::console_results::snapshot_line_diff \
+      "$(cat "$snapshot_file")" "$actual_content")"
   fi
 
   bashunit::state::print_line "failed_snapshot" "$line"
+}
+
+##
+# Renders a readable line-by-line diff between an expected snapshot and the
+# actual content, used as a fallback when git is unavailable. Common lines are
+# shown as context, expected-only lines are prefixed with '-' and actual-only
+# lines with '+'. Bash 3.0+ compatible (no mapfile, no associative arrays).
+# Arguments: $1 expected content, $2 actual content
+##
+function bashunit::console_results::snapshot_line_diff() {
+  local expected=$1
+  local actual=$2
+
+  # Explicit empty-array init so referencing the arrays is safe under `set -u`
+  # on Bash 4.4+ (Bash 3.x is lenient; newer Bash treats an unset array as unbound).
+  local expected_lines=() actual_lines=()
+  local _line=""
+  local i=0
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    expected_lines[i]=$_line
+    i=$((i + 1))
+  done <<EOF
+$expected
+EOF
+  local expected_count=$i
+
+  i=0
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    actual_lines[i]=$_line
+    i=$((i + 1))
+  done <<EOF
+$actual
+EOF
+  local actual_count=$i
+
+  local max=$expected_count
+  if [ "$actual_count" -gt "$max" ]; then
+    max=$actual_count
+  fi
+
+  local out=""
+  i=0
+  while [ "$i" -lt "$max" ]; do
+    local e="" a="" has_e=0 has_a=0
+    if [ "$i" -lt "$expected_count" ]; then
+      e=${expected_lines[i]:-}
+      has_e=1
+    fi
+    if [ "$i" -lt "$actual_count" ]; then
+      a=${actual_lines[i]:-}
+      has_a=1
+    fi
+
+    if [ "$has_e" = 1 ] && [ "$has_a" = 1 ] && [ "$e" = "$a" ]; then
+      out="$out$(printf "\n    ${_BASHUNIT_COLOR_FAINT}  %s${_BASHUNIT_COLOR_DEFAULT}" "$e")"
+    else
+      if [ "$has_e" = 1 ]; then
+        out="$out$(printf "\n    ${_BASHUNIT_COLOR_FAILED}- %s${_BASHUNIT_COLOR_DEFAULT}" "$e")"
+      fi
+      if [ "$has_a" = 1 ]; then
+        out="$out$(printf "\n    ${_BASHUNIT_COLOR_PASSED}+ %s${_BASHUNIT_COLOR_DEFAULT}" "$a")"
+      fi
+    fi
+    i=$((i + 1))
+  done
+
+  printf "%s" "$out"
 }
 
 function bashunit::console_results::print_skipped_test() {
@@ -4411,6 +4564,8 @@ function bashunit::console_results::print_error_test() {
     done <<<"$raw_output"
   fi
 
+  line="$line$(bashunit::console_results::test_location_suffix)"
+
   bashunit::state::print_line "error" "$line"
 }
 
@@ -4434,6 +4589,33 @@ function bashunit::console_results::print_failing_tests_and_reset() {
 
     echo ""
   fi
+}
+
+##
+# Prints the slowest tests recorded during the run, sorted by duration
+# descending, limited to BASHUNIT_PROFILE_COUNT entries. Reads the
+# tab-separated records appended to PROFILE_OUTPUT_PATH (duration, name, file).
+##
+function bashunit::console_results::print_profile_and_reset() {
+  if [ ! -s "$PROFILE_OUTPUT_PATH" ]; then
+    rm -f "$PROFILE_OUTPUT_PATH"
+    return
+  fi
+
+  local count="${BASHUNIT_PROFILE_COUNT:-10}"
+
+  echo -e "\n${_BASHUNIT_COLOR_BOLD}Slowest tests:${_BASHUNIT_COLOR_DEFAULT}"
+
+  local duration name file formatted
+  # -rn on the first (numeric) field; head limits to the requested count.
+  while IFS=$'\t' read -r duration name file; do
+    formatted=$(bashunit::console_results::format_duration "$duration")
+    printf "  %s\t%s (%s)\n" "$formatted" "$name" "$file"
+  done < <(sort -t"$(printf '\t')" -k1 -rn "$PROFILE_OUTPUT_PATH" | head -n "$count")
+
+  echo ""
+
+  rm -f "$PROFILE_OUTPUT_PATH"
 }
 
 function bashunit::console_results::print_skipped_tests_and_reset() {
@@ -4772,14 +4954,15 @@ function bashunit::helper::find_files_recursive() {
 
 function bashunit::helper::normalize_variable_name() {
   local input_string="$1"
-  local normalized_string
+  local normalized_string="${input_string//[^a-zA-Z0-9_]/_}"
 
-  normalized_string="${input_string//[^a-zA-Z0-9_]/_}"
-
-  local _re='^[a-zA-Z_]'
-  if [ "$(builtin echo "$normalized_string" | "$GREP" -cE "$_re" || true)" -eq 0 ]; then
-    normalized_string="_$normalized_string"
-  fi
+  # First character must be alpha or underscore. Empty string also gets a `_`
+  # prefix to satisfy the same identifier rule. Uses pure-bash globbing to
+  # avoid a per-call grep fork (called once per test via generate_id).
+  case "${normalized_string:0:1}" in
+  [a-zA-Z_]) ;;
+  *) normalized_string="_$normalized_string" ;;
+  esac
 
   builtin echo "$normalized_string"
 }
@@ -4943,12 +5126,23 @@ function bashunit::helper::get_function_line_number() {
 
 function bashunit::helper::generate_id() {
   local basename="$1"
-  local sanitized_basename
-  sanitized_basename="$(bashunit::helper::normalize_variable_name "$basename")"
+  # Inline normalize_variable_name + random_str to avoid two forks per call.
+  # generate_id is called once per test and per file load.
+  local sanitized="${basename//[^a-zA-Z0-9_]/_}"
+  case "${sanitized:0:1}" in
+  [a-zA-Z_]) ;;
+  *) sanitized="_$sanitized" ;;
+  esac
   if bashunit::env::is_parallel_run_enabled; then
-    echo "${sanitized_basename}_$$_$(bashunit::random_str 6)"
+    local _chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    local _suffix=''
+    local _i
+    for ((_i = 0; _i < 6; _i++)); do
+      _suffix="$_suffix${_chars:RANDOM%${#_chars}:1}"
+    done
+    echo "${sanitized}_$$_${_suffix}"
   else
-    echo "${sanitized_basename}_$$"
+    echo "${sanitized}_$$"
   fi
 }
 
@@ -7037,6 +7231,11 @@ function bashunit::todo() {
 
 declare -a _BASHUNIT_MOCKED_FUNCTIONS=()
 
+# Spy/mock state is keyed by the sanitized command name and stored in globals
+# prefixed with `_BASHUNIT_SPY_` so they cannot collide with caller locals.
+# A test that does `local foo_times_file=...` is harmless because the helper
+# resolves `_BASHUNIT_SPY_foo_TIMES_FILE` instead.
+
 function bashunit::unmock() {
   local command=$1
 
@@ -7051,8 +7250,8 @@ function bashunit::unmock() {
       unset -f "$command"
       local variable
       variable="$(bashunit::helper::normalize_variable_name "$command")"
-      local times_file_var="${variable}_times_file"
-      local params_file_var="${variable}_params_file"
+      local times_file_var="_BASHUNIT_SPY_${variable}_TIMES_FILE"
+      local params_file_var="_BASHUNIT_SPY_${variable}_PARAMS_FILE"
       [ -f "${!times_file_var-}" ] && rm -f "${!times_file_var}"
       [ -f "${!params_file_var-}" ] && rm -f "${!params_file_var}"
       unset "$times_file_var"
@@ -7089,8 +7288,8 @@ function bashunit::spy() {
   params_file=$(bashunit::temp_file "${test_id}_${variable}_params")
   echo 0 >"$times_file"
   : >"$params_file"
-  export "${variable}_times_file"="$times_file"
-  export "${variable}_params_file"="$params_file"
+  export "_BASHUNIT_SPY_${variable}_TIMES_FILE"="$times_file"
+  export "_BASHUNIT_SPY_${variable}_PARAMS_FILE"="$params_file"
 
   local body_suffix=""
   if [[ "$exit_code_or_impl" =~ ^[0-9]+$ ]]; then
@@ -7124,7 +7323,7 @@ function assert_have_been_called() {
   local command=$1
   local variable
   variable="$(bashunit::helper::normalize_variable_name "$command")"
-  local file_var="${variable}_times_file"
+  local file_var="_BASHUNIT_SPY_${variable}_TIMES_FILE"
   local times=0
   if [ -f "${!file_var-}" ]; then
     times=$(cat "${!file_var}" 2>/dev/null || builtin echo 0)
@@ -7154,7 +7353,7 @@ function assert_have_been_called_with() {
 
   local variable
   variable="$(bashunit::helper::normalize_variable_name "$command")"
-  local file_var="${variable}_params_file"
+  local file_var="_BASHUNIT_SPY_${variable}_PARAMS_FILE"
   local line=""
   if [ -f "${!file_var-}" ]; then
     if [ -n "$index" ]; then
@@ -7182,7 +7381,7 @@ function assert_have_been_called_times() {
   local command=$2
   local variable
   variable="$(bashunit::helper::normalize_variable_name "$command")"
-  local file_var="${variable}_times_file"
+  local file_var="_BASHUNIT_SPY_${variable}_TIMES_FILE"
   local times=0
   if [ -f "${!file_var-}" ]; then
     times=$(cat "${!file_var}" 2>/dev/null || builtin echo 0)
@@ -7207,8 +7406,8 @@ function assert_have_been_called_nth_with() {
 
   local variable
   variable="$(bashunit::helper::normalize_variable_name "$command")"
-  local times_file_var="${variable}_times_file"
-  local file_var="${variable}_params_file"
+  local times_file_var="_BASHUNIT_SPY_${variable}_TIMES_FILE"
+  local file_var="_BASHUNIT_SPY_${variable}_PARAMS_FILE"
   local label
   label="$(bashunit::helper::normalize_test_function_name "${FUNCNAME[1]}")"
 
@@ -7549,6 +7748,30 @@ function bashunit::runner::restore_workdir() {
   cd "$BASHUNIT_WORKING_DIR" 2>/dev/null || true
 }
 
+##
+# Whether the running Bash has a reliable `set -o pipefail`. Bash 3.0 shipped a
+# broken pipefail (a failing pipeline can wrongly report success), which makes
+# `--strict` unsound; on 3.0 we fall back to `set -eu` without pipefail.
+# Returns: 0 when pipefail is reliable (Bash >= 3.1), 1 otherwise.
+##
+function bashunit::runner::_supports_reliable_pipefail() {
+  if [ "${BASH_VERSINFO[0]:-0}" -gt 3 ]; then
+    return 0
+  fi
+  [ "${BASH_VERSINFO[0]:-0}" -eq 3 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 1 ]
+}
+
+# Caches BASHUNIT_COVERAGE into _BASHUNIT_COVERAGE_ON ("1"|"0") so hot-path checks
+# avoid a function dispatch per call. Call once after arg parsing; tests that
+# toggle BASHUNIT_COVERAGE mid-run must call this again to refresh.
+function bashunit::runner::sync_coverage_flag() {
+  if [ "${BASHUNIT_COVERAGE-}" = "true" ]; then
+    _BASHUNIT_COVERAGE_ON=1
+  else
+    _BASHUNIT_COVERAGE_ON=0
+  fi
+}
+
 function bashunit::runner::source_login_shell_profiles() {
   # shellcheck disable=SC1091
   [ -f /etc/profile ] && source /etc/profile 2>/dev/null || true
@@ -7564,9 +7787,41 @@ function bashunit::runner::export_test_identity() {
   local test_file=$1
   local fn_name=$2
   export BASHUNIT_CURRENT_TEST_ID="$(bashunit::helper::generate_id "$fn_name")"
-  if bashunit::env::is_coverage_enabled; then
+  bashunit::runner::resolve_test_location "$test_file" "$fn_name"
+  export _BASHUNIT_TEST_LOCATION
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     export _BASHUNIT_COVERAGE_CURRENT_TEST_FILE="$test_file"
     export _BASHUNIT_COVERAGE_CURRENT_TEST_FN="$fn_name"
+  fi
+}
+
+##
+# Resolves "<test_file>:<line>" for a test function and writes it into the
+# global _BASHUNIT_TEST_LOCATION, using `declare -F` under `extdebug` to read
+# the definition line. Falls back to just the file path when the line cannot be
+# determined. Bash 3.0+ compatible. Writes a global slot (no extra subshell).
+# Arguments: $1 test file, $2 function name
+##
+function bashunit::runner::resolve_test_location() {
+  local test_file=$1
+  local fn_name=$2
+
+  # Enable extdebug only inside the command-substitution subshell so it never
+  # leaks into the parent shell — globally toggling extdebug interferes with
+  # `set -e`/DEBUG-trap behavior under --strict.
+  local def line=""
+  def="$(shopt -s extdebug; declare -F "$fn_name" 2>/dev/null)" || true
+
+  # `declare -F` (with extdebug) prints "<name> <line> <file>".
+  if [ -n "$def" ]; then
+    line=${def#* }
+    line=${line%% *}
+  fi
+
+  if [ -n "$line" ]; then
+    _BASHUNIT_TEST_LOCATION="${test_file}:${line}"
+  else
+    _BASHUNIT_TEST_LOCATION="$test_file"
   fi
 }
 
@@ -7583,6 +7838,24 @@ function bashunit::runner::apply_interpolated_title() {
   printf '%s' "$interpolated"
 }
 
+# Hot-path result helpers below return their value via a dedicated global slot
+# (`_BASHUNIT_RUNNER_*_OUT`) instead of stdout. This avoids the per-test
+# `$(...)` subshell capture that dominated the result-parsing hot path. Callers
+# invoke the helper and immediately read the slot:
+#
+#   bashunit::runner::extract_subshell_type "$subshell_output"
+#   type=$_BASHUNIT_RUNNER_TYPE_OUT
+#
+# A dedicated slot per helper (rather than one shared slot) means nested or
+# adjacent calls cannot clobber each other and callers don't need to copy out
+# before every other helper runs.
+_BASHUNIT_RUNNER_FIELD_OUT=""
+_BASHUNIT_RUNNER_TOTAL_OUT=""
+_BASHUNIT_RUNNER_TYPE_OUT=""
+_BASHUNIT_RUNNER_OUTPUT_OUT=""
+
+# Writes the value of an encoded field (##KEY=value##) into _BASHUNIT_RUNNER_FIELD_OUT.
+# Arguments: $1 test_execution_result, $2 key
 function bashunit::runner::extract_encoded_field() {
   local test_execution_result=$1
   local key=$2
@@ -7590,12 +7863,14 @@ function bashunit::runner::extract_encoded_field() {
   case "$test_execution_result" in
   *"$marker"*)
     local rest="${test_execution_result#*"$marker"}"
-    printf '%s' "${rest%%##*}"
+    _BASHUNIT_RUNNER_FIELD_OUT="${rest%%##*}"
     ;;
-  *) printf '' ;;
+  *) _BASHUNIT_RUNNER_FIELD_OUT="" ;;
   esac
 }
 
+# Writes the sum of all ASSERTIONS_* counters into _BASHUNIT_RUNNER_TOTAL_OUT.
+# Arguments: $1 test_execution_result
 function bashunit::runner::compute_total_assertions() {
   local test_execution_result=$1
   local failed passed skipped incomplete snapshot
@@ -7609,45 +7884,89 @@ function bashunit::runner::compute_total_assertions() {
   incomplete="${incomplete%%##*}"
   snapshot="${test_execution_result##*##ASSERTIONS_SNAPSHOT=}"
   snapshot="${snapshot%%##*}"
-  printf '%d' "$(( ${failed:-0} + ${passed:-0} + ${skipped:-0} + ${incomplete:-0} + ${snapshot:-0} ))"
+  local total
+  total=$((${failed:-0} + ${passed:-0} + ${skipped:-0}))
+  total=$((total + ${incomplete:-0} + ${snapshot:-0}))
+  _BASHUNIT_RUNNER_TOTAL_OUT=$total
 }
 
+# Writes the subshell type marker (text inside leading [...]) into _BASHUNIT_RUNNER_TYPE_OUT.
+# Arguments: $1 subshell_output
 function bashunit::runner::extract_subshell_type() {
   local subshell_output=$1
   local type="${subshell_output%%]*}"
-  printf '%s' "${type#[}"
+  _BASHUNIT_RUNNER_TYPE_OUT="${type#[}"
 }
 
+# Writes the subshell output (minus the leading [type] marker, with embedded
+# status markers replaced by newlines) into _BASHUNIT_RUNNER_OUTPUT_OUT.
+# Arguments: $1 subshell_output
 function bashunit::runner::format_subshell_output() {
   local subshell_output=$1
   local line="${subshell_output#*]}"
   line=${line//\[failed\]/$'\n'}
   line=${line//\[skipped\]/$'\n'}
   line=${line//\[incomplete\]/$'\n'}
-  printf '%s' "$line"
+  _BASHUNIT_RUNNER_OUTPUT_OUT=$line
+}
+
+##
+# Appends a profiling record (duration, test name, file) to PROFILE_OUTPUT_PATH.
+# Uses a tab-separated, append-only line so it aggregates correctly across the
+# subshells spawned by parallel runs.
+# Arguments: $1 duration (ms), $2 test name, $3 test file
+##
+function bashunit::runner::record_profile() {
+  local duration=$1
+  local test_name=$2
+  local test_file=$3
+  printf '%s\t%s\t%s\n' "$duration" "$test_name" "$test_file" >>"$PROFILE_OUTPUT_PATH"
 }
 
 function bashunit::runner::detect_runtime_error() {
   local runtime_output=$1
-  local error
-  for error in "command not found" "unbound variable" "permission denied" \
-    "no such file or directory" "syntax error" "bad substitution" \
-    "division by 0" "cannot allocate memory" "bad file descriptor" \
-    "segmentation fault" "illegal option" "argument list too long" \
-    "readonly variable" "missing keyword" "killed" \
-    "cannot execute binary file" "invalid arithmetic operator" \
-    "ambiguous redirect" "integer expression expected" \
-    "too many arguments" "value too great" \
-    "not a valid identifier" "unexpected EOF"; do
-    case "$runtime_output" in
-    *"$error"*)
-      local runtime_error="${runtime_output#*: }"
-      printf '%s' "${runtime_error//$'\n'/}"
-      return 0
-      ;;
-    esac
-  done
+  case "$runtime_output" in
+  *"command not found"* | *"unbound variable"* | *"permission denied"* | \
+    *"no such file or directory"* | *"syntax error"* | *"bad substitution"* | \
+    *"division by 0"* | *"cannot allocate memory"* | *"bad file descriptor"* | \
+    *"segmentation fault"* | *"illegal option"* | *"argument list too long"* | \
+    *"readonly variable"* | *"missing keyword"* | *"killed"* | \
+    *"cannot execute binary file"* | *"invalid arithmetic operator"* | \
+    *"ambiguous redirect"* | *"integer expression expected"* | \
+    *"too many arguments"* | *"value too great"* | \
+    *"not a valid identifier"* | *"unexpected EOF"*)
+    local runtime_error="${runtime_output#*: }"
+    printf '%s' "${runtime_error//$'\n'/}"
+    return 0
+    ;;
+  esac
   printf ''
+}
+
+##
+# Maps a process exit code to a human-readable description when it indicates the
+# test was killed by a signal (128 + signal) or timed out. Returns an empty
+# string for ordinary exit codes. Bash 3.0+ compatible.
+# Arguments: $1 exit code
+##
+function bashunit::runner::classify_kill_signal() {
+  local code=$1
+
+  case "$code" in
+  124) printf 'Timed out (killed by `timeout`)' ;;
+  130) printf 'Interrupted (SIGINT)' ;;
+  137) printf 'Killed (SIGKILL — out of memory or forced termination)' ;;
+  143) printf 'Terminated (SIGTERM — e.g. a timeout)' ;;
+  *)
+    # Generic "killed by signal N" for other 128+N codes (signals 1..64)
+    case "$code" in
+    '' | *[!0-9]*) return 0 ;;
+    esac
+    if [ "$code" -gt 128 ] && [ "$code" -le 192 ]; then
+      printf 'Killed by signal %s' "$((code - 128))"
+    fi
+    ;;
+  esac
 }
 
 function bashunit::runner::print_verbose_test_summary() {
@@ -7670,14 +7989,35 @@ function bashunit::runner::print_verbose_test_summary() {
   printf '%*s\n' "$TERMINAL_WIDTH" '' | tr ' ' '-'
 }
 
+# Returns 0 when this Bash supports `wait -n` (Bash 4.3+), 1 otherwise.
+function bashunit::runner::_supports_wait_n() {
+  local major="${BASH_VERSINFO[0]:-0}"
+  local minor="${BASH_VERSINFO[1]:-0}"
+  if [ "$major" -gt 4 ]; then
+    return 0
+  fi
+  if [ "$major" -eq 4 ] && [ "$minor" -ge 3 ]; then
+    return 0
+  fi
+  return 1
+}
+
 function bashunit::runner::wait_for_job_slot() {
   local max_jobs="${BASHUNIT_PARALLEL_JOBS:-0}"
   if [ "$max_jobs" -le 0 ]; then
     return 0
   fi
 
-  # Adaptive backoff: start at 50ms, grow to 200ms to reduce `jobs -r` overhead
-  # on long-running tests while keeping short tests responsive.
+  if bashunit::runner::_supports_wait_n; then
+    # Bash 4.3+: block until any child exits. No polling, no sleep latency.
+    while [ "$(jobs -r | wc -l)" -ge "$max_jobs" ]; do
+      wait -n 2>/dev/null || break
+    done
+    return 0
+  fi
+
+  # Bash 3.x fallback: adaptive poll starting at 50ms, growing to 200ms to
+  # reduce `jobs -r` overhead on long-running tests while staying responsive.
   local delay="0.05"
   local iterations=0
   while true; do
@@ -7707,8 +8047,10 @@ function bashunit::runner::load_test_files() {
   local -a scripts_ids=()
   local scripts_ids_count=0
 
+  bashunit::runner::sync_coverage_flag
+
   # Initialize coverage tracking if enabled
-  if bashunit::env::is_coverage_enabled; then
+  if [ "$_BASHUNIT_COVERAGE_ON" = 1 ]; then
     # Auto-discover coverage paths if not explicitly set
     if [ -z "$BASHUNIT_COVERAGE_PATHS" ]; then
       BASHUNIT_COVERAGE_PATHS=$(bashunit::coverage::auto_discover_paths "${files[@]}")
@@ -7740,8 +8082,8 @@ function bashunit::runner::load_test_files() {
       source_err="$(cat "$source_err_file")"
     fi
     rm -f "$source_err_file"
-    if [ "$source_status" -ne 0 ] || [ "$(printf '%s' "$source_err" \
-      | "$GREP" -cE 'syntax error|unexpected EOF' || true)" -gt 0 ]; then
+    if [ "$source_status" -ne 0 ] || [ "$(printf '%s' "$source_err" |
+      "$GREP" -cE 'syntax error|unexpected EOF' || true)" -gt 0 ]; then
       local message="$source_err"
       [ -z "$message" ] && message="Failed to source '$test_file' (exit $source_status)"
       bashunit::runner::record_file_hook_failure \
@@ -8277,7 +8619,7 @@ function bashunit::runner::run_test() {
     fi
 
     # Enable coverage tracking early to include set_up/tear_down hooks
-    if bashunit::env::is_coverage_enabled; then
+    if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
       bashunit::coverage::enable_trap
     fi
 
@@ -8294,7 +8636,13 @@ function bashunit::runner::run_test() {
 
     # Apply shell mode setting for test execution
     if bashunit::env::is_strict_mode_enabled; then
-      set -euo pipefail
+      set -eu
+      # Bash 3.0 ships a broken pipefail; only enable it where it is reliable.
+      if bashunit::runner::_supports_reliable_pipefail; then
+        set -o pipefail
+      else
+        set +o pipefail
+      fi
     else
       set +euo pipefail
     fi
@@ -8312,6 +8660,10 @@ function bashunit::runner::run_test() {
   local duration_ns=$((end_time - start_time))
   local duration=$((duration_ns / 1000000))
 
+  if bashunit::env::is_profile_enabled; then
+    bashunit::runner::record_profile "$duration" "$interpolated_fn_name" "$test_file"
+  fi
+
   if bashunit::env::is_verbose_enabled; then
     bashunit::runner::print_verbose_test_summary \
       "$test_file" "$fn_name" "$duration" "$test_execution_result"
@@ -8320,9 +8672,10 @@ function bashunit::runner::run_test() {
   local subshell_output=$(bashunit::runner::decode_subshell_output "$test_execution_result")
 
   if [ -n "$subshell_output" ]; then
-    local type
-    type=$(bashunit::runner::extract_subshell_type "$subshell_output")
-    subshell_output=$(bashunit::runner::format_subshell_output "$subshell_output")
+    bashunit::runner::extract_subshell_type "$subshell_output"
+    local type=$_BASHUNIT_RUNNER_TYPE_OUT
+    bashunit::runner::format_subshell_output "$subshell_output"
+    subshell_output=$_BASHUNIT_RUNNER_OUTPUT_OUT
     if ! bashunit::env::is_failures_only_enabled; then
       bashunit::state::print_line "$type" "$subshell_output"
     fi
@@ -8337,13 +8690,15 @@ function bashunit::runner::run_test() {
 
   local test_exit_code="$_BASHUNIT_TEST_EXIT_CODE"
 
-  local total_assertions
-  total_assertions=$(bashunit::runner::compute_total_assertions "$test_execution_result")
+  bashunit::runner::compute_total_assertions "$test_execution_result"
+  local total_assertions=$_BASHUNIT_RUNNER_TOTAL_OUT
 
-  local encoded_test_title hook_failure encoded_hook_message
-  encoded_test_title=$(bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_TITLE")
-  hook_failure=$(bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_HOOK_FAILURE")
-  encoded_hook_message=$(bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_HOOK_MESSAGE")
+  bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_TITLE"
+  local encoded_test_title=$_BASHUNIT_RUNNER_FIELD_OUT
+  bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_HOOK_FAILURE"
+  local hook_failure=$_BASHUNIT_RUNNER_FIELD_OUT
+  bashunit::runner::extract_encoded_field "$test_execution_result" "TEST_HOOK_MESSAGE"
+  local encoded_hook_message=$_BASHUNIT_RUNNER_FIELD_OUT
 
   local test_title=""
   [ -n "$encoded_test_title" ] && test_title="$(bashunit::helper::decode_base64 "$encoded_test_title")"
@@ -8371,6 +8726,19 @@ function bashunit::runner::run_test() {
     elif [ -z "$error_message" ] && [ -n "$hook_message" ]; then
       error_message="$hook_message"
     fi
+
+    # When the test was killed by a signal (or timed out), replace an empty or
+    # generic "Killed" message with a specific cause.
+    if [ -z "$hook_failure" ]; then
+      local kill_message
+      kill_message=$(bashunit::runner::classify_kill_signal "$test_exit_code")
+      if [ -n "$kill_message" ]; then
+        case "$error_message" in
+        '' | *[Kk]illed* | *[Tt]erminated*) error_message="$kill_message" ;;
+        esac
+      fi
+    fi
+
     bashunit::console_results::print_error_test "$failure_function" "$error_message" "$runtime_output"
     bashunit::reports::add_test_failed "$test_file" "$failure_label" "$duration" "$total_assertions" "$error_message"
     bashunit::runner::write_failure_result_output "$test_file" "$failure_function" "$error_message" "$runtime_output"
@@ -8481,7 +8849,7 @@ function bashunit::runner::cleanup_on_exit() {
   local exit_code="$2"
 
   # Disable coverage trap before cleanup to avoid interference
-  if bashunit::env::is_coverage_enabled; then
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::disable_trap
   fi
 
@@ -8921,7 +9289,7 @@ function bashunit::runner::run_set_up_before_script() {
   start_time=$(bashunit::clock::now)
 
   # Enable coverage trap to attribute lines executed during set_up_before_script
-  if bashunit::env::is_coverage_enabled; then
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::enable_trap
   fi
 
@@ -8930,7 +9298,7 @@ function bashunit::runner::run_set_up_before_script() {
   local status=$?
 
   # Disable coverage trap after hook execution
-  if bashunit::env::is_coverage_enabled; then
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::disable_trap
   fi
 
@@ -9060,7 +9428,7 @@ function bashunit::runner::run_tear_down_after_script() {
   start_time=$(bashunit::clock::now)
 
   # Enable coverage trap to attribute lines executed during tear_down_after_script
-  if bashunit::env::is_coverage_enabled; then
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::enable_trap
   fi
 
@@ -9069,7 +9437,7 @@ function bashunit::runner::run_tear_down_after_script() {
   local status=$?
 
   # Disable coverage trap after hook execution
-  if bashunit::env::is_coverage_enabled; then
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::disable_trap
   fi
 
@@ -9322,14 +9690,14 @@ SH
 # Provides guided tutorials and exercises to learn bashunit
 ##
 
-declare -r LEARN_TEMP_DIR="/tmp/bashunit_learn_$$"
+LEARN_TEMP_DIR=""
 declare -r LEARN_PROGRESS_FILE="$HOME/.bashunit_learn_progress"
 
 ##
 # Initialize learning environment
 ##
 function bashunit::learn::init() {
-  mkdir -p "$LEARN_TEMP_DIR"
+  LEARN_TEMP_DIR=$("${MKTEMP:-mktemp}" -d "${TMPDIR:-/tmp}/bashunit_learn.XXXXXXXX")
   mkdir -p tests
 }
 
@@ -9337,7 +9705,9 @@ function bashunit::learn::init() {
 # Cleanup learning environment
 ##
 function bashunit::learn::cleanup() {
-  rm -rf "$LEARN_TEMP_DIR"
+  if [ -n "${LEARN_TEMP_DIR:-}" ] && [ -d "$LEARN_TEMP_DIR" ]; then
+    rm -rf "$LEARN_TEMP_DIR"
+  fi
 }
 
 ##
@@ -12243,6 +12613,9 @@ function bashunit::main::cmd_test() {
     --fail-on-risky)
       export BASHUNIT_FAIL_ON_RISKY=true
       ;;
+    --profile)
+      export BASHUNIT_PROFILE=true
+      ;;
     --show-output)
       export BASHUNIT_SHOW_OUTPUT_ON_FAILURE=true
       ;;
@@ -12567,18 +12940,40 @@ function bashunit::main::cmd_learn() {
 # Subcommand: watch
 #############################
 function bashunit::main::cmd_watch() {
-  case "${1:-}" in
-  -h | --help)
-    bashunit::console_header::print_watch_help
-    exit 0
-    ;;
-  esac
+  local path=""
+  local -a extra_args=()
 
-  local path="${1:-.}"
-  shift || true
-  local -a extra_args=("$@")
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help)
+      bashunit::console_header::print_watch_help
+      exit 0
+      ;;
+    -f | --filter)
+      # Forward the filter flag and its value to the underlying test run
+      extra_args[${#extra_args[@]}]="$1"
+      shift || true
+      if [ $# -gt 0 ]; then
+        extra_args[${#extra_args[@]}]="$1"
+      fi
+      ;;
+    -*)
+      extra_args[${#extra_args[@]}]="$1"
+      ;;
+    *)
+      if [ -z "$path" ]; then
+        path="$1"
+      else
+        extra_args[${#extra_args[@]}]="$1"
+      fi
+      ;;
+    esac
+    shift || true
+  done
 
-  bashunit::watch::run "$path" "${extra_args[@]+\"${extra_args[@]}\"}"
+  [ -z "$path" ] && path="."
+
+  bashunit::watch::run "$path" "${extra_args[@]+"${extra_args[@]}"}"
 }
 
 #############################
@@ -12809,6 +13204,10 @@ function bashunit::main::exec_tests() {
   bashunit::console_results::render_result
   exit_code=$?
 
+  if bashunit::env::is_profile_enabled; then
+    bashunit::console_results::print_profile_and_reset
+  fi
+
   if [ -n "$BASHUNIT_LOG_JUNIT" ]; then
     bashunit::reports::generate_junit_xml "$BASHUNIT_LOG_JUNIT"
   fi
@@ -12906,6 +13305,9 @@ function bashunit::main::handle_stop_on_failure_sync() {
   bashunit::console_results::print_incomplete_tests_and_reset
   bashunit::console_results::print_skipped_tests_and_reset
   bashunit::console_results::render_result
+  if bashunit::env::is_profile_enabled; then
+    bashunit::console_results::print_profile_and_reset
+  fi
   bashunit::cleanup_script_temp_files
   if bashunit::parallel::is_enabled; then
     bashunit::parallel::cleanup
@@ -13103,7 +13505,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.36.0"
+declare -r BASHUNIT_VERSION="0.38.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
