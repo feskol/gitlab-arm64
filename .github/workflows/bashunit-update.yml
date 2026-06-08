@@ -57,12 +57,25 @@ jobs:
           LOCAL_FILE="lib/bashunit"
           TEMP_FILE="/tmp/bashunit"
 
-          # Download the file
-          curl -L -o $TEMP_FILE $DOWNLOAD_URL
+          # Download the file. -f fails on HTTP errors (e.g. 504), so a gateway
+          # error page is never written as a "successful" download. Retry to
+          # ride out transient hiccups.
+          curl -fSL --retry 3 --retry-delay 5 -o "$TEMP_FILE" "$DOWNLOAD_URL"
 
-          # Check if the file was downloaded successfully
-          if [ ! -s $TEMP_FILE ]; then
-            echo "Download failed. Exiting."
+          # Validate the download is actually a bashunit script, not an HTML
+          # error page that slipped through. Check the shebang and smoke-test it.
+          if [ ! -s "$TEMP_FILE" ]; then
+            echo "Download failed: empty file. Exiting."
+            exit 1
+          fi
+          if ! head -1 "$TEMP_FILE" | grep -q '^#!'; then
+            echo "Download failed: not a script (no shebang). First lines:"
+            head -3 "$TEMP_FILE"
+            exit 1
+          fi
+          chmod +x "$TEMP_FILE"
+          if ! "$TEMP_FILE" --version >/dev/null 2>&1; then
+            echo "Download failed: binary does not run. Exiting."
             exit 1
           fi
 
