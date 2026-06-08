@@ -11,6 +11,12 @@ name: Test
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/generated-files/**'
+      - '**.md'
 
 jobs:
   test-scripts:
