@@ -101,7 +101,9 @@ jobs:
         # GITHUB_ENV: NEW_BUILD_EE_VERSION_AVAILABLE
 
       - name: Trigger builds for new versions
-        if: ${{ env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true' }}
+        if: |
+          github.repository == 'feskol/gitlab-arm64' &&
+          (env.NEW_BUILD_CE_VERSION_AVAILABLE == 'true' || env.NEW_BUILD_EE_VERSION_AVAILABLE == 'true')
         uses: actions/github-script@v9
         with:
           script: |
