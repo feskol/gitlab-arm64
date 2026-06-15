@@ -3870,7 +3870,7 @@ Options:
   -f, --filter <name>         Only run tests matching the name
   --tag <name>                Only run tests with matching @tag (repeatable, OR logic)
   --exclude-tag <name>        Skip tests with matching @tag (repeatable, exclude wins)
-  --log-junit <file>          Write JUnit XML report
+  --log-junit, --report-junit <file>  Write JUnit XML report
   -j, --jobs <N>              Run tests in parallel with max N concurrent jobs
   -p, --parallel              Run tests in parallel (unlimited concurrency)
   --no-parallel               Run tests sequentially
@@ -3971,6 +3971,7 @@ Arguments:
 Creates:
   - bootstrap.sh              Setup file for test configuration
   - example_test.sh           Sample test file to get started
+  - .github/workflows/tests.yml  CI workflow using the official action
 
 Examples:
   bashunit init               Create tests/ directory
@@ -5008,10 +5009,12 @@ function bashunit::helper::get_latest_tag() {
     return 1
   fi
 
+  # Floating major tags (e.g. v0) are not releases and must not win
   git ls-remote --tags "$BASHUNIT_GIT_REPO" |
     awk '{print $2}' |
     sed 's|^refs/tags/||' |
     grep -v '\^{}' |
+    grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' |
     sort -Vr |
     head -n 1
 }
@@ -7456,6 +7459,7 @@ _BASHUNIT_REPORTS_TEST_STATUSES=()
 _BASHUNIT_REPORTS_TEST_DURATIONS=()
 _BASHUNIT_REPORTS_TEST_ASSERTIONS=()
 _BASHUNIT_REPORTS_TEST_FAILURES=()
+_BASHUNIT_REPORTS_TEST_LINES=()
 
 function bashunit::reports::add_test_snapshot() {
   bashunit::reports::add_test "$1" "$2" "$3" "$4" "snapshot"
@@ -7496,12 +7500,21 @@ function bashunit::reports::add_test() {
   local status="$5"
   local failure_message="${6:-}"
 
+  # Capture the line number from the current test location ("file:line"),
+  # but only when it belongs to this test's file, so a stale location from a
+  # prior test never mislabels this entry.
+  local line=""
+  case "${_BASHUNIT_TEST_LOCATION:-}" in
+    "$file":*) line="${_BASHUNIT_TEST_LOCATION##*:}" ;;
+  esac
+
   _BASHUNIT_REPORTS_TEST_FILES[${#_BASHUNIT_REPORTS_TEST_FILES[@]}]="$file"
   _BASHUNIT_REPORTS_TEST_NAMES[${#_BASHUNIT_REPORTS_TEST_NAMES[@]}]="$test_name"
   _BASHUNIT_REPORTS_TEST_STATUSES[${#_BASHUNIT_REPORTS_TEST_STATUSES[@]}]="$status"
   _BASHUNIT_REPORTS_TEST_ASSERTIONS[${#_BASHUNIT_REPORTS_TEST_ASSERTIONS[@]}]="$assertions"
   _BASHUNIT_REPORTS_TEST_DURATIONS[${#_BASHUNIT_REPORTS_TEST_DURATIONS[@]}]="$duration"
   _BASHUNIT_REPORTS_TEST_FAILURES[${#_BASHUNIT_REPORTS_TEST_FAILURES[@]}]="$failure_message"
+  _BASHUNIT_REPORTS_TEST_LINES[${#_BASHUNIT_REPORTS_TEST_LINES[@]}]="$line"
 }
 
 function bashunit::reports::__xml_escape() {
@@ -7580,10 +7593,10 @@ function bashunit::reports::__gha_encode() {
   printf '%s' "$text"
 }
 
-function bashunit::reports::generate_gha_log() {
-  local output_file="$1"
-
-  : >"$output_file"
+# Echoes GitHub Actions workflow-command annotations to stdout.
+# Arguments: $1 - "failed-only" to emit just errors (default: all reportable).
+function bashunit::reports::print_gha_annotations() {
+  local only="${1:-all}"
 
   local i
   for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
@@ -7591,6 +7604,7 @@ function bashunit::reports::generate_gha_log() {
     local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
     local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
     local failure_message="${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}"
+    local line="${_BASHUNIT_REPORTS_TEST_LINES[$i]:-}"
     local level="" message=""
 
     case "$status" in
@@ -7611,10 +7625,25 @@ function bashunit::reports::generate_gha_log() {
         ;;
     esac
 
+    if [ "$only" = "failed-only" ] && [ "$status" != "failed" ]; then
+      continue
+    fi
+
+    local location="file=${file}"
+    if [ -n "$line" ]; then
+      location="${location},line=${line}"
+    fi
+
     local encoded_message
     encoded_message=$(bashunit::reports::__gha_encode "$message")
-    echo "::${level} file=${file},title=${name}::${encoded_message}" >>"$output_file"
+    echo "::${level} ${location},title=${name}::${encoded_message}"
   done
+}
+
+function bashunit::reports::generate_gha_log() {
+  local output_file="$1"
+
+  bashunit::reports::print_gha_annotations all >"$output_file"
 }
 
 function bashunit::reports::generate_report_html() {
@@ -9662,6 +9691,25 @@ function test_bashunit_is_installed() {
 SH
     chmod +x "$example_test"
     echo "> Created $example_test"
+  fi
+
+  local workflow_dir=".github/workflows"
+  local workflow_file="$workflow_dir/tests.yml"
+  if [ ! -f "$workflow_file" ]; then
+    mkdir -p "$workflow_dir"
+    cat >"$workflow_file" <<SH
+name: Tests
+on: [pull_request, push]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TypedDevs/bashunit@v0
+        with:
+          args: $tests_dir
+SH
+    echo "> Created $workflow_file"
   fi
 
   local env_file=".env"
@@ -12579,7 +12627,7 @@ function bashunit::main::cmd_test() {
       set +o allexport
       shift
       ;;
-    --log-junit)
+    --log-junit | --report-junit)
       export BASHUNIT_LOG_JUNIT="$2"
       shift
       ;;
@@ -13505,7 +13553,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.38.0"
+declare -r BASHUNIT_VERSION="0.39.1"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
