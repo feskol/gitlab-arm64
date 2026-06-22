@@ -685,6 +685,8 @@ _BASHUNIT_DEFAULT_OUTPUT_FORMAT=""
 _BASHUNIT_DEFAULT_FAIL_ON_RISKY="false"
 _BASHUNIT_DEFAULT_PROFILE="false"
 _BASHUNIT_DEFAULT_PROFILE_COUNT="10"
+# Per-test timeout in seconds (0 = disabled)
+_BASHUNIT_DEFAULT_TEST_TIMEOUT="0"
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_BASHUNIT_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_PARALLEL_JOBS:=0}"
@@ -710,6 +712,7 @@ _BASHUNIT_DEFAULT_PROFILE_COUNT="10"
 : "${BASHUNIT_FAIL_ON_RISKY:=${FAIL_ON_RISKY:=$_BASHUNIT_DEFAULT_FAIL_ON_RISKY}}"
 : "${BASHUNIT_PROFILE:=${PROFILE:=$_BASHUNIT_DEFAULT_PROFILE}}"
 : "${BASHUNIT_PROFILE_COUNT:=${PROFILE_COUNT:=$_BASHUNIT_DEFAULT_PROFILE_COUNT}}"
+: "${BASHUNIT_TEST_TIMEOUT:=${TEST_TIMEOUT:=$_BASHUNIT_DEFAULT_TEST_TIMEOUT}}"
 # Support NO_COLOR standard (https://no-color.org)
 if [ -n "${NO_COLOR:-}" ]; then
   BASHUNIT_NO_COLOR="true"
@@ -719,6 +722,24 @@ fi
 
 function bashunit::env::is_parallel_run_enabled() {
   [ "$BASHUNIT_PARALLEL_RUN" = "true" ]
+}
+
+##
+# Whether a per-test timeout is configured (a positive integer number of seconds).
+# Returns: 0 when enabled, 1 otherwise.
+##
+function bashunit::env::is_test_timeout_enabled() {
+  case "${BASHUNIT_TEST_TIMEOUT:-0}" in
+  '' | *[!0-9]*) return 1 ;;
+  esac
+  [ "${BASHUNIT_TEST_TIMEOUT:-0}" -gt 0 ]
+}
+
+##
+# Prints the configured per-test timeout in seconds (0 when disabled).
+##
+function bashunit::env::test_timeout_secs() {
+  printf '%s' "${BASHUNIT_TEST_TIMEOUT:-0}"
 }
 
 function bashunit::env::is_show_header_enabled() {
@@ -1278,11 +1299,13 @@ function bashunit::coverage::flush_buffer() {
     test_hits_file="${_BASHUNIT_COVERAGE_TEST_HITS_FILE}.$$"
   fi
 
-  # Write buffered data in a single I/O operation
-  printf '%s' "$_BASHUNIT_COVERAGE_BUFFER" >>"$data_file"
+  # Write buffered data in a single I/O operation.
+  # Use `builtin printf` so a user test spying/mocking the printf builtin
+  # cannot shadow the coverage write and silently drop data (see issue #724).
+  builtin printf '%s' "$_BASHUNIT_COVERAGE_BUFFER" >>"$data_file"
 
   if [ -n "$_BASHUNIT_COVERAGE_HITS_BUFFER" ]; then
-    printf '%s' "$_BASHUNIT_COVERAGE_HITS_BUFFER" >>"$test_hits_file"
+    builtin printf '%s' "$_BASHUNIT_COVERAGE_HITS_BUFFER" >>"$test_hits_file"
   fi
 
   # Reset buffer
@@ -1595,8 +1618,27 @@ function bashunit::coverage::compute_file_coverage() {
   echo "${executable}:${hit}"
 }
 
+# Detect whether a source line ends with a Bash line-continuation, i.e. an
+# odd number of unescaped trailing backslashes with no trailing whitespace.
+# Comment lines never continue. Used to propagate coverage hits from a
+# statement's starting line to its continuation lines (see #722).
+function bashunit::coverage::_ends_with_continuation() {
+  local line="$1"
+  local lead="${line#"${line%%[![:space:]]*}"}"
+  case "$lead" in '#'*) return 1 ;; esac
+  local trailing="${line##*[!\\]}"
+  case "$line" in *[!\\]*) : ;; *) trailing="$line" ;; esac
+  [ $((${#trailing} % 2)) -eq 1 ]
+}
+
 # Get all line hits for a file in one pass (performance optimization)
 # Output format: one "lineno:count" per line
+#
+# Bash's DEBUG trap attributes a multi-line statement's execution to the line
+# where the statement starts; backslash continuation lines never receive their
+# own hit. To match the report's expectation that continuation lines are
+# covered, the start line's count is propagated forward across the
+# continuation chain (see #722).
 function bashunit::coverage::get_all_line_hits() {
   local file="$1"
 
@@ -1604,13 +1646,56 @@ function bashunit::coverage::get_all_line_hits() {
     return
   fi
 
-  # Extract all lines for this file, count occurrences of each line number
-  local count lineno
-  grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null |
-    cut -d: -f2 | sort | uniq -c |
-    while read -r count lineno; do
-      echo "${lineno}:${count}"
-    done
+  # Extract all lines for this file, count occurrences of each line number.
+  local -a counts=()
+  local count lineno maxln=0
+  while read -r count lineno; do
+    if [ -n "$lineno" ]; then
+      counts[lineno]=$count
+      [ "$lineno" -gt "$maxln" ] && maxln=$lineno
+    fi
+  done < <(grep "^${file}:" "$_BASHUNIT_COVERAGE_DATA_FILE" 2>/dev/null |
+    cut -d: -f2 | sort | uniq -c)
+
+  if [ "$maxln" -eq 0 ]; then
+    return
+  fi
+
+  # Read the source so continuation lines can be detected.
+  local -a src=()
+  local _i=0 _l
+  while IFS= read -r _l || [ -n "$_l" ]; do
+    src[_i]="$_l"
+    ((++_i))
+  done <"$file"
+
+  local total=$_i
+  [ "$maxln" -gt "$total" ] && total=$maxln
+
+  # Propagate each start line's count forward across its continuation chain.
+  local carry=0 idx h
+  for ((idx = 1; idx <= total; idx++)); do
+    h=${counts[idx]:-0}
+    if [ "$carry" -gt 0 ] && [ "$h" -lt "$carry" ]; then
+      h=$carry
+      counts[idx]=$h
+    fi
+    if [ "$h" -gt 0 ] && bashunit::coverage::_ends_with_continuation "${src[idx - 1]:-}"; then
+      carry=$h
+    else
+      carry=0
+    fi
+  done
+
+  local ln
+  for ((ln = 1; ln <= total; ln++)); do
+    [ "${counts[ln]:-0}" -gt 0 ] && echo "${ln}:${counts[ln]}"
+  done
+
+  # The for loop's exit status leaks the last `[ -gt ]` test, which is 1 when the
+  # final line has no hits; return 0 explicitly so callers under `set -e` (strict
+  # mode) don't treat a successful run as a failure (see #722).
+  return 0
 }
 
 # Get all test hits for a file in one pass (performance optimization)
@@ -2537,7 +2622,7 @@ EOF
     <div class="header-content">
       <div class="header-top">
         <div class="logo">
-          <img src="https://bashunit.typeddevs.com/logo.svg" alt="bashunit">
+          <img src="https://bashunit.com/logo.svg" alt="bashunit">
           <div class="logo-text">bashunit <span>coverage</span></div>
         </div>
 EOF
@@ -2717,10 +2802,10 @@ EOF
   <footer class="footer">
     <div class="footer-content">
       <span class="footer-text">Generated by</span>
-      <a href="https://bashunit.typeddevs.com" class="footer-link" target="_blank">bashunit</a>
+      <a href="https://bashunit.com" class="footer-link" target="_blank">bashunit</a>
       <span class="footer-divider"></span>
       <span class="footer-text">Documentation at</span>
-      <a href="https://bashunit.typeddevs.com/coverage" class="footer-link" target="_blank">bashunit.typeddevs.com/coverage</a>
+      <a href="https://bashunit.com/coverage" class="footer-link" target="_blank">bashunit.com/coverage</a>
     </div>
   </footer>
 </body>
@@ -3135,7 +3220,7 @@ EOF
   </div>
   <footer class="footer">
     <p class="footer-text">
-      Generated by <a href="https://bashunit.typeddevs.com" class="footer-link" target="_blank">bashunit</a>
+      Generated by <a href="https://bashunit.com" class="footer-link" target="_blank">bashunit</a>
     </p>
   </footer>
 </body>
@@ -3848,7 +3933,7 @@ Examples:
   bashunit doc contains               Show docs for 'contains' assertions
   bashunit init                       Initialize test directory
 
-More info: https://bashunit.typeddevs.com/command-line
+More info: https://bashunit.com/command-line
 EOF
 }
 
@@ -3880,6 +3965,7 @@ Options:
   --output <format>           Output format: tap (TAP version 13)
   -R, --run-all               Run all assertions (don't stop on first failure)
   -S, --stop-on-failure       Stop on first failure
+  --test-timeout <seconds>    Fail a test if it runs longer than N seconds (0 = off)
   -vvv, --verbose             Show execution details
   --debug [file]              Enable shell debug mode
   --no-output                 Suppress all output
@@ -4037,7 +4123,7 @@ Arguments:
 Note: You can also use 'bashunit test --assert <fn> <args>' (deprecated).
   The 'bashunit assert' subcommand is the recommended approach.
 
-More info: https://bashunit.typeddevs.com/standalone
+More info: https://bashunit.com/standalone
 EOF
 }
 
@@ -8608,6 +8694,147 @@ function bashunit::runner::render_running_file_header() {
   fi
 }
 
+# Result slots for the timeout-aware execution path (see run_with_timeout).
+_BASHUNIT_RUNNER_EXEC_OUT=""
+_BASHUNIT_RUNNER_TIMED_OUT="false"
+
+##
+# Runs a single test inside the capture subshell: sets up the EXIT trap that
+# encodes assertion counts/exit code, runs set_up, applies the shell mode and
+# finally invokes the test function. Meant to be called from a subshell (either
+# the `$(...)` capture or a backgrounded job), so its `set`/`trap`/`exit` calls
+# stay isolated. Emits the test stdout (with stderr merged) followed by the
+# encoded context from cleanup_on_exit.
+# Arguments: $1 test file, $2 function name, $@ test args
+##
+function bashunit::runner::execute_test_body() {
+  local test_file=$1
+  shift
+  local fn_name=$1
+  shift
+
+  # Save subshell stdout to FD 5 so the EXIT trap can restore it.
+  # When set -e kills the subshell during a redirected block in
+  # execute_test_hook, the redirect leaks into the EXIT trap,
+  # causing export_subshell_context output to be lost.
+  exec 5>&1
+  # shellcheck disable=SC2064
+  trap "exit_code=\$?; bashunit::runner::cleanup_on_exit \"$test_file\" \"\$exit_code\"" EXIT
+  bashunit::state::initialize_assertions_count
+
+  if bashunit::env::is_login_shell_enabled; then
+    bashunit::runner::source_login_shell_profiles
+  fi
+
+  # Enable coverage tracking early to include set_up/tear_down hooks
+  if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
+    bashunit::coverage::enable_trap
+  fi
+
+  # Run set_up and capture exit code without || to preserve errexit behavior
+  # shellcheck disable=SC2030
+  _BASHUNIT_SETUP_COMPLETED=false
+  local setup_exit_code=0
+  bashunit::runner::run_set_up "$test_file"
+  setup_exit_code=$?
+  _BASHUNIT_SETUP_COMPLETED=true
+  if [ $setup_exit_code -ne 0 ]; then
+    exit $setup_exit_code
+  fi
+
+  # Apply shell mode setting for test execution
+  if bashunit::env::is_strict_mode_enabled; then
+    set -eu
+    # Bash 3.0 ships a broken pipefail; only enable it where it is reliable.
+    if bashunit::runner::_supports_reliable_pipefail; then
+      set -o pipefail
+    else
+      set +o pipefail
+    fi
+  else
+    set +euo pipefail
+  fi
+
+  # 2>&1: Redirects the std-error (FD 2) to the std-output (FD 1).
+  # points to the original std-output.
+  "$fn_name" "$@" 2>&1
+}
+
+##
+# Prints an encoded subshell result for a test that timed out: empty assertion
+# counters and exit code 124 (the conventional "timed out" code, already mapped
+# by classify_kill_signal). The empty TEST_HOOK_MESSAGE/TITLE/OUTPUT fields would
+# base64-encode to an empty string anyway, so the line is emitted directly rather
+# than mutating the shared _BASHUNIT_* globals (it mirrors the layout produced by
+# bashunit::state::export_subshell_context). Bash 3.0+ compatible.
+##
+function bashunit::runner::build_timeout_result() {
+  printf '%s' "##ASSERTIONS_FAILED=0##ASSERTIONS_PASSED=0##ASSERTIONS_SKIPPED=0\
+##ASSERTIONS_INCOMPLETE=0##ASSERTIONS_SNAPSHOT=0##TEST_EXIT_CODE=124\
+##TEST_HOOK_FAILURE=##TEST_HOOK_MESSAGE=##TEST_TITLE=##TEST_OUTPUT=##"
+}
+
+##
+# Runs the test body with a watchdog that kills it after BASHUNIT_TEST_TIMEOUT
+# seconds. The body runs as a backgrounded job in its own process group (set -m)
+# so the watchdog can SIGTERM/SIGKILL the whole tree — a hanging test usually
+# blocks in a child process, which signalling the subshell alone cannot reach.
+# Writes the captured result to _BASHUNIT_RUNNER_EXEC_OUT and "true"/"false" to
+# _BASHUNIT_RUNNER_TIMED_OUT. Bash 3.0+ compatible (validated on Bash 3.2).
+# Arguments: $1 test file, $2 function name, $@ test args
+##
+function bashunit::runner::run_with_timeout() {
+  local test_file=$1
+  shift
+  local fn_name=$1
+  shift
+  local secs
+  secs=$(bashunit::env::test_timeout_secs)
+
+  # NOTE: these must NOT use bashunit::temp_file — that prefixes the current
+  # test id, and cleanup_on_exit (run inside the test subshell) would unlink
+  # them via cleanup_testcase_temp_files before we read them back here.
+  local tmp_dir="${BASHUNIT_TEMP_DIR:-${TMPDIR:-/tmp}}"
+  local out_file marker_file
+  out_file="$("$MKTEMP" "$tmp_dir/bashunit_timeout_out.XXXXXXX")"
+  marker_file="$("$MKTEMP" "$tmp_dir/bashunit_timeout_marker.XXXXXXX")"
+  rm -f "$marker_file"
+
+  # Both jobs run in their own process group (set -m) so each can be killed as a
+  # whole tree. The body MUST run in an explicit ( ) subshell: a backgrounded { }
+  # group does not run its EXIT trap on normal completion, which would drop the
+  # encoded assertion context. The watchdog's fds are detached from the caller so
+  # a lingering `sleep` can never hold a captured stdout pipe open.
+  set -m
+  (bashunit::runner::execute_test_body "$test_file" "$fn_name" "$@") >"$out_file" 2>&1 &
+  local test_pid=$!
+  (
+    sleep "$secs"
+    : >"$marker_file"
+    kill -TERM -"$test_pid" 2>/dev/null
+    sleep 0.3
+    kill -KILL -"$test_pid" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  local watchdog_pid=$!
+  set +m
+
+  wait "$test_pid" 2>/dev/null
+  # Tear down the watchdog group (its `sleep` child included) so it cannot fire
+  # late or block the caller.
+  kill -TERM -"$watchdog_pid" 2>/dev/null
+  wait "$watchdog_pid" 2>/dev/null
+
+  if [ -f "$marker_file" ]; then
+    _BASHUNIT_RUNNER_TIMED_OUT="true"
+    _BASHUNIT_RUNNER_EXEC_OUT="$(bashunit::runner::build_timeout_result)"
+  else
+    _BASHUNIT_RUNNER_TIMED_OUT="false"
+    _BASHUNIT_RUNNER_EXEC_OUT="$(cat "$out_file" 2>/dev/null)"
+  fi
+
+  rm -f "$out_file" "$marker_file"
+}
+
 function bashunit::runner::run_test() {
   local start_time
   start_time=$(bashunit::clock::now)
@@ -8633,54 +8860,15 @@ function bashunit::runner::run_test() {
   # This means that FD 3 now points to wherever the std-output was pointing.
   exec 3>&1
 
-  local test_execution_result=$(
-    # Save subshell stdout to FD 5 so the EXIT trap can restore it.
-    # When set -e kills the subshell during a redirected block in
-    # execute_test_hook, the redirect leaks into the EXIT trap,
-    # causing export_subshell_context output to be lost.
-    exec 5>&1
-    # shellcheck disable=SC2064
-    trap "exit_code=\$?; bashunit::runner::cleanup_on_exit \"$test_file\" \"\$exit_code\"" EXIT
-    bashunit::state::initialize_assertions_count
-
-    if bashunit::env::is_login_shell_enabled; then
-      bashunit::runner::source_login_shell_profiles
-    fi
-
-    # Enable coverage tracking early to include set_up/tear_down hooks
-    if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
-      bashunit::coverage::enable_trap
-    fi
-
-    # Run set_up and capture exit code without || to preserve errexit behavior
-    # shellcheck disable=SC2030
-    _BASHUNIT_SETUP_COMPLETED=false
-    local setup_exit_code=0
-    bashunit::runner::run_set_up "$test_file"
-    setup_exit_code=$?
-    _BASHUNIT_SETUP_COMPLETED=true
-    if [ $setup_exit_code -ne 0 ]; then
-      exit $setup_exit_code
-    fi
-
-    # Apply shell mode setting for test execution
-    if bashunit::env::is_strict_mode_enabled; then
-      set -eu
-      # Bash 3.0 ships a broken pipefail; only enable it where it is reliable.
-      if bashunit::runner::_supports_reliable_pipefail; then
-        set -o pipefail
-      else
-        set +o pipefail
-      fi
-    else
-      set +euo pipefail
-    fi
-
-    # 2>&1: Redirects the std-error (FD 2) to the std-output (FD 1).
-    # points to the original std-output.
-    "$fn_name" "$@" 2>&1
-
-  )
+  local test_execution_result
+  local timed_out="false"
+  if bashunit::env::is_test_timeout_enabled; then
+    bashunit::runner::run_with_timeout "$test_file" "$fn_name" "$@"
+    test_execution_result="$_BASHUNIT_RUNNER_EXEC_OUT"
+    timed_out="$_BASHUNIT_RUNNER_TIMED_OUT"
+  else
+    test_execution_result=$(bashunit::runner::execute_test_body "$test_file" "$fn_name" "$@")
+  fi
 
   # Closes FD 3, which was used temporarily to hold the original stdout.
   exec 3>&-
@@ -8715,6 +8903,10 @@ function bashunit::runner::run_test() {
   local runtime_error
   runtime_error=$(bashunit::runner::detect_runtime_error "$runtime_output")
 
+  # parse_result accumulates _BASHUNIT_TEST_EXIT_CODE; reset it so each test's
+  # exit code is read in isolation (a non-zero/timed-out test must not poison
+  # the next one).
+  _BASHUNIT_TEST_EXIT_CODE=0
   bashunit::runner::parse_result "$fn_name" "$test_execution_result" "$@"
 
   local test_exit_code="$_BASHUNIT_TEST_EXIT_CODE"
@@ -8766,6 +8958,11 @@ function bashunit::runner::run_test() {
         '' | *[Kk]illed* | *[Tt]erminated*) error_message="$kill_message" ;;
         esac
       fi
+    fi
+
+    # A test that exceeded BASHUNIT_TEST_TIMEOUT gets a clear, specific message.
+    if [ "$timed_out" = "true" ]; then
+      error_message="Test timed out after $(bashunit::env::test_timeout_secs)s"
     fi
 
     bashunit::console_results::print_error_test "$failure_function" "$error_message" "$runtime_output"
@@ -10934,7 +11131,7 @@ function test_backup_failure_when_source_missing() {
 ║    ✓ Test exit codes                                           ║
 ║                                                                ║
 ║  Next steps:                                                   ║
-║    • Explore https://bashunit.typeddevs.com                    ║
+║    • Explore https://bashunit.com                              ║
 ║    • Check out /common-patterns for more examples              ║
 ║    • Start testing your own bash scripts!                      ║
 ╚════════════════════════════════════════════════════════════════╝
@@ -10951,6 +11148,10 @@ EOF
 # During build, this function is replaced with actual content.
 function bashunit::doc::get_embedded_docs() {
   cat <<'__BASHUNIT_DOCS_EOF__'
+---
+description: "Complete reference of bashunit assertions for testing bash scripts: assert equals, contains, matches, exit codes, files, arrays and more, with examples."
+---
+
 # Assertions
 
 When creating tests, you'll need to verify your commands and functions.
@@ -10987,6 +11188,7 @@ function mock_true() {
 function mock_false() {
   return 1
 }
+```
 :::
 
 ## assert_false
@@ -12452,6 +12654,13 @@ function test_failure() {
 }
 ```
 :::
+
+## Related
+
+- [Custom asserts](/custom-asserts) — build your own domain-specific assertions
+- [Test doubles](/test-doubles) — mocks and spies for isolated tests
+- [Data providers](/data-providers) — run the same assertions over many inputs
+- [Globals](/globals) — `bashunit::` helper functions
 __BASHUNIT_DOCS_EOF__
 }
 
@@ -12464,6 +12673,12 @@ function bashunit::doc::print_asserts() {
   local line
   while IFS='' read -r line || [ -n "$line" ]; do
     fn=$(echo "$line" | sed -n 's/^## \([A-Za-z0-9_]*\).*/\1/p')
+    # Only treat assertion headings as doc entries; skip prose sections
+    # like "## Related" that are part of the documentation page but not asserts.
+    case "$fn" in
+    assert* | bashunit*) ;;
+    *) fn="" ;;
+    esac
     if [ -n "$fn" ]; then
       local _match=0
       if [ -z "$filter" ]; then
@@ -12608,6 +12823,10 @@ function bashunit::main::cmd_test() {
       ;;
     --no-parallel)
       export BASHUNIT_PARALLEL_RUN=false
+      ;;
+    --test-timeout)
+      export BASHUNIT_TEST_TIMEOUT="$2"
+      shift
       ;;
     -w | --watch)
       export BASHUNIT_WATCH_MODE=true
@@ -13553,7 +13772,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.39.1"
+declare -r BASHUNIT_VERSION="0.40.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
