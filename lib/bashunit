@@ -89,6 +89,16 @@ export -f bashunit::check_os::is_nixos
 # Strip ANSI escape codes and control characters
 function bashunit::str::strip_ansi() {
   local input="$1"
+  # Fast path: plain text with no backslash (echo -e no-op) and no control
+  # bytes (nothing for sed to strip) passes through unchanged. Avoids forking
+  # echo+sed on the common case, which runs twice per assert_equals.
+  case "$input" in
+  *\\* | *[[:cntrl:]]*) ;;
+  *)
+    echo -e "$input"
+    return
+    ;;
+  esac
   echo -e "$input" | sed -E 's/\x1B\[[0-9;]*[mK]//g; s/[[:cntrl:]]//g'
 }
 
@@ -114,41 +124,42 @@ function bashunit::str::rpad() {
     is_truncated=true
   fi
 
-  # Rebuild the text with ANSI codes intact, preserving the truncation
-  local result_left_text=""
-  local i=0
-  local j=0
-  while [ $i -lt ${#clean_left_text} ] && [ $j -lt ${#left_text} ]; do
-    local char="${clean_left_text:$i:1}"
-    local original_char="${left_text:$j:1}"
-
-    # If the current character is part of an ANSI sequence, skip it and copy it
-    if [ "$original_char" = $'\x1b' ]; then
-      while [ "${left_text:$j:1}" != "m" ] && [ $j -lt ${#left_text} ]; do
-        result_left_text="$result_left_text${left_text:$j:1}"
-        ((++j))
-      done
-      result_left_text="$result_left_text${left_text:$j:1}" # Append the final 'm'
-      ((++j))
-    elif [ "$char" = "$original_char" ]; then
-      # Match the actual character
-      result_left_text="$result_left_text$char"
-      ((++i))
-      ((++j))
-    else
-      ((++j))
-    fi
-  done
-
+  local result_left_text
   local remaining_space
   if $is_truncated; then
+    # Rebuild char-by-char with ANSI codes intact, applying the truncation.
+    result_left_text=""
+    local i=0
+    local j=0
+    while [ $i -lt ${#clean_left_text} ] && [ $j -lt ${#left_text} ]; do
+      local char="${clean_left_text:$i:1}"
+      local original_char="${left_text:$j:1}"
+
+      # If the current character is part of an ANSI sequence, skip it and copy it
+      if [ "$original_char" = $'\x1b' ]; then
+        while [ "${left_text:$j:1}" != "m" ] && [ $j -lt ${#left_text} ]; do
+          result_left_text="$result_left_text${left_text:$j:1}"
+          ((++j))
+        done
+        result_left_text="$result_left_text${left_text:$j:1}" # Append the final 'm'
+        ((++j))
+      elif [ "$char" = "$original_char" ]; then
+        # Match the actual character
+        result_left_text="$result_left_text$char"
+        ((++i))
+        ((++j))
+      else
+        ((++j))
+      fi
+    done
     result_left_text="$result_left_text..."
     # 1: due to a blank space
     # 3: due to the appended ...
     remaining_space=$((width_padding - ${#clean_left_text} - ${#right_word} - 1 - 3))
   else
-    # Copy any remaining characters after the truncation point
-    result_left_text="$result_left_text${left_text:$j}"
+    # Not truncated: the visible text fits, so the original (ANSI intact) is
+    # already correct — skip the per-character rebuild entirely.
+    result_left_text="$left_text"
     remaining_space=$((width_padding - ${#clean_left_text} - ${#right_word} - 1))
   fi
 
@@ -411,6 +422,46 @@ function bashunit::math::calculate() {
   echo "$result"
 }
 
+##
+# Deterministically shuffles stdin lines (one item per line) with a Fisher-Yates
+# driven by a seeded LCG (glibc constants). Same seed + same input always yields
+# the same permutation, so a randomized run can be replayed via its seed.
+# Self-contained (seeds a local state), so it is safe inside subshells/pipes and
+# in --parallel where each test file shuffles in its own forked shell.
+# Arguments: $1 - integer seed (non-numeric treated as 0)
+##
+function bashunit::math::shuffle() {
+  local seed=$1
+  case "$seed" in '' | *[!0-9]*) seed=0 ;; esac
+  local state=$((seed & 2147483647))
+
+  local -a items=()
+  local n=0
+  local line
+  # `|| [ -n "$line" ]` keeps the final item when stdin has no trailing newline.
+  while IFS= read -r line || [ -n "$line" ]; do
+    items[n]=$line
+    n=$((n + 1))
+  done
+
+  local i j tmp
+  i=$((n - 1))
+  while [ "$i" -gt 0 ]; do
+    state=$(((1103515245 * state + 12345) & 2147483647))
+    j=$((state % (i + 1)))
+    tmp=${items[i]}
+    items[i]=${items[j]}
+    items[j]=$tmp
+    i=$((i - 1))
+  done
+
+  local k=0
+  while [ "$k" -lt "$n" ]; do
+    printf '%s\n' "${items[k]}"
+    k=$((k + 1))
+  done
+}
+
 # parallel.sh
 
 function bashunit::parallel::aggregate_test_results() {
@@ -631,6 +682,8 @@ _BASHUNIT_DEFAULT_DEV_LOG=""
 _BASHUNIT_DEFAULT_LOG_JUNIT=""
 _BASHUNIT_DEFAULT_LOG_GHA=""
 _BASHUNIT_DEFAULT_REPORT_HTML=""
+_BASHUNIT_DEFAULT_REPORT_TAP=""
+_BASHUNIT_DEFAULT_REPORT_JSON=""
 
 # Coverage defaults (following kcov, bashcov, SimpleCov conventions)
 _BASHUNIT_DEFAULT_COVERAGE="false"
@@ -649,6 +702,8 @@ _BASHUNIT_DEFAULT_COVERAGE_THRESHOLD_HIGH="80"
 : "${BASHUNIT_LOG_JUNIT:=${LOG_JUNIT:=$_BASHUNIT_DEFAULT_LOG_JUNIT}}"
 : "${BASHUNIT_LOG_GHA:=${LOG_GHA:=$_BASHUNIT_DEFAULT_LOG_GHA}}"
 : "${BASHUNIT_REPORT_HTML:=${REPORT_HTML:=$_BASHUNIT_DEFAULT_REPORT_HTML}}"
+: "${BASHUNIT_REPORT_TAP:=${REPORT_TAP:=$_BASHUNIT_DEFAULT_REPORT_TAP}}"
+: "${BASHUNIT_REPORT_JSON:=${REPORT_JSON:=$_BASHUNIT_DEFAULT_REPORT_JSON}}"
 
 # Coverage
 : "${BASHUNIT_COVERAGE:=${COVERAGE:=$_BASHUNIT_DEFAULT_COVERAGE}}"
@@ -687,6 +742,15 @@ _BASHUNIT_DEFAULT_PROFILE="false"
 _BASHUNIT_DEFAULT_PROFILE_COUNT="10"
 # Per-test timeout in seconds (0 = disabled)
 _BASHUNIT_DEFAULT_TEST_TIMEOUT="0"
+# Extra attempts for a failed test (0 = no retry)
+_BASHUNIT_DEFAULT_RETRY="0"
+# Randomize test execution order to surface inter-test coupling
+_BASHUNIT_DEFAULT_RANDOM_ORDER="false"
+# Seed for --random-order (empty = generate one and print it)
+_BASHUNIT_DEFAULT_SEED=""
+# Shard <index>/<total> to split the suite across runners (empty = disabled)
+_BASHUNIT_DEFAULT_SHARD_INDEX=""
+_BASHUNIT_DEFAULT_SHARD_TOTAL=""
 
 : "${BASHUNIT_PARALLEL_RUN:=${PARALLEL_RUN:=$_BASHUNIT_DEFAULT_PARALLEL_RUN}}"
 : "${BASHUNIT_PARALLEL_JOBS:=0}"
@@ -713,6 +777,15 @@ _BASHUNIT_DEFAULT_TEST_TIMEOUT="0"
 : "${BASHUNIT_PROFILE:=${PROFILE:=$_BASHUNIT_DEFAULT_PROFILE}}"
 : "${BASHUNIT_PROFILE_COUNT:=${PROFILE_COUNT:=$_BASHUNIT_DEFAULT_PROFILE_COUNT}}"
 : "${BASHUNIT_TEST_TIMEOUT:=${TEST_TIMEOUT:=$_BASHUNIT_DEFAULT_TEST_TIMEOUT}}"
+# No bare RETRY alias on purpose: it is too generic and would pick up unrelated
+# environment values. Only BASHUNIT_RETRY configures retries.
+: "${BASHUNIT_RETRY:=$_BASHUNIT_DEFAULT_RETRY}"
+# Single alias on purpose: bare RANDOM_ORDER/SEED are too generic and would pick
+# up unrelated environment values.
+: "${BASHUNIT_RANDOM_ORDER:=$_BASHUNIT_DEFAULT_RANDOM_ORDER}"
+: "${BASHUNIT_SEED:=$_BASHUNIT_DEFAULT_SEED}"
+: "${BASHUNIT_SHARD_INDEX:=$_BASHUNIT_DEFAULT_SHARD_INDEX}"
+: "${BASHUNIT_SHARD_TOTAL:=$_BASHUNIT_DEFAULT_SHARD_TOTAL}"
 # Support NO_COLOR standard (https://no-color.org)
 if [ -n "${NO_COLOR:-}" ]; then
   BASHUNIT_NO_COLOR="true"
@@ -740,6 +813,43 @@ function bashunit::env::is_test_timeout_enabled() {
 ##
 function bashunit::env::test_timeout_secs() {
   printf '%s' "${BASHUNIT_TEST_TIMEOUT:-0}"
+}
+
+##
+# Prints the number of extra attempts for a failed test (0 = no retry).
+# A non-numeric value is treated as 0.
+##
+function bashunit::env::retry_count() {
+  case "${BASHUNIT_RETRY:-0}" in
+  '' | *[!0-9]*)
+    printf '%s' "0"
+    return
+    ;;
+  esac
+  printf '%s' "${BASHUNIT_RETRY:-0}"
+}
+
+function bashunit::env::is_random_order_enabled() {
+  [ "$BASHUNIT_RANDOM_ORDER" = "true" ]
+}
+
+##
+# Prints the configured random-order seed (empty when none set yet).
+##
+function bashunit::env::seed() {
+  printf '%s' "${BASHUNIT_SEED:-}"
+}
+
+function bashunit::env::is_shard_enabled() {
+  [ -n "${BASHUNIT_SHARD_INDEX:-}" ] && [ -n "${BASHUNIT_SHARD_TOTAL:-}" ]
+}
+
+function bashunit::env::shard_index() {
+  printf '%s' "${BASHUNIT_SHARD_INDEX:-}"
+}
+
+function bashunit::env::shard_total() {
+  printf '%s' "${BASHUNIT_SHARD_TOTAL:-}"
 }
 
 function bashunit::env::is_show_header_enabled() {
@@ -910,6 +1020,7 @@ function bashunit::env::print_verbose() {
     "BASHUNIT_LOG_JUNIT"
     "BASHUNIT_LOG_GHA"
     "BASHUNIT_REPORT_HTML"
+    "BASHUNIT_REPORT_TAP"
     "BASHUNIT_PARALLEL_RUN"
     "BASHUNIT_SHOW_HEADER"
     "BASHUNIT_HEADER_ASCII_ART"
@@ -3261,11 +3372,15 @@ function bashunit::clock::_choose_impl() {
   if ! bashunit::check_os::is_macos && ! bashunit::check_os::is_alpine; then
     local result
     result=$(date +%s%N 2>/dev/null)
-    if [ "$(echo "$result" | "$GREP" -cv 'N' || true)" -gt 0 ] \
-      && [ "$(echo "$result" | "$GREP" -cE '^[0-9]+$' || true)" -gt 0 ]; then
+    # A pure-digit result means %N expanded; a literal "N" (unsupported date)
+    # contains a non-digit, so the digits-only check alone is sufficient.
+    case "$result" in
+    '' | *[!0-9]*) ;;
+    *)
       _BASHUNIT_CLOCK_NOW_IMPL="date"
       return 0
-    fi
+      ;;
+    esac
   fi
 
   # 3. Try Perl with Time::HiRes
@@ -3863,6 +3978,16 @@ function bashunit::console_header::print_version_with_env() {
   fi
 }
 
+##
+# Prints the seed used to randomize test order, so a failing run can be replayed
+# with `--seed <n>`.
+##
+function bashunit::console_header::print_random_order_seed() {
+  local seed=$1
+  printf "%sRandomized with seed:%s %s\n" \
+    "${_BASHUNIT_COLOR_INCOMPLETE}" "${_BASHUNIT_COLOR_DEFAULT}" "$seed"
+}
+
 function bashunit::console_header::print_version() {
   local filter=${1:-}
   shift || true
@@ -3960,12 +4085,18 @@ Options:
   -p, --parallel              Run tests in parallel (unlimited concurrency)
   --no-parallel               Run tests sequentially
   -r, --report-html <file>    Write HTML report
+  --report-tap <file>         Write TAP version 13 report
+  --report-json <file>        Write machine-readable JSON report
   -s, --simple                Simple output (dots)
   --detailed                  Detailed output (default)
   --output <format>           Output format: tap (TAP version 13)
   -R, --run-all               Run all assertions (don't stop on first failure)
   -S, --stop-on-failure       Stop on first failure
   --test-timeout <seconds>    Fail a test if it runs longer than N seconds (0 = off)
+  --retry <n>                 Re-run a failed test up to N extra times (0 = off)
+  --random-order              Randomize test execution order
+  --seed <n>                  Seed for --random-order (reproducible shuffle)
+  --shard <i>/<n>             Run shard i of n (split the suite across runners)
   -vvv, --verbose             Show execution details
   --debug [file]              Enable shell debug mode
   --no-output                 Suppress all output
@@ -4398,6 +4529,10 @@ function bashunit::console_results::print_successful_test() {
       "$_BASHUNIT_COLOR_PASSED" "$_BASHUNIT_COLOR_DEFAULT" "$test_name" "$quoted_args")
   fi
 
+  # Retry annotation (e.g. " (retry 1/2)") set by the runner when a test only
+  # passed after retrying; empty in the common no-retry path.
+  line="${line}${_BASHUNIT_RETRY_NOTE:-}"
+
   local full_line=$line
   if bashunit::env::is_show_execution_time_enabled; then
     local time_display
@@ -4415,7 +4550,7 @@ function bashunit::console_results::print_successful_test() {
     else
       time_display="${duration}ms"
     fi
-    full_line="$(printf "%s\n" "$(bashunit::str::rpad "$line" "$time_display")")"
+    full_line="$(bashunit::str::rpad "$line" "$time_display")"
   fi
 
   bashunit::state::print_line "successful" "$full_line"
@@ -4625,7 +4760,7 @@ function bashunit::console_results::print_risky_test() {
   if bashunit::env::is_show_execution_time_enabled; then
     local time_display
     time_display=$(bashunit::console_results::format_duration "$duration")
-    full_line="$(printf "%s\n" "$(bashunit::str::rpad "$line" "$time_display")")"
+    full_line="$(bashunit::str::rpad "$line" "$time_display")"
   fi
 
   bashunit::state::print_line "risky" "$full_line"
@@ -4789,14 +4924,14 @@ function bashunit::helper::find_test_function_name() {
   local i
   for ((i = 0; i < ${#FUNCNAME[@]}; i++)); do
     local fn="${FUNCNAME[$i]}"
-    # Check if function starts with "test_" or "test" followed by uppercase
-    local _re='^test[A-Z]'
-    local _is_test=false
-    case "$fn" in test_*) _is_test=true ;; esac
-    if [ "$_is_test" = true ] || [ "$(echo "$fn" | "$GREP" -cE "$_re" || true)" -gt 0 ]; then
+    # Check if function starts with "test_" or "test" followed by uppercase.
+    # Pure-bash globs avoid forking echo+grep on every call-stack frame (hot path).
+    case "$fn" in
+    test_* | test[A-Z]*)
       echo "$fn"
       return
-    fi
+      ;;
+    esac
   done
   # No test function found, use fallback (caller of the assertion)
   # FUNCNAME[0] = bashunit::helper::find_test_function_name
@@ -4873,6 +5008,17 @@ function bashunit::helper::escape_single_quotes() {
 function bashunit::helper::interpolate_function_name() {
   local function_name="$1"
   shift
+
+  # Placeholders look like "::N::", so a name without "::" can never interpolate.
+  # Short-circuit to skip the per-arg escape_single_quotes forks in that case.
+  case "$function_name" in
+  *::*) ;;
+  *)
+    echo "$function_name"
+    return
+    ;;
+  esac
+
   local -a args
   local args_count=$#
   args=("$@")
@@ -5256,17 +5402,25 @@ function bashunit::helper::parse_file_path_filter() {
     filter="${input#*::}"
     ;;
   *)
-    # Check for :number syntax (line number filter)
-    local _re='^(.+):([0-9]+)$'
-    if [ "$(echo "$input" | "$GREP" -cE "$_re" || true)" -gt 0 ]; then
-      file_path=$(echo "$input" | sed -nE 's/^(.+):([0-9]+)$/\1/p')
-      local line_number
-      line_number=$(echo "$input" | sed -nE 's/^(.+):([0-9]+)$/\2/p')
-      # Line number will be resolved to function name later
-      filter="__line__:${line_number}"
-    else
+    # Check for :number syntax (line number filter): a non-empty path, a
+    # colon, then digits to the end of string. Pure-bash parameter expansion
+    # avoids forking grep+sed.
+    local line_number="${input##*:}"
+    local maybe_path="${input%:*}"
+    case "$line_number" in
+    '' | *[!0-9]*)
       file_path="$input"
-    fi
+      ;;
+    *)
+      if [ -n "$maybe_path" ] && [ "$maybe_path" != "$input" ]; then
+        # Line number will be resolved to function name later
+        file_path="$maybe_path"
+        filter="__line__:${line_number}"
+      else
+        file_path="$input"
+      fi
+      ;;
+    esac
     ;;
   esac
 
@@ -5483,6 +5637,89 @@ function bashunit::upgrade::upgrade() {
   fi
 
   echo "> bashunit upgraded successfully to latest version $latest_tag"
+}
+
+# watch.sh
+
+# bashunit watch mode
+# Watches test and source files for changes and re-runs tests automatically.
+# Requires: inotifywait (inotify-tools) on Linux, or fswatch on macOS.
+
+function bashunit::watch::_command_exists() {
+  command -v "$1" &>/dev/null
+}
+
+function bashunit::watch::is_available() {
+  if bashunit::watch::_command_exists inotifywait; then
+    echo "inotifywait"
+  elif bashunit::watch::_command_exists fswatch; then
+    echo "fswatch"
+  else
+    echo ""
+  fi
+}
+
+function bashunit::watch::run() {
+  local path="${1:-.}"
+  shift
+  local extra_args=("$@")
+
+  local tool
+  tool=$(bashunit::watch::is_available)
+
+  if [ -z "$tool" ]; then
+    printf "%sError: watch mode requires 'inotifywait' (Linux) or 'fswatch' (macOS).%s\n" \
+      "${_BASHUNIT_COLOR_FAILED}" "${_BASHUNIT_COLOR_DEFAULT}"
+    printf "  Linux:  sudo apt install inotify-tools\n"
+    printf "  macOS:  brew install fswatch\n"
+    exit 1
+  fi
+
+  printf "%sbashunit --watch%s  watching: %s\n\n" \
+    "${_BASHUNIT_COLOR_PASSED}" "${_BASHUNIT_COLOR_DEFAULT}" "$path"
+
+  # Run once immediately before entering the watch loop
+  bashunit::watch::run_tests "$path" "${extra_args[@]+"${extra_args[@]}"}"
+
+  while true; do
+    bashunit::watch::wait_for_change "$tool" "$path"
+    printf "\n%s[change detected — re-running tests]%s\n\n" \
+      "${_BASHUNIT_COLOR_SKIPPED}" "${_BASHUNIT_COLOR_DEFAULT}"
+    bashunit::watch::run_tests "$path" "${extra_args[@]+"${extra_args[@]}"}"
+  done
+}
+
+function bashunit::watch::run_tests() {
+  local path="$1"
+  shift
+  # Re-invoke bashunit test in a subshell so state resets cleanly each run
+  "$BASHUNIT_ROOT_DIR/bashunit" test "$path" "$@"
+  return $?
+}
+
+function bashunit::watch::wait_for_change() {
+  local tool="$1"
+  local path="$2"
+
+  case "$tool" in
+  inotifywait)
+    inotifywait \
+      --quiet \
+      --recursive \
+      --event modify,create,delete,move \
+      --include '.*\.sh$' \
+      "$path" 2>/dev/null
+    ;;
+  fswatch)
+    # fswatch outputs one line per event; we only need the first one
+    fswatch \
+      --recursive \
+      --include='.*\.sh$' \
+      --exclude='.*' \
+      --one-event \
+      "$path" 2>/dev/null
+    ;;
+  esac
 }
 
 # assertions.sh
@@ -5743,11 +5980,6 @@ function assert_contains() {
   local expected="$1"
   local -a actual_arr
   actual_arr=("${@:2}")
-  local label_override=""
-  local label_override=""
-  local label_override=""
-  local label_override=""
-  local label_override=""
   local label_override=""
   local actual
   actual=$(printf '%s\n' "${actual_arr[@]}")
@@ -6287,6 +6519,61 @@ function assert_greater_or_equal_than() {
   bashunit::state::add_assertions_passed
 }
 
+##
+# Whether a value looks like a number (integer or decimal, optional sign).
+# Returns: 0 when numeric, 1 otherwise.
+##
+function bashunit::assert::_is_numeric() {
+  local value="$1"
+  case "$value" in
+  '' | *[!0-9.+-]*) return 1 ;;
+  esac
+  # Must contain at least one digit (rejects ".", "-", "+").
+  case "$value" in
+  *[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+
+##
+# Asserts the actual value is within +/- delta of the expected value:
+# |actual - expected| <= delta. Supports floats via bashunit::math::calculate.
+# Arguments: $1 - expected, $2 - actual, $3 - delta
+##
+function assert_within_delta() {
+  bashunit::assert::should_skip && return 0
+
+  local expected="$1"
+  local actual="$2"
+  local delta="$3"
+  local label
+  label="$(bashunit::assert::label)"
+
+  if ! bashunit::assert::_is_numeric "$expected" ||
+    ! bashunit::assert::_is_numeric "$actual" ||
+    ! bashunit::assert::_is_numeric "$delta"; then
+    bashunit::assert::mark_failed
+    bashunit::console_results::print_failed_test \
+      "${label}" "${expected} ${actual} ${delta}" "to all be numeric" "but got a non-numeric value"
+    return
+  fi
+
+  local diff
+  diff="$(bashunit::math::calculate "$expected - $actual")"
+  case "$diff" in
+  -*) diff="${diff#-}" ;;
+  esac
+
+  if [ "$(bashunit::math::calculate "$diff <= $delta")" != "1" ]; then
+    bashunit::assert::mark_failed
+    bashunit::console_results::print_failed_test \
+      "${label}" "${actual}" "to be within ${delta} of" "${expected}"
+    return
+  fi
+
+  bashunit::state::add_assertions_passed
+}
+
 function assert_line_count() {
   bashunit::assert::should_skip && return 0
   local IFS=$' \t\n'
@@ -6301,11 +6588,19 @@ function assert_line_count() {
   if [ -z "$input_str" ]; then
     local actual=0
   else
-    local actual
-    actual=$(echo "$input_str" | wc -l | tr -d '[:blank:]')
-    local additional_new_lines
-    additional_new_lines=$(grep -o '\\n' <<<"$input_str" | wc -l | tr -d '[:blank:]')
-    actual=$((actual + additional_new_lines))
+    # Count lines without forking: one line plus each real newline, plus each
+    # literal "\n" (backslash-n) escape, which counts as an extra line break.
+    local actual=1
+    local _rest="$input_str"
+    while [ "$_rest" != "${_rest#*$'\n'}" ]; do
+      _rest="${_rest#*$'\n'}"
+      actual=$((actual + 1))
+    done
+    _rest="$input_str"
+    while [ "$_rest" != "${_rest#*\\n}" ]; do
+      _rest="${_rest#*\\n}"
+      actual=$((actual + 1))
+    done
   fi
 
   if [ "$expected" != "$actual" ]; then
@@ -6482,6 +6777,30 @@ function assert_array_contains() {
     return
     ;;
   esac
+
+  bashunit::state::add_assertions_passed
+}
+
+function assert_array_length() {
+  bashunit::assert::should_skip && return 0
+
+  local expected="$1"
+  local test_fn
+  test_fn="$(bashunit::helper::find_test_function_name)"
+  local label
+  label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+  shift
+
+  # Use $# / $* rather than building an array: on Bash 3.0 under `set -u`,
+  # expanding "$@" into an array with zero elements is an unbound-variable error.
+  local actual_length="$#"
+
+  if [ "$expected" != "$actual_length" ]; then
+    bashunit::assert::mark_failed
+    bashunit::console_results::print_failed_test \
+      "${label}" "$*" "to have length ${expected}" "but got ${actual_length}"
+    return
+  fi
 
   bashunit::state::add_assertions_passed
 }
@@ -6951,6 +7270,57 @@ function assert_file_not_contains() {
     bashunit::assert::mark_failed
 
     bashunit::console_results::print_failed_test "${label}" "${file}" "to not contain" "${string}"
+    return
+  fi
+
+  bashunit::state::add_assertions_passed
+}
+
+##
+# Normalizes an octal file mode to its decimal value, dropping leading zeros
+# (so "0755" and "755" compare equal). Echoes nothing on invalid octal input.
+# Arguments: $1 - octal mode string
+##
+function bashunit::assert::_octal_to_decimal() {
+  local mode="$1"
+  case "$mode" in
+  '' | *[!0-7]*) return 1 ;;
+  esac
+  printf '%d' "$((8#$mode))"
+}
+
+##
+# Asserts a file has the expected octal permission mode (e.g. "644", "0755").
+# Arguments: $1 - expected octal mode, $2 - file path
+##
+function assert_file_permissions() {
+  bashunit::assert::should_skip && return 0
+
+  local expected="$1"
+  local file="$2"
+  local test_fn
+  test_fn="$(bashunit::helper::find_test_function_name)"
+  local label
+  label="$(bashunit::helper::normalize_test_function_name "$test_fn")"
+
+  if [ ! -e "$file" ]; then
+    bashunit::assert::mark_failed
+    bashunit::console_results::print_failed_test \
+      "${label}" "${file}" "to have permissions ${expected}" "but the file does not exist"
+    return
+  fi
+
+  local actual
+  actual="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null)"
+
+  local expected_dec actual_dec
+  expected_dec="$(bashunit::assert::_octal_to_decimal "$expected")"
+  actual_dec="$(bashunit::assert::_octal_to_decimal "$actual")"
+
+  if [ "$expected_dec" != "$actual_dec" ]; then
+    bashunit::assert::mark_failed
+    bashunit::console_results::print_failed_test \
+      "${label}" "${file}" "to have permissions ${expected}" "but got ${actual}"
     return
   fi
 
@@ -7433,10 +7803,15 @@ function assert_have_been_called_with() {
   shift
 
   local index=""
-  if [ "$(echo "${!#}" | "$GREP" -cE '^[0-9]+$' || true)" -gt 0 ]; then
+  # A trailing all-digits arg selects the nth recorded call. Pure-bash glob
+  # avoids forking echo+grep on every assertion.
+  case "${!#}" in
+  '' | *[!0-9]*) ;;
+  *)
     index=${!#}
     set -- "${@:1:$#-1}"
-  fi
+    ;;
+  esac
 
   local expected="$*"
 
@@ -7576,7 +7951,9 @@ function bashunit::reports::add_test() {
   {
     [ -n "${BASHUNIT_LOG_JUNIT:-}" ] ||
       [ -n "${BASHUNIT_REPORT_HTML:-}" ] ||
-      [ -n "${BASHUNIT_LOG_GHA:-}" ]
+      [ -n "${BASHUNIT_LOG_GHA:-}" ] ||
+      [ -n "${BASHUNIT_REPORT_TAP:-}" ] ||
+      [ -n "${BASHUNIT_REPORT_JSON:-}" ]
   } || return 0
 
   local file="$1"
@@ -7611,6 +7988,20 @@ function bashunit::reports::__xml_escape() {
     | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
     | tr -d '\000-\010\013\014\016-\037' \
     | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
+}
+
+# Escapes a string for embedding in a JSON string literal (pure Bash, no jq).
+# Strips ANSI/control chars that cannot appear inline, keeps \t\r\n as escapes.
+function bashunit::reports::__json_escape() {
+  local text="$1"
+  text=$(printf '%s' "$text" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -d '\000-\010\013\014\016-\037')
+  # Backslash first so escapes added below are not doubled.
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\r'/\\r}"
+  text="${text//$'\n'/\\n}"
+  printf '%s' "$text"
 }
 
 function bashunit::reports::generate_junit_xml() {
@@ -7663,6 +8054,107 @@ function bashunit::reports::generate_junit_xml() {
 
     echo "  </testsuite>"
     echo "</testsuites>"
+  } >"$output_file"
+}
+
+##
+# Prepares a failure message for a TAP YAML diagnostic block: strips ANSI escape
+# sequences, collapses newlines to spaces and doubles single quotes so the value
+# is safe inside a YAML single-quoted scalar. Bash 3.0+ compatible.
+##
+function bashunit::reports::__tap_message() {
+  echo "$1" \
+    | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+    | tr '\n' ' ' \
+    | sed -e "s/'/''/g"
+}
+
+##
+# Writes results in TAP version 13 format (https://testanything.org).
+# Passing/snapshot -> "ok", failed -> "not ok" with a YAML diagnostic,
+# skipped/risky -> "# SKIP", incomplete -> "# TODO".
+# Arguments: $1 - output file
+##
+function bashunit::reports::generate_report_tap() {
+  local output_file="$1"
+  local total="${#_BASHUNIT_REPORTS_TEST_NAMES[@]}"
+
+  {
+    echo "TAP version 13"
+    echo "1..$total"
+
+    local i seq=0
+    for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
+      seq=$((seq + 1))
+      local name="${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
+      local status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
+      local failure_message="${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}"
+
+      case "$status" in
+      failed)
+        echo "not ok $seq - $name"
+        echo "  ---"
+        echo "  message: '$(bashunit::reports::__tap_message "$failure_message")'"
+        echo "  ..."
+        ;;
+      skipped)
+        echo "ok $seq - $name # SKIP"
+        ;;
+      risky)
+        echo "ok $seq - $name # SKIP risky (no assertions)"
+        ;;
+      incomplete)
+        echo "ok $seq - $name # TODO"
+        ;;
+      *)
+        echo "ok $seq - $name"
+        ;;
+      esac
+    done
+  } >"$output_file"
+}
+
+function bashunit::reports::generate_report_json() {
+  local output_file="$1"
+  local total="${#_BASHUNIT_REPORTS_TEST_NAMES[@]}"
+
+  local passed=0 failed=0 skipped=0 incomplete=0 duration_total=0
+  local i
+  for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
+    duration_total=$((duration_total + ${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]:-0}))
+    case "${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}" in
+    failed) failed=$((failed + 1)) ;;
+    skipped) skipped=$((skipped + 1)) ;;
+    incomplete) incomplete=$((incomplete + 1)) ;;
+    # snapshot and risky ran without failing, so they count as passed here; the
+    # per-test "status" field below preserves the exact category.
+    *) passed=$((passed + 1)) ;;
+    esac
+  done
+
+  {
+    printf '{\n'
+    printf '  "summary": { "total": %d, "passed": %d, "failed": %d,' \
+      "$total" "$passed" "$failed"
+    printf ' "skipped": %d, "incomplete": %d, "duration_ms": %d },\n' \
+      "$skipped" "$incomplete" "$duration_total"
+    printf '  "tests": [\n'
+    local seq=0
+    for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
+      local file name status duration message sep
+      file=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}")
+      name=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}")
+      status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
+      duration="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]:-0}"
+      message=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}")
+      sep=","
+      [ "$seq" -eq "$((total - 1))" ] && sep=""
+      printf '    { "file": "%s", "name": "%s", "status": "%s", "duration_ms": %d, "message": "%s" }%s\n' \
+        "$file" "$name" "$status" "$duration" "$message" "$sep"
+      seq=$((seq + 1))
+    done
+    printf '  ]\n'
+    printf '}\n'
   } >"$output_file"
 }
 
@@ -7940,9 +8432,22 @@ function bashunit::runner::resolve_test_location() {
   fi
 }
 
+# Writes the interpolated test-function name into _BASHUNIT_RUNNER_INTERP_OUT.
+# Arguments: $1 fn_name, $@ test arguments
 function bashunit::runner::apply_interpolated_title() {
   local fn_name=$1
   shift
+
+  # Only "::N::"-style names interpolate; skip the capture fork for the rest.
+  case "$fn_name" in
+  *::*) ;;
+  *)
+    bashunit::state::reset_current_test_interpolated_function_name
+    _BASHUNIT_RUNNER_INTERP_OUT=$fn_name
+    return
+    ;;
+  esac
+
   local interpolated
   interpolated="$(bashunit::helper::interpolate_function_name "$fn_name" "$@")"
   if [ "$interpolated" != "$fn_name" ]; then
@@ -7950,7 +8455,7 @@ function bashunit::runner::apply_interpolated_title() {
   else
     bashunit::state::reset_current_test_interpolated_function_name
   fi
-  printf '%s' "$interpolated"
+  _BASHUNIT_RUNNER_INTERP_OUT=$interpolated
 }
 
 # Hot-path result helpers below return their value via a dedicated global slot
@@ -7968,6 +8473,15 @@ _BASHUNIT_RUNNER_FIELD_OUT=""
 _BASHUNIT_RUNNER_TOTAL_OUT=""
 _BASHUNIT_RUNNER_TYPE_OUT=""
 _BASHUNIT_RUNNER_OUTPUT_OUT=""
+_BASHUNIT_RUNNER_INTERP_OUT=""
+_BASHUNIT_RUNNER_COUNTS_FAILED_OUT=0
+_BASHUNIT_RUNNER_COUNTS_PASSED_OUT=0
+_BASHUNIT_RUNNER_COUNTS_SKIPPED_OUT=0
+_BASHUNIT_RUNNER_COUNTS_INCOMPLETE_OUT=0
+_BASHUNIT_RUNNER_COUNTS_SNAPSHOT_OUT=0
+_BASHUNIT_RUNNER_COUNTS_EXIT_CODE_OUT=0
+# Suffix appended to a passed-test line when it only passed after retrying.
+_BASHUNIT_RETRY_NOTE=""
 
 # Writes the value of an encoded field (##KEY=value##) into _BASHUNIT_RUNNER_FIELD_OUT.
 # Arguments: $1 test_execution_result, $2 key
@@ -8161,6 +8675,16 @@ function bashunit::runner::load_test_files() {
   files=("$@")
   local -a scripts_ids=()
   local scripts_ids_count=0
+
+  # Randomize file execution order (deterministic for the resolved seed).
+  if bashunit::env::is_random_order_enabled; then
+    local -a _shuffled_files=()
+    local _sf
+    while IFS= read -r _sf; do
+      [ -n "$_sf" ] && _shuffled_files[${#_shuffled_files[@]}]=$_sf
+    done < <(printf '%s\n' "${files[@]+"${files[@]}"}" | bashunit::math::shuffle "$(bashunit::env::seed)")
+    files=("${_shuffled_files[@]+"${_shuffled_files[@]}"}")
+  fi
 
   bashunit::runner::sync_coverage_flag
 
@@ -8552,6 +9076,23 @@ function bashunit::runner::call_test_functions() {
     fi
   fi
 
+  # Randomize function order within this file. The seed is mixed with a stable
+  # per-file value (cksum of the path) so different files get different orders
+  # while staying reproducible for the resolved seed.
+  if bashunit::env::is_random_order_enabled && [ "$functions_to_run_count" -gt 1 ]; then
+    local _base _crc _fn_seed
+    _base=$(bashunit::env::seed)
+    _crc=$(printf '%s' "$script" | cksum | cut -d' ' -f1)
+    _fn_seed=$(((_base + _crc) & 2147483647))
+    local -a _shuffled_fns=()
+    local _sfn
+    while IFS= read -r _sfn; do
+      [ -n "$_sfn" ] && _shuffled_fns[${#_shuffled_fns[@]}]=$_sfn
+    done < <(printf '%s\n' "${functions_to_run[@]+"${functions_to_run[@]}"}" | bashunit::math::shuffle "$_fn_seed")
+    functions_to_run=("${_shuffled_fns[@]+"${_shuffled_fns[@]}"}")
+    functions_to_run_count=${#functions_to_run[@]}
+  fi
+
   if [ "$functions_to_run_count" -le 0 ]; then
     return
   fi
@@ -8837,7 +9378,6 @@ function bashunit::runner::run_with_timeout() {
 
 function bashunit::runner::run_test() {
   local start_time
-  start_time=$(bashunit::clock::now)
 
   local test_file="$1"
   shift
@@ -8848,8 +9388,8 @@ function bashunit::runner::run_test() {
   bashunit::runner::export_test_identity "$test_file" "$fn_name"
 
   bashunit::state::reset_test_title
-  local interpolated_fn_name
-  interpolated_fn_name=$(bashunit::runner::apply_interpolated_title "$fn_name" "$@")
+  bashunit::runner::apply_interpolated_title "$fn_name" "$@"
+  local interpolated_fn_name=$_BASHUNIT_RUNNER_INTERP_OUT
   local current_assertions_failed="$_BASHUNIT_ASSERTIONS_FAILED"
   local current_assertions_snapshot="$_BASHUNIT_ASSERTIONS_SNAPSHOT"
   local current_assertions_incomplete="$_BASHUNIT_ASSERTIONS_INCOMPLETE"
@@ -8862,13 +9402,37 @@ function bashunit::runner::run_test() {
 
   local test_execution_result
   local timed_out="false"
-  if bashunit::env::is_test_timeout_enabled; then
-    bashunit::runner::run_with_timeout "$test_file" "$fn_name" "$@"
-    test_execution_result="$_BASHUNIT_RUNNER_EXEC_OUT"
-    timed_out="$_BASHUNIT_RUNNER_TIMED_OUT"
-  else
-    test_execution_result=$(bashunit::runner::execute_test_body "$test_file" "$fn_name" "$@")
-  fi
+  local retry_max
+  retry_max=$(bashunit::env::retry_count)
+  local retries_used=0
+  # Retry wraps ONLY execution: a failed attempt is judged from its encoded
+  # result without committing, so the parse/report/counter path below still runs
+  # exactly once (on the final attempt) and nothing is double-counted. Each fork
+  # in --parallel retries itself before writing its single .result file.
+  while :; do
+    start_time=$(bashunit::clock::now)
+    if bashunit::env::is_test_timeout_enabled; then
+      bashunit::runner::run_with_timeout "$test_file" "$fn_name" "$@"
+      test_execution_result="$_BASHUNIT_RUNNER_EXEC_OUT"
+      timed_out="$_BASHUNIT_RUNNER_TIMED_OUT"
+    else
+      test_execution_result=$(bashunit::runner::execute_test_body "$test_file" "$fn_name" "$@")
+    fi
+
+    local attempt_runtime_output="${test_execution_result%%##ASSERTIONS_*}"
+    local attempt_runtime_error
+    attempt_runtime_error=$(bashunit::runner::detect_runtime_error "$attempt_runtime_output")
+    bashunit::runner::extract_result_counts "$test_execution_result"
+    # Mirror the commit-phase failure test exactly (runtime error, non-zero exit,
+    # or a failed assertion); snapshot/incomplete/skipped/risky are not failures.
+    if [ -z "$attempt_runtime_error" ] &&
+      [ "$_BASHUNIT_RUNNER_COUNTS_EXIT_CODE_OUT" -eq 0 ] &&
+      [ "$_BASHUNIT_RUNNER_COUNTS_FAILED_OUT" -eq 0 ]; then
+      break
+    fi
+    [ "$retries_used" -ge "$retry_max" ] && break
+    retries_used=$((retries_used + 1))
+  done
 
   # Closes FD 3, which was used temporarily to hold the original stdout.
   exec 3>&-
@@ -9057,6 +9621,11 @@ function bashunit::runner::run_test() {
     return
   fi
 
+  # A test that only passed after retrying is annotated so flakiness stays visible.
+  _BASHUNIT_RETRY_NOTE=""
+  if [ "$retries_used" -gt 0 ]; then
+    _BASHUNIT_RETRY_NOTE=" (retry $retries_used/$retry_max)"
+  fi
   # In failures-only mode, suppress successful test output
   if ! bashunit::env::is_failures_only_enabled; then
     if [ "$fn_name" = "$interpolated_fn_name" ]; then
@@ -9065,6 +9634,7 @@ function bashunit::runner::run_test() {
       bashunit::console_results::print_successful_test "${label}" "$duration"
     fi
   fi
+  _BASHUNIT_RETRY_NOTE=""
   bashunit::state::add_tests_passed
   bashunit::reports::add_test_passed "$test_file" "$label" "$duration" "$total_assertions"
   bashunit::internal_log "Test passed" "$label"
@@ -9249,9 +9819,14 @@ function bashunit::runner::parse_result_parallel() {
 }
 
 # shellcheck disable=SC2295
-function bashunit::runner::parse_result_sync() {
-  local fn_name=$1
-  local execution_result=$2
+##
+# Parses the encoded per-test result's last line into the counts out-slots
+# (_BASHUNIT_RUNNER_COUNTS_*_OUT). Pure read: never mutates the cumulative
+# _BASHUNIT_ASSERTIONS_* / _BASHUNIT_TEST_EXIT_CODE state, so the retry loop can
+# judge an attempt's outcome without committing it.
+##
+function bashunit::runner::extract_result_counts() {
+  local execution_result=$1
 
   local result_line
   result_line="${execution_result##*$'\n'}"
@@ -9290,22 +9865,36 @@ function bashunit::runner::parse_result_sync() {
     ;;
   esac
 
+  _BASHUNIT_RUNNER_COUNTS_FAILED_OUT=$assertions_failed
+  _BASHUNIT_RUNNER_COUNTS_PASSED_OUT=$assertions_passed
+  _BASHUNIT_RUNNER_COUNTS_SKIPPED_OUT=$assertions_skipped
+  _BASHUNIT_RUNNER_COUNTS_INCOMPLETE_OUT=$assertions_incomplete
+  _BASHUNIT_RUNNER_COUNTS_SNAPSHOT_OUT=$assertions_snapshot
+  _BASHUNIT_RUNNER_COUNTS_EXIT_CODE_OUT=$test_exit_code
+}
+
+function bashunit::runner::parse_result_sync() {
+  local fn_name=$1
+  local execution_result=$2
+
+  bashunit::runner::extract_result_counts "$execution_result"
+
   bashunit::internal_log "[SYNC]" "fn_name:$fn_name" "execution_result:$execution_result"
 
-  _BASHUNIT_ASSERTIONS_PASSED=$((_BASHUNIT_ASSERTIONS_PASSED + assertions_passed))
-  _BASHUNIT_ASSERTIONS_FAILED=$((_BASHUNIT_ASSERTIONS_FAILED + assertions_failed))
-  _BASHUNIT_ASSERTIONS_SKIPPED=$((_BASHUNIT_ASSERTIONS_SKIPPED + assertions_skipped))
-  _BASHUNIT_ASSERTIONS_INCOMPLETE=$((_BASHUNIT_ASSERTIONS_INCOMPLETE + assertions_incomplete))
-  _BASHUNIT_ASSERTIONS_SNAPSHOT=$((_BASHUNIT_ASSERTIONS_SNAPSHOT + assertions_snapshot))
-  _BASHUNIT_TEST_EXIT_CODE=$((_BASHUNIT_TEST_EXIT_CODE + test_exit_code))
+  _BASHUNIT_ASSERTIONS_PASSED=$((_BASHUNIT_ASSERTIONS_PASSED + _BASHUNIT_RUNNER_COUNTS_PASSED_OUT))
+  _BASHUNIT_ASSERTIONS_FAILED=$((_BASHUNIT_ASSERTIONS_FAILED + _BASHUNIT_RUNNER_COUNTS_FAILED_OUT))
+  _BASHUNIT_ASSERTIONS_SKIPPED=$((_BASHUNIT_ASSERTIONS_SKIPPED + _BASHUNIT_RUNNER_COUNTS_SKIPPED_OUT))
+  _BASHUNIT_ASSERTIONS_INCOMPLETE=$((_BASHUNIT_ASSERTIONS_INCOMPLETE + _BASHUNIT_RUNNER_COUNTS_INCOMPLETE_OUT))
+  _BASHUNIT_ASSERTIONS_SNAPSHOT=$((_BASHUNIT_ASSERTIONS_SNAPSHOT + _BASHUNIT_RUNNER_COUNTS_SNAPSHOT_OUT))
+  _BASHUNIT_TEST_EXIT_CODE=$((_BASHUNIT_TEST_EXIT_CODE + _BASHUNIT_RUNNER_COUNTS_EXIT_CODE_OUT))
 
   bashunit::internal_log "result_summary" \
-    "failed:$assertions_failed" \
-    "passed:$assertions_passed" \
-    "skipped:$assertions_skipped" \
-    "incomplete:$assertions_incomplete" \
-    "snapshot:$assertions_snapshot" \
-    "exit_code:$test_exit_code"
+    "failed:$_BASHUNIT_RUNNER_COUNTS_FAILED_OUT" \
+    "passed:$_BASHUNIT_RUNNER_COUNTS_PASSED_OUT" \
+    "skipped:$_BASHUNIT_RUNNER_COUNTS_SKIPPED_OUT" \
+    "incomplete:$_BASHUNIT_RUNNER_COUNTS_INCOMPLETE_OUT" \
+    "snapshot:$_BASHUNIT_RUNNER_COUNTS_SNAPSHOT_OUT" \
+    "exit_code:$_BASHUNIT_RUNNER_COUNTS_EXIT_CODE_OUT"
 }
 
 function bashunit::runner::write_failure_result_output() {
@@ -11511,6 +12100,25 @@ function test_failure() {
 ```
 :::
 
+## assert_within_delta
+> `assert_within_delta "expected" "actual" "delta"`
+
+Reports an error if `actual` is not within `delta` of `expected`
+(i.e. `|actual - expected| > delta`). Supports floating-point values.
+Useful for timing or measured values where exact equality is too strict.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  assert_within_delta "3.14159" "3.14" "0.01"
+}
+
+function test_failure() {
+  assert_within_delta "100" "105" "3"
+}
+```
+:::
+
 ## assert_date_equals
 > `assert_date_equals "expected" "actual"`
 
@@ -11763,6 +12371,27 @@ function test_failure() {
 ```
 :::
 
+## assert_array_length
+> `assert_array_length "expected_length" "array"`
+
+Reports an error if `array` does not have exactly `expected_length` elements.
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local haystack=(foo bar baz)
+
+  assert_array_length 3 "${haystack[@]}"
+}
+
+function test_failure() {
+  local haystack=(foo bar baz)
+
+  assert_array_length 2 "${haystack[@]}"
+}
+```
+:::
+
 ## assert_successful_code
 > `assert_successful_code`
 
@@ -11976,6 +12605,33 @@ function test_failure() {
   echo -e "original content" > "$file"
 
   assert_file_contains "$file" "non existing"
+}
+```
+:::
+
+## assert_file_permissions
+> `assert_file_permissions "mode" "file"`
+
+Reports an error if `file` does not have the expected octal permission `mode`
+(e.g. `644`, `0755`). A leading zero is optional (`0755` and `755` are equal).
+Works on both Linux (GNU `stat`) and macOS (BSD `stat`).
+
+::: code-group
+```bash [Example]
+function test_success() {
+  local file="/tmp/file-path.txt"
+  touch "$file"
+  chmod 600 "$file"
+
+  assert_file_permissions "600" "$file"
+}
+
+function test_failure() {
+  local file="/tmp/file-path.txt"
+  touch "$file"
+  chmod 644 "$file"
+
+  assert_file_permissions "600" "$file"
 }
 ```
 :::
@@ -12750,6 +13406,37 @@ function bashunit::assertion_passed() {
 
 # main.sh
 
+##
+# Validates a `--shard <index>/<total>` spec and exports the parts, or prints an
+# error and exits non-zero. Requires numeric index/total with 1 <= index <= total.
+##
+function bashunit::main::set_shard_or_exit() {
+  local spec="${1:-}"
+  local index total
+  case "$spec" in
+  */*)
+    index="${spec%%/*}"
+    total="${spec##*/}"
+    ;;
+  *)
+    index=""
+    total=""
+    ;;
+  esac
+  case "$index" in '' | *[!0-9]*) index="" ;; esac
+  case "$total" in '' | *[!0-9]*) total="" ;; esac
+
+  if [ -z "$index" ] || [ -z "$total" ] ||
+    [ "$total" -lt 1 ] || [ "$index" -lt 1 ] || [ "$index" -gt "$total" ]; then
+    printf "%sError: --shard must be <index>/<total> with 1 <= index <= total (e.g. 1/4).%s\n" \
+      "${_BASHUNIT_COLOR_FAILED}" "${_BASHUNIT_COLOR_DEFAULT}" >&2
+    exit 1
+  fi
+
+  export BASHUNIT_SHARD_INDEX="$index"
+  export BASHUNIT_SHARD_TOTAL="$total"
+}
+
 #############################
 # Subcommand: test
 #############################
@@ -12828,6 +13515,21 @@ function bashunit::main::cmd_test() {
       export BASHUNIT_TEST_TIMEOUT="$2"
       shift
       ;;
+    --retry)
+      export BASHUNIT_RETRY="$2"
+      shift
+      ;;
+    --random-order)
+      export BASHUNIT_RANDOM_ORDER=true
+      ;;
+    --seed)
+      export BASHUNIT_SEED="$2"
+      shift
+      ;;
+    --shard)
+      bashunit::main::set_shard_or_exit "$2"
+      shift
+      ;;
     -w | --watch)
       export BASHUNIT_WATCH_MODE=true
       ;;
@@ -12856,6 +13558,14 @@ function bashunit::main::cmd_test() {
       ;;
     -r | --report-html)
       export BASHUNIT_REPORT_HTML="$2"
+      shift
+      ;;
+    --report-tap)
+      export BASHUNIT_REPORT_TAP="$2"
+      shift
+      ;;
+    --report-json)
+      export BASHUNIT_REPORT_JSON="$2"
       shift
       ;;
     --no-output)
@@ -13417,6 +14127,26 @@ function bashunit::main::exec_tests() {
     exit 1
   fi
 
+  # Split the suite across runners: keep the files whose position matches this
+  # shard (round-robin), so all shards together cover the whole suite with no
+  # overlap. An empty shard (more shards than files) is valid and runs nothing.
+  if bashunit::env::is_shard_enabled; then
+    local _shard_index _shard_total
+    _shard_index=$(bashunit::env::shard_index)
+    _shard_total=$(bashunit::env::shard_total)
+    local -a _sharded=()
+    local _i=0
+    while [ "$_i" -lt "$test_files_count" ]; do
+      if [ "$((_i % _shard_total))" -eq "$((_shard_index - 1))" ]; then
+        _sharded[${#_sharded[@]}]="${test_files[_i]}"
+      fi
+      _i=$((_i + 1))
+    done
+    test_files=("${_sharded[@]+"${_sharded[@]}"}")
+    test_files_count=${#test_files[@]}
+    bashunit::internal_log "shard" "index:$_shard_index" "total:$_shard_total" "files:$test_files_count"
+  fi
+
   # Trap SIGINT (Ctrl-C) and call the cleanup function
   trap 'bashunit::main::cleanup' SIGINT
   trap '[ $? -eq $EXIT_CODE_STOP_ON_FAILURE ] && bashunit::main::handle_stop_on_failure_sync' EXIT
@@ -13436,6 +14166,17 @@ function bashunit::main::exec_tests() {
     printf "TAP version 13\n"
   else
     bashunit::console_header::print_version_with_env "$filter" "${test_files[@]}"
+  fi
+
+  # Resolve the shuffle seed once (generating one if absent) so it can be printed
+  # for replay and inherited by parallel test-file subshells.
+  if bashunit::env::is_random_order_enabled; then
+    if [ -z "${BASHUNIT_SEED:-}" ]; then
+      export BASHUNIT_SEED=$RANDOM
+    fi
+    if ! bashunit::env::is_tap_output_enabled; then
+      bashunit::console_header::print_random_order_seed "$BASHUNIT_SEED"
+    fi
   fi
 
   if bashunit::env::is_verbose_enabled; then
@@ -13485,6 +14226,14 @@ function bashunit::main::exec_tests() {
 
   if [ -n "$BASHUNIT_REPORT_HTML" ]; then
     bashunit::reports::generate_report_html "$BASHUNIT_REPORT_HTML"
+  fi
+
+  if [ -n "$BASHUNIT_REPORT_TAP" ]; then
+    bashunit::reports::generate_report_tap "$BASHUNIT_REPORT_TAP"
+  fi
+
+  if [ -n "$BASHUNIT_REPORT_JSON" ]; then
+    bashunit::reports::generate_report_json "$BASHUNIT_REPORT_JSON"
   fi
 
   # Generate coverage report if enabled
@@ -13772,7 +14521,7 @@ function _check_bash_version() {
 _check_bash_version
 
 # shellcheck disable=SC2034
-declare -r BASHUNIT_VERSION="0.40.0"
+declare -r BASHUNIT_VERSION="0.41.0"
 
 # shellcheck disable=SC2155
 declare -r BASHUNIT_ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")"
