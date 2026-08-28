@@ -55,7 +55,7 @@ jobs:
         run: |
           DOWNLOAD_URL="${{ env.download_url }}"
           LOCAL_FILE="lib/bashunit"
-          TEMP_FILE="/tmp/bashunit"
+          TEMP_FILE="/tmp/bashunit-latest"
 
           # Download the file. -f fails on HTTP errors (e.g. 504), so a gateway
           # error page is never written as a "successful" download. Retry to
