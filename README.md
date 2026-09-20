@@ -75,7 +75,7 @@ Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/t
 
 > [!NOTE]  
 > This project supports **GitLab (CE/EE)** starting from version **17 and higher**!  
-> Please note that GitLab only actively maintains the three most recent major versions.
+> Please note that GitLab only actively maintains the three most recent minor versions.
 
 
 ## ✨ Features
