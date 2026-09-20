@@ -180,7 +180,7 @@ GitLab Docker image to ensure compatibility and reliability.
 To pull the appropriate image for your architecture, simply use:
 
 ```bash
-docker pull feskol/gitlab:latest    # you can use here any tag from the DockerHub (e.g. 17.6.2-ce / 17.6-ce / ce )
+docker pull feskol/gitlab:latest    # you can use here any tag from the DockerHub (e.g. 19.4.0-ce / 19.4-ce / ce )
 ```
 
 Docker will automatically fetch the image matching your system architecture.
@@ -201,12 +201,12 @@ system:
 
 - **Version-specific tags**:  
   Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
-  For example, if the newest version is `17.6.1-ce.0`,
+  For example, if the newest version is `19.4.0-ce.0`,
   the following Docker image tags are created pointing to that version:
-    - `17.6.1-ce.0` (original GitLab version)
-    - `17.6.1-ce` (version without the `.0` suffix)
-    - `17.6-ce` (major and minor version)
-    - `17-ce` (major version only)
+    - `19.4.0-ce.0` (original GitLab version)
+    - `19.4.0-ce` (version without the `.0` suffix)
+    - `19.4-ce` (major and minor version - points to the current newest patch version `19.4.*`)
+    - `19-ce` (major version only - points to the current newest minor-patch version `19.*.*`)
 
 Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
 
@@ -229,13 +229,13 @@ docker compose down
 # Old image tag:
 services:
     gitlab:
-        image: feskol/gitlab:17.5.4-ce # outdated version
+        image: feskol/gitlab:19.3.2-ce # outdated version
 ...
 
 # New image tag
 services:
     gitlab:
-        image: feskol/gitlab:17.6.2-ce # updated version
+        image: feskol/gitlab:19.4.0-ce # updated version
 ...
 ```
 
