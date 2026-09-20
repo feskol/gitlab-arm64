@@ -48,6 +48,36 @@ automatically builds the custom **Docker image** tags using the official GitLab 
 The custom Docker image tags are typically available **within 12 hours** after the official GitLab Docker images get
 released.
 
+## 🏷️ Tags
+
+The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning
+system:
+
+- **`latest`**:  
+  Points to the newest Community Edition (CE) release available.
+
+- **`ce`**:  
+  Represents the newest Community Edition (CE) release available.
+
+- **`ee`**:  
+  Represents the newest Enterprise Edition (EE) release available.
+
+- **Version-specific tags**:  
+  Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
+  For example, if the newest version is `19.4.0-ce.0`,
+  the following Docker image tags are created pointing to that version:
+    - `19.4.0-ce.0` (original GitLab version)
+    - `19.4.0-ce` (version without the `.0` suffix)
+    - `19.4-ce` (major and minor version - points to the current newest patch version `19.4.*`)
+    - `19-ce` (major version only - points to the current newest minor-patch version `19.*.*`)
+
+Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
+
+> [!NOTE]  
+> This project supports **GitLab (CE/EE)** starting from version **17 and higher**!
+> Please note that GitLab only actively maintains the three most recent major versions.
+
+
 ## ✨ Features
 
 - **Automated Updates**:  
@@ -184,34 +214,6 @@ docker pull feskol/gitlab:latest    # you can use here any tag from the DockerHu
 ```
 
 Docker will automatically fetch the image matching your system architecture.
-
-## 🏷️ Tags
-
-The following tags are available for the Docker images, providing flexibility and alignment with GitLab's versioning
-system:
-
-- **`latest`**:  
-  Points to the newest Community Edition (CE) release available.
-
-- **`ce`**:  
-  Represents the newest Community Edition (CE) release available.
-
-- **`ee`**:  
-  Represents the newest Enterprise Edition (EE) release available.
-
-- **Version-specific tags**:  
-  Tags are generated based on GitLab's versioning system: **`(major).(minor).(patch)-(edition).0`**.  
-  For example, if the newest version is `19.4.0-ce.0`,
-  the following Docker image tags are created pointing to that version:
-    - `19.4.0-ce.0` (original GitLab version)
-    - `19.4.0-ce` (version without the `.0` suffix)
-    - `19.4-ce` (major and minor version - points to the current newest patch version `19.4.*`)
-    - `19-ce` (major version only - points to the current newest minor-patch version `19.*.*`)
-
-Find [all available tags on Docker Hub](https://hub.docker.com/r/feskol/gitlab/tags).
-
-> [!NOTE]  
-> This project supports **GitLab (CE/EE)** starting from version **17 and higher**!
 
 ## 🔄 Update
 
