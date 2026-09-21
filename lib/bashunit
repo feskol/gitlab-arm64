@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # src/system/index.sh
 
+# src/system/bash.sh
+
+_BASHUNIT_BASH_GE_31=0
+
+if [ "${BASH_VERSINFO[0]:-0}" -gt 3 ]; then
+  _BASHUNIT_BASH_GE_31=1
+elif [ "${BASH_VERSINFO[0]:-0}" -eq 3 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 1 ]; then
+  _BASHUNIT_BASH_GE_31=1
+fi
+
 # src/system/check_os.sh
 
 _BASHUNIT_OS="Unknown"
@@ -197,6 +207,18 @@ function bashunit::random_str() {
   echo "$str"
 }
 
+_BASHUNIT_STR_LPAD_OUT=""
+
+if [ "$_BASHUNIT_BASH_GE_31" = 1 ]; then
+  function bashunit::str::lpad_to_slot() {
+    printf -v _BASHUNIT_STR_LPAD_OUT "%${1}s" "$2"
+  }
+else
+  function bashunit::str::lpad_to_slot() {
+    _BASHUNIT_STR_LPAD_OUT=$(printf "%${1}s" "$2")
+  }
+fi
+
 function bashunit::str::strip_ansi_to_slot() {
   local input="$1"
 
@@ -254,7 +276,10 @@ function bashunit::str::strip_ansi() {
   echo "$_BASHUNIT_STR_STRIPPED_OUT"
 }
 
-function bashunit::str::rpad() {
+_BASHUNIT_STR_SPACES="        "
+_BASHUNIT_STR_RPAD_OUT=""
+
+function bashunit::str::rpad_to_slot() {
   local left_text="$1"
   local right_word="$2"
   local width_padding="${3:-$TERMINAL_WIDTH}"
@@ -315,7 +340,16 @@ function bashunit::str::rpad() {
     remaining_space=0
   fi
 
-  printf "%s%${remaining_space}s %s\n" "$result_left_text" "" "$right_word"
+  while [ ${#_BASHUNIT_STR_SPACES} -lt "$remaining_space" ]; do
+    _BASHUNIT_STR_SPACES="$_BASHUNIT_STR_SPACES$_BASHUNIT_STR_SPACES"
+  done
+
+  _BASHUNIT_STR_RPAD_OUT="${result_left_text}${_BASHUNIT_STR_SPACES:0:$remaining_space} $right_word"
+}
+
+function bashunit::str::rpad() {
+  bashunit::str::rpad_to_slot "$@"
+  echo "$_BASHUNIT_STR_RPAD_OUT"
 }
 
 function bashunit::str::html_escape() {
@@ -717,7 +751,8 @@ function bashunit::clock::total_runtime_in_milliseconds() {
 }
 
 function bashunit::clock::init() {
-  _BASHUNIT_START_TIME=$(bashunit::clock::now)
+  bashunit::clock::now_to_slot
+  _BASHUNIT_START_TIME=$_BASHUNIT_CLOCK_NOW_OUT
 }
 
 # src/api/index.sh
@@ -1797,6 +1832,21 @@ function bashunit::env::create_scratch_dirs() {
 
 bashunit::env::create_scratch_dirs "$_BASHUNIT_RUN_OUTPUT_DIR" "$BASHUNIT_TEMP_DIR" || exit 1
 
+function bashunit::env::ensure_run_output_dir() {
+  if [ -d "$_BASHUNIT_RUN_OUTPUT_DIR" ]; then
+    return 0
+  fi
+
+  if [ "${_BASHUNIT_RUN_DIR_VANISHED:-false}" = false ]; then
+    _BASHUNIT_RUN_DIR_VANISHED=true
+    printf 'bashunit: the run scratch directory disappeared mid-run: %s\n' \
+      "$_BASHUNIT_RUN_OUTPUT_DIR" >&2
+    printf 'bashunit: recreating it; please report this with the run log (#1137).\n' >&2
+  fi
+
+  mkdir -p "$_BASHUNIT_RUN_OUTPUT_DIR" 2>/dev/null
+}
+
 function bashunit::env::cleanup_run_output_dir() {
   local target="$_BASHUNIT_RUN_OUTPUT_DIR"
 
@@ -2699,6 +2749,363 @@ function bu_ends_with_continuation(line,   lead, i, n) {
   }
   return (n % 2) == 1
 }
+
+# The multi-line statement scanner, as awk. Mirrors
+# bashunit::coverage::scan_reset / scan_line / scan_is_open, which is the
+# reference and carries the full explanation of the state machine (#1338).
+#
+# _bu_st[1.._bu_sp] is the context stack, innermost last: S single-quoted,
+# D double-quoted, A array literal, C command/process substitution,
+# R arithmetic paren, P other paren, Q case awaiting its subject,
+# H case header after its subject, K case expecting a pattern,
+# B case arm body.
+# The quote character itself has to be built with sprintf: this program lives
+# in a shell single-quoted string and so cannot contain one.
+function bu_scan_reset() {
+  _bu_sp = 0
+  _bu_hd = ""
+  _bu_hdtab = 0
+  _bu_cont = 0
+  _bu_command_start = 1
+  _bu_sq = sprintf("%c", 39)
+  _bu_special = "[" _bu_sq "\"\\\\#()<;&|]"
+  split("", _bu_st)
+  split("", _bu_cont_depth)
+}
+
+# Records the delimiter of a heredoc from the text following `<<`. The quoting
+# of a delimiter only decides whether the body expands, so it is stripped.
+function bu_scan_heredoc(rest,   word) {
+  _bu_hdtab = 0
+  if (substr(rest, 1, 1) == "-") { _bu_hdtab = 1; rest = substr(rest, 2) }
+  sub(/^[ \t]+/, "", rest)
+  word = rest
+  sub(/[ \t;&|<>)].*$/, "", word)
+  gsub(/\\/, "", word)
+  gsub(/"/, "", word)
+  gsub(_bu_sq, "", word)
+  _bu_hd = word
+}
+
+function bu_scan_pop_case() {
+  if (_bu_sp > 0 && (_bu_st[_bu_sp] == "K" || _bu_st[_bu_sp] == "B")) {
+    delete _bu_st[_bu_sp--]
+  }
+}
+
+# Consumes ordinary unquoted words only while the shell expects a command.
+# Separators are handled by bu_scan_line, so compact and nested case commands
+# reach this function in source order without treating quoted text as syntax.
+function bu_scan_words(text,   token, top) {
+  while (_bu_command_start && text != "") {
+    sub(/^[ \t]+/, "", text)
+    if (text == "") { return }
+    token = text
+    sub(/[ \t].*$/, "", token)
+    text = substr(text, length(token) + 1)
+    top = (_bu_sp > 0) ? _bu_st[_bu_sp] : ""
+    if (top == "Q") {
+      # A case subject may itself be the word `in`.
+      _bu_st[_bu_sp] = "H"; _bu_command_start = 1
+    } else if (top == "H" && token == "in") {
+      _bu_st[_bu_sp] = "K"; _bu_command_start = 1
+    } else if (top == "H") {
+      # Subject words continue until the unquoted `in` keyword.
+      _bu_command_start = 1
+    } else if ((top == "K" || top == "B") && token == "esac") {
+      bu_scan_pop_case(); _bu_command_start = 0
+    } else if (top == "K") {
+      # `case` here is a pattern word, not a nested command.
+      _bu_command_start = 0
+    } else if (token == "case") {
+      _bu_st[++_bu_sp] = "Q"; _bu_command_start = 1
+    } else if (token == "if" || token == "while" || token == "until" ||
+        token == "then" || token == "do" || token == "else" ||
+        token == "elif" || token == "{" || token == "!") {
+      _bu_command_start = 1
+    } else { _bu_command_start = 0 }
+  }
+}
+
+function bu_scan_update_continuation(   k, depth) {
+  depth = 0
+  for (k = 1; k <= _bu_sp; k++) { if (_bu_st[k] == "C") { depth++ } }
+  for (k in _bu_cont_depth) {
+    if ((k + 0) >= depth) { delete _bu_cont_depth[k] }
+  }
+  if (_bu_cont) { _bu_cont_depth[depth] = 1 }
+  else { _bu_command_start = 1 }
+}
+
+function bu_scan_has_continuation(   depth) {
+  for (depth in _bu_cont_depth) { return 1 }
+  return 0
+}
+
+function bu_scan_line(line,   i, n, c, prev, top, body, rest, offset, lead, keyword, head) {
+  _bu_cont = 0
+
+  if (_bu_hd != "") {
+    body = line
+    if (_bu_hdtab) { sub(/^\t+/, "", body) }
+    if (body == _bu_hd) { _bu_hd = "" }
+    bu_scan_update_continuation()
+    return
+  }
+
+  # Same early-out as the reference: with nothing open, a line holding none of
+  # these characters cannot change state unless it starts with a reserved word
+  # that introduces a command.
+  lead = line
+  sub(/^[ \t]+/, "", lead)
+  keyword = lead
+  sub(/[ \t;&|)].*$/, "", keyword)
+  if (_bu_sp == 0 && !bu_scan_has_continuation() && _bu_command_start &&
+      keyword != "case" && keyword != "if" && keyword != "while" &&
+      keyword != "until" && keyword != "then" && keyword != "do" &&
+      keyword != "else" && keyword != "elif" && keyword != "{" &&
+      keyword != "!" && index(line, _bu_sq) == 0 && index(line, "\"") == 0 &&
+      index(line, "\\") == 0 && index(line, "(") == 0 && index(line, "<") == 0 &&
+      index(line, ";") == 0 && index(line, "&") == 0 && index(line, "|") == 0) {
+    return
+  }
+
+  n = length(line)
+  prev = ""
+  for (i = 1; i <= n; i++) {
+    top = (_bu_sp > 0) ? _bu_st[_bu_sp] : ""
+    # Skip ordinary text in one native scan, as the Bash reference does.
+    rest = substr(line, i)
+    if (top == "S") { offset = index(rest, _bu_sq) }
+    else if (top == "D") { offset = match(rest, /["\\$]/) }
+    else { offset = match(rest, _bu_special) }
+    head = offset ? substr(rest, 1, offset - 1) : rest
+    if (_bu_command_start && top != "S" && top != "D" && top != "A" &&
+        top != "R") {
+      bu_scan_words(head)
+    }
+    if (!offset) { break }
+    if (offset > 1) { prev = substr(rest, offset - 1, 1) }
+    i += offset - 1
+    c = substr(line, i, 1)
+    top = (_bu_sp > 0) ? _bu_st[_bu_sp] : ""
+
+    # Nothing but the closing quote is reported inside a single-quoted string.
+    if (top == "S") {
+      if (c == _bu_sq) {
+        _bu_sp--
+        if (_bu_sp > 0 && _bu_st[_bu_sp] == "Q") { _bu_st[_bu_sp] = "H" }
+        if (_bu_sp > 0 && _bu_st[_bu_sp] == "H") { _bu_command_start = 1 }
+      }
+      prev = c
+      continue
+    }
+
+    # A backslash escapes the next character in both remaining contexts; inside
+    # a single-quoted string it is literal, and the branch above took that case.
+    if (c == "\\") {
+      if (i == n) { _bu_cont = 1 }
+      else { _bu_command_start = 0 }
+      i++; prev = substr(line, i, 1); continue
+    }
+
+    if (top == "D") {
+      if (c == "\"") {
+        _bu_sp--
+        if (_bu_sp > 0 && _bu_st[_bu_sp] == "Q") { _bu_st[_bu_sp] = "H" }
+        if (_bu_sp > 0 && _bu_st[_bu_sp] == "H") { _bu_command_start = 1 }
+      }
+      else if (c == "$" && substr(line, i + 1, 1) == "(") {
+        if (substr(line, i + 2, 1) == "(") {
+          _bu_st[++_bu_sp] = "R"; _bu_st[++_bu_sp] = "R"
+          _bu_command_start = 0
+          i += 2; prev = "("; continue
+        }
+        _bu_sp++; _bu_st[_bu_sp] = "C"; _bu_command_start = 1
+        i++; prev = "("; continue
+      }
+      prev = c
+      continue
+    }
+
+    if (c == _bu_sq) {
+      _bu_sp++; _bu_st[_bu_sp] = "S"
+      if (top != "A" && top != "Q" && top != "H") { _bu_command_start = 0 }
+      prev = c; continue
+    }
+    if (c == "\"") {
+      _bu_sp++; _bu_st[_bu_sp] = "D"
+      if (top != "A" && top != "Q" && top != "H") { _bu_command_start = 0 }
+      prev = c; continue
+    }
+    if (c == "#") {
+      if (prev == "" || prev == " " || prev == "\t" ||
+          prev == ";" || prev == "&" || prev == "|") {
+        bu_scan_update_continuation()
+        return
+      }
+      prev = c
+      continue
+    }
+    if (c == "(") {
+      if (top == "K" && _bu_command_start) {
+        _bu_command_start = 0
+        prev = c
+        continue
+      }
+      if (substr(line, i + 1, 1) == "(") {
+        _bu_st[++_bu_sp] = "R"; _bu_st[++_bu_sp] = "R"
+        i++; prev = "("; continue
+      }
+      _bu_sp++
+      if (prev == "$") { _bu_st[_bu_sp] = "C"; _bu_command_start = 1 }
+      else if (top == "R") { _bu_st[_bu_sp] = "R" }
+      else if (prev == "<" || prev == ">") {
+        _bu_st[_bu_sp] = "C"; _bu_command_start = 1
+      }
+      else { _bu_st[_bu_sp] = (prev == "=") ? "A" : "P" }
+      prev = c
+      continue
+    }
+    if (c == ")") {
+      if (top == "K") { _bu_st[_bu_sp] = "B"; _bu_command_start = 1 }
+      else {
+        if (_bu_sp > 0) { _bu_sp-- }
+        if (_bu_sp > 0 && _bu_st[_bu_sp] == "Q") { _bu_st[_bu_sp] = "H" }
+        _bu_command_start = (_bu_sp > 0 && _bu_st[_bu_sp] == "H")
+      }
+      prev = c
+      continue
+    }
+    if (c == ";") {
+      if (top == "B" && (substr(line, i + 1, 1) == ";" ||
+          substr(line, i + 1, 1) == "&")) {
+        _bu_st[_bu_sp] = "K"
+      }
+      _bu_command_start = 1
+      prev = c
+      continue
+    }
+    if (c == "&") {
+      _bu_command_start = 1
+      prev = c
+      continue
+    }
+    if (c == "|") {
+      # Pattern alternatives remain pattern words, even when named `esac`.
+      _bu_command_start = (top == "K") ? 0 : 1
+      prev = c
+      continue
+    }
+    if (c == "<" && top == "R") { prev = c; continue }
+    if (c == "<" && substr(line, i + 1, 1) == "<") {
+      if (substr(line, i + 2, 1) == "<") { i += 2; prev = "<"; continue }
+      bu_scan_heredoc(substr(line, i + 2))
+      i++
+      prev = "<"
+      continue
+    }
+    prev = c
+  }
+  bu_scan_update_continuation()
+}
+
+function bu_scan_open(   k) {
+  if (_bu_cont) { return 1 }
+  if (_bu_hd != "") { return 1 }
+  for (k = _bu_sp; k > 0; k--) {
+    if (_bu_st[k] == "C") { return 0 }
+    if (_bu_st[k] == "S" || _bu_st[k] == "D" || _bu_st[k] == "A") { return 1 }
+  }
+  return 0
+}
+
+# The open contexts, innermost last. Only the differential reads it: a real
+# shell file ends with nothing open, so a non-empty state at EOF is a lexer bug
+# and this says which context leaked.
+function bu_scan_stack(   k, s) {
+  s = ""
+  for (k = 1; k <= _bu_sp; k++) { s = s _bu_st[k] }
+  return s
+}
+
+# Describes the literal spans held by the scanner stack before or after a line.
+# Command substitutions increase the command depth. Literal contexts remain
+# attached to the depth at which they opened while child commands are scanned.
+function bu_scan_span_state(after,   k, depth, c) {
+  depth = 0
+  if (after) { split("", _bu_after_span) }
+  else { split("", _bu_before_span) }
+  for (k = 1; k <= _bu_sp; k++) {
+    c = _bu_st[k]
+    if (c == "C") { depth++ }
+    else if (c == "S" || c == "D" || c == "A") {
+      if (after) { _bu_after_span[depth] = 1 }
+      else { _bu_before_span[depth] = 1 }
+    }
+  }
+  for (k in _bu_cont_depth) {
+    if (after) { _bu_after_span[k] = 1 }
+    else { _bu_before_span[k] = 1 }
+  }
+  if (after) { _bu_after_depth = depth }
+  else { _bu_before_depth = depth }
+}
+
+# Gives every line of a multi-line statement the highest count recorded
+# anywhere in it. The DEBUG trap reports the statement on one line of the span
+# and which one depends on the Bash version, so the propagation runs in both
+# directions (#722, #1338). Mirrors the loop in get_all_line_hits.
+function bu_propagate(sl, hits, total,   ln, start, max, fill, h, open, d, was, now, member, n, parts, current) {
+  bu_scan_reset()
+  split("", span_lines)
+  split("", span_max)
+  start = 1
+  max = 0
+  for (ln = 1; ln <= total; ln++) {
+    h = (ln in hits) ? hits[ln] + 0 : 0
+    if (h > max) { max = h }
+
+    bu_scan_span_state(0)
+    bu_scan_line(sl[ln])
+    bu_scan_span_state(1)
+
+    open = bu_scan_open()
+    if (!open) {
+      if (max > 0 && start < ln) {
+        for (fill = start; fill <= ln; fill++) { hits[fill] = max }
+      }
+      start = ln + 1
+      max = 0
+    }
+
+    split("", seen)
+    for (d in _bu_before_span) { seen[d] = 1 }
+    for (d in _bu_after_span) { seen[d] = 1 }
+    for (d in seen) {
+      was = (d in _bu_before_span)
+      now = (d in _bu_after_span)
+      member = (was && _bu_before_depth == d) ||
+        (now && _bu_after_depth == d) || (was != now)
+      if (member) {
+        span_lines[d] = span_lines[d] " " ln
+        if (h > span_max[d]) { span_max[d] = h }
+      }
+      if (was && !now) {
+        if (span_max[d] > 0) {
+          n = split(span_lines[d], parts, " ")
+          for (fill = 1; fill <= n; fill++) {
+            if (parts[fill] == "") { continue }
+            current = (parts[fill] in hits) ? hits[parts[fill]] + 0 : 0
+            if (span_max[d] > current) { hits[parts[fill]] = span_max[d] }
+          }
+        }
+        delete span_lines[d]
+        delete span_max[d]
+      }
+    }
+  }
+}
 '
 
 _BASHUNIT_COVERAGE_AWK_LCOV='
@@ -2717,12 +3124,7 @@ FILENAME == hitsfile {
 }
 
 END {
-  carry = 0
-  for (ln = 1; ln <= total; ln++) {
-    h = (ln in hits) ? hits[ln] + 0 : 0
-    if (carry > 0 && h < carry) { h = carry; hits[ln] = h }
-    if (h > 0 && bu_ends_with_continuation(src[ln])) { carry = h } else { carry = 0 }
-  }
+  bu_propagate(src, hits, total)
 
   executable = 0
   hit = 0
@@ -2762,14 +3164,7 @@ _BASHUNIT_COVERAGE_AWK_STATS='
   }
   close(src)
 
-  # The DEBUG trap attributes a multi-line statement to its starting line, so
-  # the count carries forward across the backslash chain (#722).
-  carry = 0
-  for (ln = 1; ln <= total; ln++) {
-    h = (ln in hits) ? hits[ln] : 0
-    if (carry > 0 && h < carry) { h = carry; hits[ln] = h }
-    if (h > 0 && bu_ends_with_continuation(sl[ln])) { carry = h } else { carry = 0 }
-  }
+  bu_propagate(sl, hits, total)
 
   executable = 0
   hit = 0
@@ -2818,14 +3213,7 @@ BEGIN { print "TN:" }
   }
   close(src)
 
-  # The DEBUG trap attributes a multi-line statement to its starting line, so
-  # the count carries forward across the backslash chain (#722).
-  carry = 0
-  for (ln = 1; ln <= total; ln++) {
-    h = (ln in hits) ? hits[ln] : 0
-    if (carry > 0 && h < carry) { h = carry; hits[ln] = h }
-    if (h > 0 && bu_ends_with_continuation(sl[ln])) { carry = h } else { carry = 0 }
-  }
+  bu_propagate(sl, hits, total)
 
   bu_fn_reset()
   bu_br_reset()
@@ -3084,6 +3472,364 @@ function bashunit::coverage::_ends_with_continuation() {
   [ $((${#trailing} % 2)) -eq 1 ]
 }
 
+_BASHUNIT_COVERAGE_SCAN_STACK=""
+_BASHUNIT_COVERAGE_SCAN_HEREDOC=""
+_BASHUNIT_COVERAGE_SCAN_HEREDOC_TAB=0
+_BASHUNIT_COVERAGE_SCAN_CONTINUES=0
+_BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS=""
+_BASHUNIT_COVERAGE_SCAN_COMMAND_START=1
+
+function bashunit::coverage::scan_reset() {
+  _BASHUNIT_COVERAGE_SCAN_STACK=""
+  _BASHUNIT_COVERAGE_SCAN_HEREDOC=""
+  _BASHUNIT_COVERAGE_SCAN_HEREDOC_TAB=0
+  _BASHUNIT_COVERAGE_SCAN_CONTINUES=0
+  _BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS=""
+  _BASHUNIT_COVERAGE_SCAN_COMMAND_START=1
+}
+
+function bashunit::coverage::_scan_heredoc_start() {
+  local rest="$1"
+
+  _BASHUNIT_COVERAGE_SCAN_HEREDOC_TAB=0
+  case "$rest" in
+  '-'*)
+    _BASHUNIT_COVERAGE_SCAN_HEREDOC_TAB=1
+    rest="${rest#-}"
+    ;;
+  esac
+  rest="${rest#"${rest%%[![:space:]]*}"}"
+
+  local word="${rest%%[[:space:];&|<>)]*}"
+  word="${word//\\/}"
+  word="${word//\'/}"
+  word="${word//\"/}"
+  _BASHUNIT_COVERAGE_SCAN_HEREDOC="$word"
+}
+
+function bashunit::coverage::_scan_update_continuation_span() {
+  local stack="$1" command_start="$2"
+  local commands depth kept="" item
+  commands="${stack//[^C]/}"
+  depth=${#commands}
+  for item in $_BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS; do
+    if [ "$item" -lt "$depth" ]; then
+      kept="${kept:+$kept }$item"
+    fi
+  done
+  if [ "$_BASHUNIT_COVERAGE_SCAN_CONTINUES" -eq 1 ]; then
+    kept="${kept:+$kept }$depth"
+    _BASHUNIT_COVERAGE_SCAN_COMMAND_START=$command_start
+  else
+    _BASHUNIT_COVERAGE_SCAN_COMMAND_START=1
+  fi
+  _BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS="$kept"
+}
+
+function bashunit::coverage::scan_line() {
+  local line="$1"
+
+  _BASHUNIT_COVERAGE_SCAN_CONTINUES=0
+
+  if [ -n "$_BASHUNIT_COVERAGE_SCAN_HEREDOC" ]; then
+    local body="$line"
+    if [ "$_BASHUNIT_COVERAGE_SCAN_HEREDOC_TAB" -eq 1 ]; then
+      body="${body#"${body%%[!	]*}"}"
+    fi
+    if [ "$body" = "$_BASHUNIT_COVERAGE_SCAN_HEREDOC" ]; then
+      _BASHUNIT_COVERAGE_SCAN_HEREDOC=""
+    fi
+    bashunit::coverage::_scan_update_continuation_span \
+      "$_BASHUNIT_COVERAGE_SCAN_STACK" 1
+    return 0
+  fi
+
+  local stack="$_BASHUNIT_COVERAGE_SCAN_STACK"
+  local lead="${line#"${line%%[![:space:]]*}"}"
+  local keyword="${lead%%[[:space:];&|)]*}"
+  local command_start=$_BASHUNIT_COVERAGE_SCAN_COMMAND_START
+
+  if [ -z "$stack" ] && [ -z "$_BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS" ] &&
+    [ "$command_start" -eq 1 ]; then
+    case "$keyword" in
+    case | if | while | until | then | do | else | elif | '{' | '!') : ;;
+    *)
+      case "$line" in
+      *[\'\"\\\(\<\;\&\|]*) : ;;
+      *)
+        _BASHUNIT_COVERAGE_SCAN_STACK="$stack"
+        _BASHUNIT_COVERAGE_SCAN_COMMAND_START=1
+        return 0
+        ;;
+      esac
+      ;;
+    esac
+  fi
+
+  local rest="$line" prev="" head tail char top words token
+  while [ -n "$rest" ]; do
+    top="${stack#"${stack%?}"}"
+    case "$top" in
+    'S') head="${rest%%[\']*}" ;;
+    'D') head="${rest%%[\"\\$]*}" ;;
+    *) head="${rest%%[\'\"\\#()<;&|]*}" ;;
+    esac
+
+    [ -n "$head" ] && prev="${head#"${head%?}"}"
+
+    if [ "$command_start" -eq 1 ] && [ "$top" != 'S' ] &&
+      [ "$top" != 'D' ] && [ "$top" != 'A' ] && [ "$top" != 'R' ]; then
+      words="$head"
+      while [ "$command_start" -eq 1 ] && [ -n "$words" ]; do
+        words="${words#"${words%%[![:space:]]*}"}"
+        [ -z "$words" ] && break
+        token="${words%%[[:space:]]*}"
+        words="${words#"$token"}"
+        top="${stack#"${stack%?}"}"
+        case "$top:$token" in
+        'Q:'*)
+
+          stack="${stack%?}H"
+          command_start=1
+          ;;
+        'H:in')
+          stack="${stack%?}K"
+          command_start=1
+          ;;
+        'H:'*)
+
+          command_start=1
+          ;;
+        'K:esac' | 'B:esac')
+          stack="${stack%?}"
+          command_start=0
+          ;;
+        'K:'*)
+
+          command_start=0
+          ;;
+        *':case')
+          stack="${stack}Q"
+          command_start=1
+          ;;
+        *':if' | *':while' | *':until' | *':then' | *':do' | *':else' | *':elif' | *':{' | *':!')
+          command_start=1
+          ;;
+        *) command_start=0 ;;
+        esac
+      done
+    fi
+
+    [ "$head" = "$rest" ] && break
+    tail="${rest#"$head"}"
+    char="${tail%"${tail#?}"}"
+    rest="${tail#?}"
+    top="${stack#"${stack%?}"}"
+
+    if [ "$top" = 'S' ]; then
+      stack="${stack%?}"
+      case "${stack#"${stack%?}"}" in
+      'Q')
+        stack="${stack%?}H"
+        command_start=1
+        ;;
+      'H') command_start=1 ;;
+      esac
+      prev="$char"
+      continue
+    fi
+
+    case "$char" in
+    [\\])
+      [ -z "$rest" ] && _BASHUNIT_COVERAGE_SCAN_CONTINUES=1
+      [ -n "$rest" ] && command_start=0
+      prev="${rest%"${rest#?}"}"
+      rest="${rest#?}"
+      continue
+      ;;
+    esac
+
+    if [ "$top" = 'D' ]; then
+      case "$char" in
+      '"')
+        stack="${stack%?}"
+        case "${stack#"${stack%?}"}" in
+        'Q')
+          stack="${stack%?}H"
+          command_start=1
+          ;;
+        'H') command_start=1 ;;
+        esac
+        ;;
+      '$')
+
+        case "$rest" in
+        '(('*)
+          stack="${stack}RR"
+          command_start=0
+          rest="${rest#??}"
+          prev='('
+          continue
+          ;;
+        '('*)
+          stack="${stack}C"
+          command_start=1
+          rest="${rest#?}"
+          prev='('
+          continue
+          ;;
+        esac
+        ;;
+      esac
+      prev="$char"
+      continue
+    fi
+
+    case "$char" in
+    "'")
+      stack="${stack}S"
+      case "$top" in A | Q | H) : ;; *) command_start=0 ;; esac
+      ;;
+    '"')
+      stack="${stack}D"
+      case "$top" in A | Q | H) : ;; *) command_start=0 ;; esac
+      ;;
+    '#')
+
+      case "$prev" in
+      '' | ' ' | '	' | ';' | '&' | '|') break ;;
+      esac
+      ;;
+    '(')
+
+      if [ "$top" = 'K' ] && [ "$command_start" -eq 1 ]; then
+        command_start=0
+        prev="$char"
+        continue
+      fi
+      case "$rest" in
+      '('*)
+        stack="${stack}RR"
+        rest="${rest#?}"
+        prev='('
+        continue
+        ;;
+      esac
+
+      case "$prev:$top" in
+      '$:'*)
+        stack="${stack}C"
+        command_start=1
+        ;;
+      *:R) stack="${stack}R" ;;
+      '<:'* | '>:'*)
+        stack="${stack}C"
+        command_start=1
+        ;;
+      '=:'*) stack="${stack}A" ;;
+      *) stack="${stack}P" ;;
+      esac
+      ;;
+    ')')
+
+      if [ "$top" = 'K' ]; then
+        stack="${stack%?}B"
+        command_start=1
+      else
+        stack="${stack%?}"
+        case "${stack#"${stack%?}"}" in
+        'Q')
+          stack="${stack%?}H"
+          command_start=1
+          ;;
+        'H') command_start=1 ;;
+        *) command_start=0 ;;
+        esac
+      fi
+      ;;
+    ';')
+
+      if [ "$top" = 'B' ]; then
+        case "$rest" in
+        ';'* | '&'*) stack="${stack%?}K" ;;
+        esac
+      fi
+      command_start=1
+      ;;
+    '&') command_start=1 ;;
+    '|')
+
+      if [ "$top" = 'K' ]; then command_start=0; else command_start=1; fi
+      ;;
+    '<')
+
+      if [ "$top" = 'R' ]; then
+        prev="$char"
+        continue
+      fi
+      case "$rest" in
+      '<<'*)
+
+        rest="${rest#??}"
+        prev='<'
+        continue
+        ;;
+      '<'*)
+        rest="${rest#?}"
+        bashunit::coverage::_scan_heredoc_start "$rest"
+        prev='<'
+        continue
+        ;;
+      esac
+      ;;
+    esac
+    prev="$char"
+  done
+
+  bashunit::coverage::_scan_update_continuation_span "$stack" "$command_start"
+  _BASHUNIT_COVERAGE_SCAN_STACK="$stack"
+
+  return 0
+}
+
+function bashunit::coverage::scan_is_open() {
+  [ "$_BASHUNIT_COVERAGE_SCAN_CONTINUES" -eq 1 ] && return 0
+  [ -n "$_BASHUNIT_COVERAGE_SCAN_HEREDOC" ] && return 0
+
+  case "${_BASHUNIT_COVERAGE_SCAN_STACK##*C}" in
+  *[SDA]*) return 0 ;;
+  esac
+  return 1
+}
+
+_BASHUNIT_COVERAGE_SCAN_COMMAND_DEPTH=0
+_BASHUNIT_COVERAGE_SCAN_SPAN_DEPTHS=""
+
+function bashunit::coverage::_scan_span_state() {
+  local stack="$1" continuations="$2" char depth=0 spans="" item
+  while [ -n "$stack" ]; do
+    char="${stack%"${stack#?}"}"
+    stack="${stack#?}"
+    case "$char" in
+    C) depth=$((depth + 1)) ;;
+    S | D | A)
+      case " $spans " in
+      *" $depth "*) : ;;
+      *) spans="${spans:+$spans }$depth" ;;
+      esac
+      ;;
+    esac
+  done
+  for item in $continuations; do
+    case " $spans " in
+    *" $item "*) : ;;
+    *) spans="${spans:+$spans }$item" ;;
+    esac
+  done
+  _BASHUNIT_COVERAGE_SCAN_COMMAND_DEPTH=$depth
+  _BASHUNIT_COVERAGE_SCAN_SPAN_DEPTHS="$spans"
+}
+
 _BASHUNIT_COVERAGE_HITS_AGGREGATED=false
 _BASHUNIT_COVERAGE_HITS_FILE_OUT=""
 
@@ -3209,18 +3955,72 @@ function bashunit::coverage::get_all_line_hits() {
   local total=$_i
   [ "$maxln" -gt "$total" ] && total=$maxln
 
-  local carry=0 idx h
+  local idx start=1 max=0 fill h is_open
+  local before_stack before_continuations before_depth before_spans after_depth after_spans
+  local depth seen was_active is_active member current
+  local -a span_lines=()
+  local -a span_max=()
+  bashunit::coverage::scan_reset
   for ((idx = 1; idx <= total; idx++)); do
     h=${counts[idx]:-0}
-    if [ "$carry" -gt 0 ] && [ "$h" -lt "$carry" ]; then
-      h=$carry
-      counts[idx]=$h
+    [ "$h" -gt "$max" ] && max=$h
+
+    before_stack="$_BASHUNIT_COVERAGE_SCAN_STACK"
+    before_continuations=$_BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS
+    bashunit::coverage::_scan_span_state "$before_stack" "$before_continuations"
+    before_depth=$_BASHUNIT_COVERAGE_SCAN_COMMAND_DEPTH
+    before_spans=$_BASHUNIT_COVERAGE_SCAN_SPAN_DEPTHS
+
+    bashunit::coverage::scan_line "${src[idx - 1]:-}"
+    bashunit::coverage::_scan_span_state \
+      "$_BASHUNIT_COVERAGE_SCAN_STACK" "$_BASHUNIT_COVERAGE_SCAN_CONTINUATION_DEPTHS"
+    after_depth=$_BASHUNIT_COVERAGE_SCAN_COMMAND_DEPTH
+    after_spans=$_BASHUNIT_COVERAGE_SCAN_SPAN_DEPTHS
+
+    is_open=0
+    bashunit::coverage::scan_is_open && is_open=1
+    if [ "$is_open" -eq 0 ]; then
+      if [ "$max" -gt 0 ] && [ "$start" -lt "$idx" ]; then
+        for ((fill = start; fill <= idx; fill++)); do
+          counts[fill]=$max
+        done
+      fi
+      start=$((idx + 1))
+      max=0
     fi
-    if [ "$h" -gt 0 ] && bashunit::coverage::_ends_with_continuation "${src[idx - 1]:-}"; then
-      carry=$h
-    else
-      carry=0
-    fi
+
+    seen=""
+    for depth in $before_spans $after_spans; do
+      case " $seen " in *" $depth "*) continue ;; esac
+      seen="${seen:+$seen }$depth"
+
+      was_active=0
+      is_active=0
+      case " $before_spans " in *" $depth "*) was_active=1 ;; esac
+      case " $after_spans " in *" $depth "*) is_active=1 ;; esac
+
+      member=0
+      if { [ "$was_active" -eq 1 ] && [ "$before_depth" -eq "$depth" ]; } ||
+        { [ "$is_active" -eq 1 ] && [ "$after_depth" -eq "$depth" ]; } ||
+        [ "$was_active" -ne "$is_active" ]; then
+        member=1
+      fi
+      if [ "$member" -eq 1 ]; then
+        span_lines[depth]="${span_lines[depth]:-} $idx"
+        [ "$h" -gt "${span_max[depth]:-0}" ] && span_max[depth]=$h
+      fi
+
+      if [ "$was_active" -eq 1 ] && [ "$is_active" -eq 0 ]; then
+        if [ "${span_max[depth]:-0}" -gt 0 ]; then
+          for fill in ${span_lines[depth]:-}; do
+            current=${counts[fill]:-0}
+            [ "${span_max[depth]}" -gt "$current" ] && counts[fill]=${span_max[depth]}
+          done
+        fi
+        span_lines[depth]=""
+        span_max[depth]=0
+      fi
+    done
   done
 
   local ln
@@ -5459,14 +6259,7 @@ function escape(t) {
 }
 
 END {
-  # The DEBUG trap attributes a multi-line statement to its starting line, so
-  # the count carries forward across the backslash chain (#722).
-  carry = 0
-  for (ln = 1; ln <= total; ln++) {
-    h = (ln in hits) ? hits[ln] : 0
-    if (carry > 0 && h < carry) { h = carry; hits[ln] = h }
-    if (h > 0 && bu_ends_with_continuation(sl[ln])) { carry = h } else { carry = 0 }
-  }
+  bu_propagate(sl, hits, total)
 
   for (ln = 1; ln <= total; ln++) {
     row_class = ""
@@ -5518,12 +6311,7 @@ FILENAME == hitsfile {
 }
 
 END {
-  carry = 0
-  for (ln = 1; ln <= total; ln++) {
-    h = (ln in hits) ? hits[ln] : 0
-    if (carry > 0 && h < carry) { h = carry; hits[ln] = h }
-    if (h > 0 && bu_ends_with_continuation(sl[ln])) { carry = h } else { carry = 0 }
-  }
+  bu_propagate(sl, hits, total)
 
   bu_fn_reset()
   for (ln = 1; ln <= total; ln++) { bu_fn_line(sl[ln], ln) }
@@ -7000,13 +7788,15 @@ function bashunit::console_results::print_successful_test() {
   local full_line=$line
   if bashunit::env::is_show_execution_time_enabled; then
     bashunit::console_results::format_duration_to_slot "$duration"
-    full_line="$(bashunit::str::rpad "$line" "$_BASHUNIT_CONSOLE_DURATION_OUT")"
+    bashunit::str::rpad_to_slot "$line" "$_BASHUNIT_CONSOLE_DURATION_OUT"
+    full_line=$_BASHUNIT_STR_RPAD_OUT
   fi
 
   bashunit::console_results::print_line "successful" "$full_line"
 }
 
 function bashunit::console_results::test_location_suffix() {
+  bashunit::runner::ensure_test_location
   local location=${_BASHUNIT_TEST_LOCATION:-}
   if [ -z "$location" ]; then
     return 0
@@ -7183,9 +7973,9 @@ function bashunit::console_results::print_risky_test() {
 
   local full_line=$line
   if bashunit::env::is_show_execution_time_enabled; then
-    local time_display
-    time_display=$(bashunit::console_results::format_duration "$duration")
-    full_line="$(bashunit::str::rpad "$line" "$time_display")"
+    bashunit::console_results::format_duration_to_slot "$duration"
+    bashunit::str::rpad_to_slot "$line" "$_BASHUNIT_CONSOLE_DURATION_OUT"
+    full_line=$_BASHUNIT_STR_RPAD_OUT
   fi
 
   bashunit::console_results::print_line "risky" "$full_line"
@@ -7220,9 +8010,13 @@ function bashunit::console_results::print_worker_stderr() {
   local test_file="$1"
   local stderr_file="$2"
 
+  local noise='child setpgid ('
+
+  grep -qv "$noise" "$stderr_file" || return 0
+
   printf "\n%sStderr from %s%s\n" \
     "$_BASHUNIT_COLOR_SKIPPED" "$test_file" "$_BASHUNIT_COLOR_DEFAULT" >&2
-  sed 's/^/|/' "$stderr_file" >&2
+  grep -v "$noise" "$stderr_file" | sed 's/^/|/' >&2
 }
 
 # src/console/deferred.sh
@@ -7593,10 +8387,10 @@ function bashunit::console_results::print_hook_completed() {
   line=$(printf "%s● %s%s" \
     "$_BASHUNIT_COLOR_PASSED" "$hook_name" "$_BASHUNIT_COLOR_DEFAULT")
 
-  local time_display
-  time_display=$(bashunit::console_results::format_duration "$duration_ms")
+  bashunit::console_results::format_duration_to_slot "$duration_ms"
+  bashunit::str::rpad_to_slot "$line" "$_BASHUNIT_CONSOLE_DURATION_OUT"
 
-  printf "%s\n" "$(bashunit::str::rpad "$line" "$time_display")"
+  printf "%s\n" "$_BASHUNIT_STR_RPAD_OUT"
 }
 
 # src/helper/index.sh
@@ -7753,6 +8547,9 @@ _BASHUNIT_PROVIDER_MAP_PROVIDERS=()
 _BASHUNIT_PROVIDER_FN_OUT=""
 
 _BASHUNIT_PROVIDER_MAP_NO_PARALLEL=false
+
+_BASHUNIT_PROVIDER_MAP_TEST_FNS=""
+_BASHUNIT_PROVIDER_MAP_DYNAMIC=false
 
 # src/helper/encoding.sh
 
@@ -8072,6 +8869,8 @@ function bashunit::helper::build_provider_map() {
   _BASHUNIT_PROVIDER_MAP_FNS=()
   _BASHUNIT_PROVIDER_MAP_PROVIDERS=()
   _BASHUNIT_PROVIDER_MAP_NO_PARALLEL=false
+  _BASHUNIT_PROVIDER_MAP_TEST_FNS=""
+  _BASHUNIT_PROVIDER_MAP_DYNAMIC=false
 
   bashunit::helper::annotations_reset
 
@@ -8082,6 +8881,14 @@ function bashunit::helper::build_provider_map() {
     [ -z "$fn" ] && continue
     if [ "$fn" = "@@no_parallel@@" ]; then
       [ "$provider" = "1" ] && _BASHUNIT_PROVIDER_MAP_NO_PARALLEL=true
+      continue
+    fi
+    if [ "$fn" = "@@testfns@@" ]; then
+      _BASHUNIT_PROVIDER_MAP_TEST_FNS="$provider"
+      continue
+    fi
+    if [ "$fn" = "@@dynamic@@" ]; then
+      _BASHUNIT_PROVIDER_MAP_DYNAMIC=true
       continue
     fi
     if [ "$fn" = "@@annot@@" ]; then
@@ -8136,6 +8943,49 @@ function bashunit::helper::build_provider_map() {
         sub(/[[:space:]]*\(\).*/, "", fn)
       }
 
+      # A definition at column 0 is one this scan can be sure the file defines
+      # unconditionally, which is what lets the header count without sourcing.
+      # Anything that could define a function this scan cannot see -- eval,
+      # a nested source, an indented (so conditional or nested) definition --
+      # marks the file dynamic and sends the count back to sourcing.
+      if (match($0, /^(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_:]*[[:space:]]*\(\)/)) {
+        # Accumulated, not emitted per definition: the read loop below runs
+        # once per row, and a row per function cost about as much as counting
+        # statically saved.
+        top_level_fns = top_level_fns " " fn
+      } else if (is_fn) {
+        dynamic = 1
+      }
+      # A heredoc marks the file dynamic too, for the opposite reason: an
+      # acceptance test writes its fixtures with one, and a `function test_x()`
+      # in that body is text, not a definition -- counted statically it would
+      # inflate the header. So does a line whose quotes do not balance, which
+      # is how the rest of them write a fixture: a multi-line string whose
+      # continuation lines start at column 0 and look exactly like definitions.
+      # Escapes and balanced spans come out first, so an apostrophe inside a
+      # double-quoted string is not mistaken for one -- that alone was flagging
+      # a fifth of the suite.
+      #
+      # Both are flagged rather than parsed. This pass also builds the provider
+      # map, so a line-skipping bug here would mis-wire real tests; and a rule
+      # that guesses wrong about where a string ends can hide a real function,
+      # which is the one error a count must never make. Over-flagging only
+      # costs the file its fast path.
+      if (index($0, "<<") > 0) {
+        dynamic = 1
+      }
+      _t = $0
+      gsub(/\\./, "", _t)
+      gsub(/"[^"]*"/, "", _t)
+      gsub(/\047[^\047]*\047/, "", _t)
+      if (index(_t, "\047") > 0 || index(_t, "\"") > 0) {
+        dynamic = 1
+      }
+      if (match($0, /(^|[^[:alnum:]_])eval([^[:alnum:]_]|$)/) ||
+          match($0, /^[[:space:]]*(\.|source)[[:space:]]/)) {
+        dynamic = 1
+      }
+
       if (pending != "" && NR - pending_line <= 2) {
         if (is_fn) {
           printf "%s\t%s\n", fn, pending
@@ -8162,7 +9012,11 @@ function bashunit::helper::build_provider_map() {
       a_skip = ""
       a_reason = ""
     }
-    END { printf "@@no_parallel@@\t%d\n", no_parallel }
+    END {
+      printf "@@no_parallel@@\t%d\n", no_parallel
+      if (dynamic) { printf "@@dynamic@@\t1\n" }
+      else { printf "@@testfns@@\t%s\n", top_level_fns }
+    }
   ' "$script" 2>/dev/null)"
 }
 
@@ -8480,13 +9334,21 @@ function bashunit::helper::name_matches_exclude_filter() {
   local __bu_prefix=$1
   local __bu_fn=$2
 
-  if [ -z "${BASHUNIT_EXCLUDE_FILTER:-}" ]; then
+  if [ -z "${BASHUNIT_EXCLUDE_FILTER:-}" ] &&
+    [ -z "${_BASHUNIT_CLI_EXCLUDE_FILTERS[*]:-}" ]; then
     return 1
   fi
 
   local IFS=','
   local __bu_excl
-  for __bu_excl in $BASHUNIT_EXCLUDE_FILTER; do
+  for __bu_excl in ${BASHUNIT_EXCLUDE_FILTER:-}; do
+    __bu_excl=${__bu_excl/test_/}
+    if [ -n "$__bu_excl" ]; then
+      case "$__bu_fn" in ${__bu_prefix}_*${__bu_excl}*) return 0 ;; esac
+    fi
+  done
+
+  for __bu_excl in ${_BASHUNIT_CLI_EXCLUDE_FILTERS[@]+"${_BASHUNIT_CLI_EXCLUDE_FILTERS[@]}"}; do
     __bu_excl=${__bu_excl/test_/}
     if [ -n "$__bu_excl" ]; then
       case "$__bu_fn" in ${__bu_prefix}_*${__bu_excl}*) return 0 ;; esac
@@ -8513,7 +9375,8 @@ function bashunit::helper::get_functions_to_run() {
     fi
     if [ "$_fn_match" = true ]; then
       local _dup=false
-      case "$filtered_functions" in *" $fn"*) _dup=true ;; esac
+
+      case "$filtered_functions " in *" $fn "*) _dup=true ;; esac
       if [ "$_dup" = true ]; then
         return 1
       fi
@@ -8562,6 +9425,37 @@ function bashunit::helper::find_files_recursive() {
 
 _BASHUNIT_HELPER_VARNAME_OUT=""
 
+_BASHUNIT_HELPER_FILE_COUNT_OUT=0
+
+function bashunit::helper::_can_count_statically() {
+  if [ "$_BASHUNIT_PROVIDER_MAP_DYNAMIC" = true ]; then
+    return 1
+  fi
+
+  if [ "${#_BASHUNIT_PROVIDER_MAP_FNS[@]}" -ne 0 ]; then
+    return 1
+  fi
+
+  return 0
+}
+
+function bashunit::helper::_count_tests_statically() {
+  local filter=$1
+
+  local IFS=$' \t\n'
+  local filtered_functions
+  filtered_functions=$(bashunit::helper::get_functions_to_run \
+    "test" "$filter" "$_BASHUNIT_PROVIDER_MAP_TEST_FNS") || true
+
+  local count=0
+  local fn
+  for fn in $filtered_functions; do
+    count=$((count + 1))
+  done
+
+  _BASHUNIT_HELPER_FILE_COUNT_OUT=$count
+}
+
 function bashunit::helper::find_total_tests() {
   local filter=${1:-}
   shift || true
@@ -8582,53 +9476,62 @@ function bashunit::helper::find_total_tests() {
 
     bashunit::helper::build_provider_map "$file"
 
-    local file_count
-    file_count=$( (
-
-      source "$file"
-      local all_fn_names
-      all_fn_names=$(compgen -A function)
-      local filtered_functions
-      filtered_functions=$(bashunit::helper::get_functions_to_run "test" "$filter" "$all_fn_names") || true
-
-      local count=0
-      local IFS=$' \t\n'
-      if [ -n "$filtered_functions" ]; then
-        local -a functions_to_run=()
-
-        functions_to_run=($filtered_functions)
-        local provider_data_count=0
-        local fn_name line
-
-        bashunit::helper::build_provider_map "$file"
-        for fn_name in "${functions_to_run[@]+"${functions_to_run[@]}"}"; do
-          bashunit::helper::provider_for_function "$fn_name"
-          if [ -z "$_BASHUNIT_PROVIDER_FN_OUT" ]; then
-            count=$((count + 1))
-            continue
-          fi
-          provider_data_count=0
-          while IFS=" " read -r line; do
-            [ -z "$line" ] && continue
-            provider_data_count=$((provider_data_count + 1))
-          done <<<"$(bashunit::helper::execute_function_if_exists "$_BASHUNIT_PROVIDER_FN_OUT")"
-
-          if [ "$provider_data_count" -eq 0 ]; then
-            count=$((count + 1))
-          else
-            count=$((count + provider_data_count))
-          fi
-        done
-      fi
-
-      echo "$count"
-    ))
-
-    total_count=$((total_count + file_count))
+    if bashunit::helper::_can_count_statically; then
+      bashunit::helper::_count_tests_statically "$filter"
+    else
+      bashunit::helper::_count_tests_by_sourcing "$file" "$filter"
+    fi
+    total_count=$((total_count + _BASHUNIT_HELPER_FILE_COUNT_OUT))
   done
 
   _BASHUNIT_HELPER_TOTAL_TESTS_OUT=$total_count
   echo "$total_count"
+}
+
+function bashunit::helper::_count_tests_by_sourcing() {
+  local file=$1
+  local filter=$2
+
+  _BASHUNIT_HELPER_FILE_COUNT_OUT=$( (
+
+    source "$file"
+    local all_fn_names
+    all_fn_names=$(compgen -A function)
+    local filtered_functions
+    filtered_functions=$(bashunit::helper::get_functions_to_run "test" "$filter" "$all_fn_names") || true
+
+    local count=0
+    local IFS=$' \t\n'
+    if [ -n "$filtered_functions" ]; then
+      local -a functions_to_run=()
+
+      functions_to_run=($filtered_functions)
+      local provider_data_count=0
+      local fn_name line
+
+      bashunit::helper::build_provider_map "$file"
+      for fn_name in "${functions_to_run[@]+"${functions_to_run[@]}"}"; do
+        bashunit::helper::provider_for_function "$fn_name"
+        if [ -z "$_BASHUNIT_PROVIDER_FN_OUT" ]; then
+          count=$((count + 1))
+          continue
+        fi
+        provider_data_count=0
+        while IFS=" " read -r line; do
+          [ -z "$line" ] && continue
+          provider_data_count=$((provider_data_count + 1))
+        done <<<"$(bashunit::helper::execute_function_if_exists "$_BASHUNIT_PROVIDER_FN_OUT")"
+
+        if [ "$provider_data_count" -eq 0 ]; then
+          count=$((count + 1))
+        else
+          count=$((count + provider_data_count))
+        fi
+      done
+    fi
+
+    echo "$count"
+  ))
 }
 
 function bashunit::helper::load_test_files() {
@@ -9106,6 +10009,8 @@ function test_failure() {
 
 Reports an error if `needle` is not a substring of `haystack`.
 Differences in casing are ignored when needle is searched for in haystack.
+Case folding is guaranteed for ASCII only: whether `ñ` matches `Ñ` depends on
+the shell version, the locale and which `tr` the system ships.
 
 ::: code-group
 ```bash [Example]
@@ -15164,6 +16069,7 @@ function bashunit::reports::add_test() {
   local test_output="$_BASHUNIT_REPORTS_CURRENT_OUTPUT"
   _BASHUNIT_REPORTS_CURRENT_OUTPUT=""
 
+  bashunit::runner::ensure_test_location
   local line=""
   case "${_BASHUNIT_TEST_LOCATION:-}" in
   "$file":*) line="${_BASHUNIT_TEST_LOCATION##*:}" ;;
@@ -15966,12 +16872,28 @@ function bashunit::runner::export_test_identity() {
   local fn_name=$2
   bashunit::helper::generate_id "$fn_name"
   export BASHUNIT_CURRENT_TEST_ID="$_BASHUNIT_HELPER_ID_OUT"
-  bashunit::runner::resolve_test_location "$test_file" "$fn_name"
+
+  _BASHUNIT_TEST_LOCATION=""
+  _BASHUNIT_TEST_LOCATION_FILE=$test_file
+  _BASHUNIT_TEST_LOCATION_FN=$fn_name
   export _BASHUNIT_TEST_LOCATION
   if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     export _BASHUNIT_COVERAGE_CURRENT_TEST_FILE="$test_file"
     export _BASHUNIT_COVERAGE_CURRENT_TEST_FN="$fn_name"
   fi
+}
+
+function bashunit::runner::ensure_test_location() {
+  if [ -n "${_BASHUNIT_TEST_LOCATION:-}" ]; then
+    return 0
+  fi
+
+  if [ -z "${_BASHUNIT_TEST_LOCATION_FN:-}" ]; then
+    return 0
+  fi
+
+  bashunit::runner::resolve_test_location \
+    "${_BASHUNIT_TEST_LOCATION_FILE:-}" "$_BASHUNIT_TEST_LOCATION_FN"
 }
 
 function bashunit::runner::resolve_test_location() {
@@ -16756,6 +17678,18 @@ function bashunit::runner::record_file_hook_failure() {
   return "$status"
 }
 
+_BASHUNIT_RUNNER_HOOK_FILE=""
+
+function bashunit::runner::hook_output_path() {
+  if ! bashunit::env::ensure_run_output_dir; then
+    _BASHUNIT_RUNNER_HOOK_FILE=/dev/null
+    return 0
+  fi
+
+  local slot="${_BASHUNIT_RUNNER_FILE_SLOT}_${_BASHUNIT_RUNNER_RESULT_ORDINAL:-0}_$1"
+  _BASHUNIT_RUNNER_HOOK_FILE="${_BASHUNIT_RUN_OUTPUT_DIR}/hook_${slot}"
+}
+
 function bashunit::runner::execute_file_hook() {
   local hook_name="$1"
   local test_file="$2"
@@ -16766,7 +17700,9 @@ function bashunit::runner::execute_file_hook() {
   local hook_output=""
   local status=0
   local hook_output_file
-  hook_output_file=$(bashunit::temp_file "${hook_name}_output")
+  bashunit::runner::file_path_to_slot "$test_file"
+  bashunit::runner::hook_output_path "$hook_name"
+  hook_output_file=$_BASHUNIT_RUNNER_HOOK_FILE
 
   _BASHUNIT_HOOK_ERR_STATUS=0
   set -E
@@ -16799,7 +17735,6 @@ function bashunit::runner::execute_file_hook() {
     while IFS= read -r line; do
       [ -z "$hook_output" ] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
     done <"$hook_output_file"
-    rm -f "$hook_output_file"
   fi
 
   if [ $status -ne 0 ]; then
@@ -16815,8 +17750,8 @@ function bashunit::runner::execute_file_hook() {
 }
 
 function bashunit::runner::run_set_up() {
-  local _test_file="${1-}"
   bashunit::internal_log "run_set_up"
+  bashunit::runner::file_path_to_slot "${1-}"
   bashunit::runner::execute_test_hook 'set_up'
 }
 
@@ -16829,7 +17764,8 @@ function bashunit::runner::run_set_up_before_script() {
   fi
 
   local start_time
-  start_time=$(bashunit::clock::now)
+  bashunit::clock::now_to_slot
+  start_time=$_BASHUNIT_CLOCK_NOW_OUT
 
   if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::enable_trap
@@ -16843,7 +17779,8 @@ function bashunit::runner::run_set_up_before_script() {
   fi
 
   local end_time
-  end_time=$(bashunit::clock::now)
+  bashunit::clock::now_to_slot
+  end_time=$_BASHUNIT_CLOCK_NOW_OUT
   local duration_ns=$((end_time - start_time))
   local duration_ms=$((duration_ns / 1000000))
 
@@ -16855,8 +17792,8 @@ function bashunit::runner::run_set_up_before_script() {
 }
 
 function bashunit::runner::run_tear_down() {
-  local _test_file="${1-}"
   bashunit::internal_log "run_tear_down"
+  bashunit::runner::file_path_to_slot "${1-}"
   bashunit::runner::execute_test_hook 'tear_down'
 }
 
@@ -16868,7 +17805,8 @@ function bashunit::runner::execute_test_hook() {
   local hook_output=""
   local status=0
   local hook_output_file
-  hook_output_file=$(bashunit::temp_file "${hook_name}_output")
+  bashunit::runner::hook_output_path "$hook_name"
+  hook_output_file=$_BASHUNIT_RUNNER_HOOK_FILE
 
   _BASHUNIT_HOOK_ERR_STATUS=0
   set -E
@@ -16901,7 +17839,6 @@ function bashunit::runner::execute_test_hook() {
     while IFS= read -r line; do
       [ -z "$hook_output" ] && hook_output="$line" || hook_output="$hook_output"$'\n'"$line"
     done <"$hook_output_file"
-    rm -f "$hook_output_file"
   fi
 
   if [ $status -ne 0 ]; then
@@ -16998,7 +17935,8 @@ function bashunit::runner::run_tear_down_after_script() {
   fi
 
   local start_time
-  start_time=$(bashunit::clock::now)
+  bashunit::clock::now_to_slot
+  start_time=$_BASHUNIT_CLOCK_NOW_OUT
 
   if [ "${_BASHUNIT_COVERAGE_ON:-0}" = 1 ]; then
     bashunit::coverage::enable_trap
@@ -17012,7 +17950,8 @@ function bashunit::runner::run_tear_down_after_script() {
   fi
 
   local end_time
-  end_time=$(bashunit::clock::now)
+  bashunit::clock::now_to_slot
+  end_time=$_BASHUNIT_CLOCK_NOW_OUT
   local duration_ns=$((end_time - start_time))
   local duration_ms=$((duration_ns / 1000000))
 
@@ -17069,10 +18008,16 @@ function bashunit::runner::parse_result() {
 _BASHUNIT_RUNNER_SUITE_DIR_OUT=""
 
 function bashunit::runner::parallel_suite_dir_to_slot() {
+  bashunit::runner::file_path_to_slot "$1"
+  _BASHUNIT_RUNNER_SUITE_DIR_OUT="${TEMP_DIR_PARALLEL_TEST_SUITE}/${_BASHUNIT_RUNNER_FILE_SLOT}"
+}
+
+_BASHUNIT_RUNNER_FILE_SLOT=""
+
+function bashunit::runner::file_path_to_slot() {
   local key="${1#./}"
   key="${key%.sh}"
-  key="${key//\//_}"
-  _BASHUNIT_RUNNER_SUITE_DIR_OUT="${TEMP_DIR_PARALLEL_TEST_SUITE}/${key}"
+  _BASHUNIT_RUNNER_FILE_SLOT="${key//\//_}"
 }
 
 function bashunit::runner::parse_result_parallel() {
@@ -17660,7 +18605,13 @@ function bashunit::runner::run_with_timeout() {
     kill -0 "$test_pid" 2>/dev/null || exit 0
     : >"$marker_file"
     kill -TERM -"$test_pid" 2>/dev/null
-    sleep 0.3
+
+    grace_ticks=0
+    while [ "$grace_ticks" -lt 20 ]; do
+      kill -0 "$test_pid" 2>/dev/null || break
+      sleep 0.1
+      grace_ticks=$((grace_ticks + 1))
+    done
     kill -KILL -"$test_pid" 2>/dev/null
   ) </dev/null >/dev/null 2>&1 &
   local watchdog_pid=$!
@@ -18167,16 +19118,8 @@ function bashunit::runner::load_test_files() {
     local source_err_file source_err source_status
     source_err_file="$_BASHUNIT_RUN_OUTPUT_DIR/source_err"
 
-    if [ ! -d "$_BASHUNIT_RUN_OUTPUT_DIR" ]; then
-      if [ "${_BASHUNIT_RUN_DIR_VANISHED:-false}" = false ]; then
-        _BASHUNIT_RUN_DIR_VANISHED=true
-        printf 'bashunit: the run scratch directory disappeared mid-run: %s\n' \
-          "$_BASHUNIT_RUN_OUTPUT_DIR" >&2
-        printf 'bashunit: recreating it; please report this with the run log (#1137).\n' >&2
-      fi
-      if ! mkdir -p "$_BASHUNIT_RUN_OUTPUT_DIR" 2>/dev/null; then
-        source_err_file=/dev/null
-      fi
+    if ! bashunit::env::ensure_run_output_dir; then
+      source_err_file=/dev/null
     fi
 
     source "$test_file" 2>"$source_err_file"
@@ -18602,18 +19545,17 @@ function bashunit::benchmark::print_results() {
 
     if bashunit::math::is_le "$avg" "$max_ms"; then
       local raw="≤ ${max_ms}"
-      local padded
-      padded=$(printf "%14s" "$raw")
-      printf '%-40s %6s %6s %10s %12s\n' "$name" "$revs" "$its" "$avg" "$padded"
+      bashunit::str::lpad_to_slot 14 "$raw"
+      printf '%-40s %6s %6s %10s %12s\n' \
+        "$name" "$revs" "$its" "$avg" "$_BASHUNIT_STR_LPAD_OUT"
       continue
     fi
 
     local raw="> ${max_ms}"
-    local padded
-    padded=$(printf "%12s" "$raw")
+    bashunit::str::lpad_to_slot 12 "$raw"
     printf '%-40s %6s %6s %10s %s%s%s\n' \
       "$name" "$revs" "$its" "$avg" \
-      "$_BASHUNIT_COLOR_FAILED" "$padded" "${_BASHUNIT_COLOR_DEFAULT}"
+      "$_BASHUNIT_COLOR_FAILED" "$_BASHUNIT_STR_LPAD_OUT" "${_BASHUNIT_COLOR_DEFAULT}"
   done
 
   bashunit::console_results::print_execution_time
@@ -20395,12 +21337,15 @@ function bashunit::main::cmd_test() {
   local filter=""
   local tag_filter=""
   local exclude_tag_filter=""
+  local -a _BASHUNIT_CLI_EXCLUDE_FILTERS=()
+  local _bashunit_cli_exclude_filter_count=0
   local IFS=$' \t\n'
   local -a raw_args=()
   local raw_args_count=0
   local -a args=()
   local args_count=0
   local assert_fn=""
+  local deprecated_assert_form=""
   local _bashunit_coverage_opt_set=false
 
   bashunit::main::apply_suites "$@"
@@ -20410,7 +21355,12 @@ function bashunit::main::cmd_test() {
     case "$1" in
     -a | --assert)
 
-      bashunit::env::warn_deprecated "\`bashunit test --assert\`" "\`bashunit assert\`"
+      deprecated_assert_form="bashunit $1"
+      if [ "${_SUBCOMMAND_IS_EXPLICIT:-false}" = "true" ]; then
+        deprecated_assert_form="bashunit test $1"
+      fi
+      bashunit::env::warn_deprecated \
+        "\`$deprecated_assert_form\`" "\`bashunit assert\`"
       assert_fn="$2"
       shift
       ;;
@@ -20419,11 +21369,9 @@ function bashunit::main::cmd_test() {
       shift
       ;;
     --exclude-filter)
-      if [ -z "$BASHUNIT_EXCLUDE_FILTER" ]; then
-        BASHUNIT_EXCLUDE_FILTER="$2"
-      else
-        BASHUNIT_EXCLUDE_FILTER="$BASHUNIT_EXCLUDE_FILTER,$2"
-      fi
+
+      _BASHUNIT_CLI_EXCLUDE_FILTERS[_bashunit_cli_exclude_filter_count]="$2"
+      _bashunit_cli_exclude_filter_count=$((_bashunit_cli_exclude_filter_count + 1))
 
       export -n BASHUNIT_EXCLUDE_FILTER
       shift
@@ -20992,7 +21940,7 @@ function _check_bash_version() {
 
 _check_bash_version
 
-declare -r BASHUNIT_VERSION="0.50.1"
+declare -r BASHUNIT_VERSION="0.51.0"
 
 _bashunit_root="${BASH_SOURCE[0]%/*}"
 
@@ -21029,9 +21977,12 @@ bashunit::clock::init
 
 _SUBCOMMAND=""
 
+_SUBCOMMAND_IS_EXPLICIT=false
+
 case "${1:-}" in
 test | bench | doc | init | upgrade | assert | watch)
   _SUBCOMMAND="$1"
+  _SUBCOMMAND_IS_EXPLICIT=true
   shift
   ;;
 learn)
