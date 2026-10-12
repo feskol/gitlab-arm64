@@ -8833,6 +8833,20 @@ function bashunit::helper::_annotations_reject() {
 
 # src/helper/provider.sh
 
+_BASHUNIT_PROVIDER_HEADER_CACHE_SEEDING=false
+_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS=()
+_BASHUNIT_PROVIDER_HEADER_CACHE_CONTENTS=()
+_BASHUNIT_PROVIDER_HEADER_CACHE_ROWS=()
+_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT=0
+_BASHUNIT_PROVIDER_SHORT_CONTENT_OUT=""
+
+function bashunit::helper::_read_short_provider_script() {
+  _BASHUNIT_PROVIDER_SHORT_CONTENT_OUT=""
+  [ -r "$1" ] || return 1
+  IFS= read -r -n 513 -d '' _BASHUNIT_PROVIDER_SHORT_CONTENT_OUT 2>/dev/null <"$1" && return 1
+  return 0
+}
+
 _BASHUNIT_PROVIDER_RESOLVED_OUT=""
 function bashunit::helper::_resolve_provider_script() {
   local script=$1
@@ -8865,6 +8879,38 @@ function bashunit::helper::build_provider_map() {
     return
   fi
 
+  local scan_rows="" cache_index="" index cache_size=${#_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[@]}
+  if [ "$_BASHUNIT_PROVIDER_HEADER_CACHE_SEEDING" != true ] && [ "$cache_size" -gt 0 ]; then
+    index=$_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT
+    if [ "${_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[index]:-}" != "$script" ]; then
+      index=""
+      local candidate
+      for candidate in "${!_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[@]}"; do
+        if [ "${_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[candidate]}" = "$script" ]; then
+          index=$candidate
+          break
+        fi
+      done
+    fi
+    if [ -n "$index" ]; then
+      if bashunit::helper::_read_short_provider_script "$script" &&
+        [ "$_BASHUNIT_PROVIDER_SHORT_CONTENT_OUT" = "${_BASHUNIT_PROVIDER_HEADER_CACHE_CONTENTS[index]}" ]; then
+        scan_rows="${_BASHUNIT_PROVIDER_HEADER_CACHE_ROWS[index]}"
+        cache_index=$index
+      fi
+      _BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[index]=""
+      while [ "$_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT" -lt "$cache_size" ] &&
+        [ -z "${_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT]:-}" ]; do
+        _BASHUNIT_PROVIDER_HEADER_CACHE_NEXT=$((_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT + 1))
+      done
+      if [ "$_BASHUNIT_PROVIDER_HEADER_CACHE_NEXT" -eq "$cache_size" ]; then
+        _BASHUNIT_PROVIDER_HEADER_CACHE_PATHS=()
+        _BASHUNIT_PROVIDER_HEADER_CACHE_CONTENTS=()
+        _BASHUNIT_PROVIDER_HEADER_CACHE_ROWS=()
+      fi
+    fi
+  fi
+
   _BASHUNIT_PROVIDER_MAP_SCRIPT="$script"
   _BASHUNIT_PROVIDER_MAP_FNS=()
   _BASHUNIT_PROVIDER_MAP_PROVIDERS=()
@@ -8876,32 +8922,14 @@ function bashunit::helper::build_provider_map() {
 
   local count=0
   local fn provider annot_timeout annot_retry annot_skip annot_reason
-
-  while IFS=$'\t' read -r fn provider annot_timeout annot_retry annot_skip annot_reason; do
-    [ -z "$fn" ] && continue
-    if [ "$fn" = "@@no_parallel@@" ]; then
-      [ "$provider" = "1" ] && _BASHUNIT_PROVIDER_MAP_NO_PARALLEL=true
-      continue
+  if [ -z "$cache_index" ]; then
+    local before_content="" can_cache=false
+    if [ "$_BASHUNIT_PROVIDER_HEADER_CACHE_SEEDING" = true ] &&
+      bashunit::helper::_read_short_provider_script "$script"; then
+      before_content=$_BASHUNIT_PROVIDER_SHORT_CONTENT_OUT
+      can_cache=true
     fi
-    if [ "$fn" = "@@testfns@@" ]; then
-      _BASHUNIT_PROVIDER_MAP_TEST_FNS="$provider"
-      continue
-    fi
-    if [ "$fn" = "@@dynamic@@" ]; then
-      _BASHUNIT_PROVIDER_MAP_DYNAMIC=true
-      continue
-    fi
-    if [ "$fn" = "@@annot@@" ]; then
-      [ "$annot_timeout" = "@@none@@" ] && annot_timeout=""
-      [ "$annot_retry" = "@@none@@" ] && annot_retry=""
-      bashunit::helper::annotations_record \
-        "$provider" "$annot_timeout" "$annot_retry" "$annot_skip" "$annot_reason"
-      continue
-    fi
-    _BASHUNIT_PROVIDER_MAP_FNS[count]="$fn"
-    _BASHUNIT_PROVIDER_MAP_PROVIDERS[count]="$provider"
-    count=$((count + 1))
-  done <<<"$(awk '
+    local awk_program='
     /^# bashunit: no-parallel-tests/ { no_parallel = 1; next }
     /^[[:space:]]*#[[:space:]]*@?data_provider[[:space:]]+/ {
       p = $0
@@ -9017,7 +9045,46 @@ function bashunit::helper::build_provider_map() {
       if (dynamic) { printf "@@dynamic@@\t1\n" }
       else { printf "@@testfns@@\t%s\n", top_level_fns }
     }
-  ' "$script" 2>/dev/null)"
+  '
+    if [ "$can_cache" = true ]; then
+
+      scan_rows=$(awk "$awk_program" 2>/dev/null <<<"$before_content") || can_cache=false
+    else
+      scan_rows=$(awk "$awk_program" "$script" 2>/dev/null)
+    fi
+    if [ "$can_cache" = true ]; then
+      index=${#_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[@]}
+      _BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[index]="$script"
+      _BASHUNIT_PROVIDER_HEADER_CACHE_CONTENTS[index]="$before_content"
+      _BASHUNIT_PROVIDER_HEADER_CACHE_ROWS[index]="$scan_rows"
+    fi
+  fi
+
+  while IFS=$'\t' read -r fn provider annot_timeout annot_retry annot_skip annot_reason; do
+    [ -z "$fn" ] && continue
+    if [ "$fn" = "@@no_parallel@@" ]; then
+      [ "$provider" = "1" ] && _BASHUNIT_PROVIDER_MAP_NO_PARALLEL=true
+      continue
+    fi
+    if [ "$fn" = "@@testfns@@" ]; then
+      _BASHUNIT_PROVIDER_MAP_TEST_FNS="$provider"
+      continue
+    fi
+    if [ "$fn" = "@@dynamic@@" ]; then
+      _BASHUNIT_PROVIDER_MAP_DYNAMIC=true
+      continue
+    fi
+    if [ "$fn" = "@@annot@@" ]; then
+      [ "$annot_timeout" = "@@none@@" ] && annot_timeout=""
+      [ "$annot_retry" = "@@none@@" ] && annot_retry=""
+      bashunit::helper::annotations_record \
+        "$provider" "$annot_timeout" "$annot_retry" "$annot_skip" "$annot_reason"
+      continue
+    fi
+    _BASHUNIT_PROVIDER_MAP_FNS[count]="$fn"
+    _BASHUNIT_PROVIDER_MAP_PROVIDERS[count]="$provider"
+    count=$((count + 1))
+  done <<<"$scan_rows"
 }
 
 function bashunit::helper::provider_for_function() {
@@ -9469,6 +9536,17 @@ function bashunit::helper::find_total_tests() {
   local total_count=0
   local file
 
+  if [ "$#" -gt 1 ]; then
+    _BASHUNIT_PROVIDER_HEADER_CACHE_PATHS=()
+    _BASHUNIT_PROVIDER_HEADER_CACHE_CONTENTS=()
+    _BASHUNIT_PROVIDER_HEADER_CACHE_ROWS=()
+    _BASHUNIT_PROVIDER_HEADER_CACHE_NEXT=0
+
+    if [ "${_BASHUNIT_PARALLEL_ENABLED:-false}" != true ]; then
+      _BASHUNIT_PROVIDER_HEADER_CACHE_SEEDING=true
+    fi
+  fi
+
   for file in "$@"; do
     if [ ! -f "$file" ]; then
       continue
@@ -9483,6 +9561,11 @@ function bashunit::helper::find_total_tests() {
     fi
     total_count=$((total_count + _BASHUNIT_HELPER_FILE_COUNT_OUT))
   done
+
+  _BASHUNIT_PROVIDER_HEADER_CACHE_SEEDING=false
+  if [ "${#_BASHUNIT_PROVIDER_HEADER_CACHE_PATHS[@]}" -gt 0 ]; then
+    _BASHUNIT_PROVIDER_MAP_SCRIPT=""
+  fi
 
   _BASHUNIT_HELPER_TOTAL_TESTS_OUT=$total_count
   echo "$total_count"
@@ -15992,8 +16075,6 @@ function assert_not_called() {
 
 # src/reports/collect.sh
 
-_BASHUNIT_REPORTS_FIELD_SEP=$'\037'
-
 function bashunit::reports::__strip_ansi() {
   printf '%s' "$1" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g'
 }
@@ -16009,6 +16090,10 @@ _BASHUNIT_REPORTS_TEST_RETRIES=()
 _BASHUNIT_REPORTS_TEST_OUTPUTS=()
 
 _BASHUNIT_REPORTS_CURRENT_OUTPUT=""
+_BASHUNIT_REPORTS_FILE_ORDINAL=0
+_BASHUNIT_REPORTS_CONTROL_RECORD_ORDINAL=0
+_BASHUNIT_REPORTS_WORKER_RECORD_ORDINAL=0
+_BASHUNIT_REPORTS_RECORD_SCOPE=control
 
 function bashunit::reports::set_current_test_output() {
   _BASHUNIT_REPORTS_CURRENT_OUTPUT="$1"
@@ -16076,16 +16161,46 @@ function bashunit::reports::add_test() {
   esac
 
   if bashunit::parallel::is_enabled; then
-    local us=$_BASHUNIT_REPORTS_FIELD_SEP
-    local row
-    row="$(bashunit::helper::encode_base64 "$file")$us"
-    row="$row$(bashunit::helper::encode_base64 "$test_name")$us"
-    row="$row$status$us$duration$us$assertions$us"
-    row="$row$(bashunit::helper::encode_base64 "$failure_message")$us"
-    row="$row$line$us$retries$us"
-    row="$row$(bashunit::helper::encode_base64 "$test_output")"
-    printf '%s\n' "$row" \
-      >>"${REPORTS_OUTPUT_PATH:-/dev/null}" 2>/dev/null || true
+    local file_order="00000000${_BASHUNIT_REPORTS_FILE_ORDINAL:-0}"
+    file_order="${file_order: -8}"
+    local row_order="00000000${_BASHUNIT_RUNNER_RESULT_ORDINAL:-0}"
+    row_order="${row_order: -8}"
+    local record_kind=0
+    local record_order=00000000
+    if [ "$_BASHUNIT_REPORTS_RECORD_SCOPE" = worker ]; then
+      _BASHUNIT_REPORTS_WORKER_RECORD_ORDINAL=$((_BASHUNIT_REPORTS_WORKER_RECORD_ORDINAL + 1))
+      record_order="00000000$_BASHUNIT_REPORTS_WORKER_RECORD_ORDINAL"
+      record_order="${record_order: -8}"
+    else
+      record_kind=1
+      _BASHUNIT_REPORTS_CONTROL_RECORD_ORDINAL=$((_BASHUNIT_REPORTS_CONTROL_RECORD_ORDINAL + 1))
+      record_order="00000000$_BASHUNIT_REPORTS_CONTROL_RECORD_ORDINAL"
+      record_order="${record_order: -8}"
+    fi
+    local record_token="$file_order$row_order$record_kind$record_order"
+    local record="${REPORTS_OUTPUT_PATH:-/dev/null}.$record_token.record"
+    local has_failure=0
+    local has_output=0
+    local write_failed=false
+    if [ -n "$failure_message" ]; then
+      has_failure=1
+      printf '%s_' "$failure_message" >"$record.failure" 2>/dev/null || write_failed=true
+    fi
+    if [ -n "$test_output" ]; then
+      has_output=1
+      printf '%s_' "$test_output" >"$record.output" 2>/dev/null || write_failed=true
+    fi
+    if [ "$write_failed" = false ]; then
+      printf '%s\0' "$file" "$test_name" "$status" "$duration" "$assertions" "$line" "$retries" \
+        "$has_failure" "$has_output" >"$record" 2>/dev/null || write_failed=true
+    fi
+    if [ "$write_failed" = false ]; then
+
+      printf '%s\n' "$record_token" >>"${REPORTS_OUTPUT_PATH:-/dev/null}" 2>/dev/null || write_failed=true
+    fi
+    if [ "$write_failed" = true ]; then
+      printf 'bashunit: unable to write report record %s\n' "$record" >&2
+    fi
   fi
 
   _BASHUNIT_REPORTS_TEST_FILES[${#_BASHUNIT_REPORTS_TEST_FILES[@]}]="$file"
@@ -16101,6 +16216,7 @@ function bashunit::reports::add_test() {
 
 function bashunit::reports::load_spooled() {
   bashunit::reports::is_enabled || return 0
+  bashunit::parallel::is_enabled || return 0
   [ -f "${REPORTS_OUTPUT_PATH:-}" ] || return 0
 
   _BASHUNIT_REPORTS_TEST_FILES=()
@@ -16113,21 +16229,78 @@ function bashunit::reports::load_spooled() {
   _BASHUNIT_REPORTS_TEST_RETRIES=()
   _BASHUNIT_REPORTS_TEST_OUTPUTS=()
 
-  local file test_name status duration assertions failure_message line retries test_output n
-
-  while IFS="$_BASHUNIT_REPORTS_FIELD_SEP" read -r \
-    file test_name status duration assertions failure_message line retries test_output; do
-    [ -n "$file" ] || continue
+  local record_token record file test_name status duration assertions failure_message line retries test_output
+  local has_failure has_output
+  while IFS= read -r record_token; do
+    case "$record_token" in
+    *[!0-9]* | "")
+      printf 'bashunit: invalid report record token %s\n' "$record_token" >&2
+      continue
+      ;;
+    esac
+    if [ "${#record_token}" -ne 25 ]; then
+      printf 'bashunit: invalid report record token %s\n' "$record_token" >&2
+      continue
+    fi
+    record="$REPORTS_OUTPUT_PATH.$record_token.record"
+    if [ ! -f "$record" ]; then
+      printf 'bashunit: missing report record %s\n' "$record" >&2
+      continue
+    fi
+    if {
+      IFS= read -r -d '' file &&
+        IFS= read -r -d '' test_name &&
+        IFS= read -r -d '' status &&
+        IFS= read -r -d '' duration &&
+        IFS= read -r -d '' assertions &&
+        IFS= read -r -d '' line &&
+        IFS= read -r -d '' retries &&
+        IFS= read -r -d '' has_failure &&
+        IFS= read -r -d '' has_output
+    } <"$record"; then
+      :
+    else
+      printf 'bashunit: incomplete report record %s\n' "$record" >&2
+      continue
+    fi
+    failure_message=""
+    test_output=""
+    if [ "$has_failure" = 1 ] && [ -f "$record.failure" ]; then
+      failure_message=$(<"$record.failure")
+      case "$failure_message" in
+      *_) failure_message="${failure_message%?}" ;;
+      *)
+        printf 'bashunit: incomplete report field %s\n' "$record.failure" >&2
+        continue
+        ;;
+      esac
+    elif [ "$has_failure" = 1 ]; then
+      printf 'bashunit: missing report field %s\n' "$record.failure" >&2
+      continue
+    fi
+    if [ "$has_output" = 1 ] && [ -f "$record.output" ]; then
+      test_output=$(<"$record.output")
+      case "$test_output" in
+      *_) test_output="${test_output%?}" ;;
+      *)
+        printf 'bashunit: incomplete report field %s\n' "$record.output" >&2
+        continue
+        ;;
+      esac
+    elif [ "$has_output" = 1 ]; then
+      printf 'bashunit: missing report field %s\n' "$record.output" >&2
+      continue
+    fi
     local n=${#_BASHUNIT_REPORTS_TEST_FILES[@]}
-    _BASHUNIT_REPORTS_TEST_FILES[n]=$(bashunit::helper::decode_base64 "$file")
-    _BASHUNIT_REPORTS_TEST_NAMES[n]=$(bashunit::helper::decode_base64 "$test_name")
+    _BASHUNIT_REPORTS_TEST_FILES[n]=$file
+    _BASHUNIT_REPORTS_TEST_NAMES[n]=$test_name
     _BASHUNIT_REPORTS_TEST_STATUSES[n]=$status
     _BASHUNIT_REPORTS_TEST_DURATIONS[n]=$duration
     _BASHUNIT_REPORTS_TEST_ASSERTIONS[n]=$assertions
-    _BASHUNIT_REPORTS_TEST_FAILURES[n]=$(bashunit::helper::decode_base64 "$failure_message")
+    _BASHUNIT_REPORTS_TEST_FAILURES[n]=$failure_message
     _BASHUNIT_REPORTS_TEST_LINES[n]=$line
     _BASHUNIT_REPORTS_TEST_RETRIES[n]=$retries
-    _BASHUNIT_REPORTS_TEST_OUTPUTS[n]=$(bashunit::helper::decode_base64 "$test_output")
+    _BASHUNIT_REPORTS_TEST_OUTPUTS[n]=$test_output
   done <"$REPORTS_OUTPUT_PATH"
 }
 
@@ -16368,16 +16541,24 @@ function bashunit::reports::generate_report_tap() {
 
 # src/reports/json.sh
 
-function bashunit::reports::__json_escape() {
+_BASHUNIT_REPORTS_JSON_ESCAPE_OUT=""
+function bashunit::reports::__json_escape_to_slot() {
   local text="$1"
-  text=$(bashunit::reports::__strip_ansi "$text" | tr -d '\000-\010\013\014\016-\037')
+  case "$text" in
+  *[[:cntrl:]]*) text=$(bashunit::reports::__strip_ansi "$text" | tr -d '\000-\010\013\014\016-\037') ;;
+  esac
 
   text="${text//\\/\\\\}"
   text="${text//\"/\\\"}"
   text="${text//$'\t'/\\t}"
   text="${text//$'\r'/\\r}"
   text="${text//$'\n'/\\n}"
-  printf '%s' "$text"
+  _BASHUNIT_REPORTS_JSON_ESCAPE_OUT="$text"
+}
+
+function bashunit::reports::__json_escape() {
+  bashunit::reports::__json_escape_to_slot "$1"
+  printf '%s' "$_BASHUNIT_REPORTS_JSON_ESCAPE_OUT"
 }
 
 function bashunit::reports::generate_report_json() {
@@ -16415,11 +16596,14 @@ function bashunit::reports::print_report_json() {
     local seq=0
     for i in "${!_BASHUNIT_REPORTS_TEST_NAMES[@]}"; do
       local file name status duration message sep
-      file=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}")
-      name=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}")
+      bashunit::reports::__json_escape_to_slot "${_BASHUNIT_REPORTS_TEST_FILES[$i]:-}"
+      file="$_BASHUNIT_REPORTS_JSON_ESCAPE_OUT"
+      bashunit::reports::__json_escape_to_slot "${_BASHUNIT_REPORTS_TEST_NAMES[$i]:-}"
+      name="$_BASHUNIT_REPORTS_JSON_ESCAPE_OUT"
       status="${_BASHUNIT_REPORTS_TEST_STATUSES[$i]:-}"
       duration="${_BASHUNIT_REPORTS_TEST_DURATIONS[$i]:-0}"
-      message=$(bashunit::reports::__json_escape "${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}")
+      bashunit::reports::__json_escape_to_slot "${_BASHUNIT_REPORTS_TEST_FAILURES[$i]:-}"
+      message="$_BASHUNIT_REPORTS_JSON_ESCAPE_OUT"
       sep=","
       [ "$seq" -eq "$((total - 1))" ] && sep=""
       printf '    { "file": "%s", "name": "%s", "status": "%s", "duration_ms": %d,' \
@@ -16871,7 +17055,9 @@ function bashunit::runner::export_test_identity() {
   local test_file=$1
   local fn_name=$2
   bashunit::helper::generate_id "$fn_name"
-  export BASHUNIT_CURRENT_TEST_ID="$_BASHUNIT_HELPER_ID_OUT"
+  local file_ordinal=${_BASHUNIT_REPORTS_FILE_ORDINAL:-0}
+  local test_ordinal=${_BASHUNIT_RUNNER_RESULT_ORDINAL:-0}
+  export BASHUNIT_CURRENT_TEST_ID="${_BASHUNIT_HELPER_ID_OUT}_${file_ordinal}_${test_ordinal}"
 
   _BASHUNIT_TEST_LOCATION=""
   _BASHUNIT_TEST_LOCATION_FILE=$test_file
@@ -17583,15 +17769,7 @@ function bashunit::runner::wait_for_job_slot() {
 }
 
 function bashunit::runner::spinner() {
-
-  if [ ! -t 1 ]; then
-
-    while true; do sleep 1; done
-    return
-  fi
-
-  if bashunit::env::is_no_progress_enabled || bashunit::env::is_machine_output_enabled; then
-    while true; do sleep 1; done
+  if [ ! -t 1 ] || bashunit::env::is_no_progress_enabled || bashunit::env::is_machine_output_enabled; then
     return
   fi
 
@@ -17613,6 +17791,11 @@ function bashunit::runner::spinner() {
 # src/runner/hooks.sh
 
 function bashunit::runner::cleanup_on_exit() {
+  if [ -f "${_BASHUNIT_RUNNER_TIMEOUT_MARKER_FILE:-}" ]; then
+
+    trap '' TERM
+  fi
+
   local test_file="$1"
   local exit_code="$2"
 
@@ -18216,6 +18399,7 @@ function bashunit::runner::parse_data_provider_args() {
   local i=0
   local arg=""
   local encoded_arg
+  local output_format="${2:-base64}"
   local -a args=()
   local args_count=0
 
@@ -18242,8 +18426,12 @@ function bashunit::runner::parse_data_provider_args() {
       fi
 
       for arg in "${args[@]+"${args[@]}"}"; do
-        encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
-        printf '%s\n' "$encoded_arg"
+        if [ "$output_format" = nul ]; then
+          printf '%s\0' "$arg"
+        else
+          encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
+          printf '%s\n' "$encoded_arg"
+        fi
       done
       return
     fi
@@ -18315,8 +18503,12 @@ function bashunit::runner::parse_data_provider_args() {
 
   local arg
   for arg in ${args+"${args[@]}"}; do
-    encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
-    printf '%s\n' "$encoded_arg"
+    if [ "$output_format" = nul ]; then
+      printf '%s\0' "$arg"
+    else
+      encoded_arg="$(bashunit::helper::encode_base64 "${arg}")"
+      printf '%s\n' "$encoded_arg"
+    fi
   done
 }
 
@@ -18374,6 +18566,14 @@ function bashunit::runner::report_unusable_provider() {
     reason="data provider '$provider' is not defined, so the test never ran"
   fi
 
+  bashunit::runner::report_provider_error "$test_file" "$fn_name" "$reason"
+}
+
+function bashunit::runner::report_provider_error() {
+  local test_file="$1"
+  local fn_name="$2"
+  local reason="$3"
+
   bashunit::state::add_tests_failed
   bashunit::console_results::print_error_test "$fn_name" "$reason"
   local _normalized_fn
@@ -18390,6 +18590,11 @@ function bashunit::runner::report_unusable_provider() {
     printf '%s\n' "$payload" \
       >"${suite_dir}/${_BASHUNIT_RUNNER_RESULT_ORDINAL}.result"
   fi
+}
+
+function bashunit::runner::run_test_parallel() {
+  _BASHUNIT_REPORTS_RECORD_SCOPE=worker
+  bashunit::runner::run_test "$@"
 }
 
 function bashunit::runner::call_test_functions() {
@@ -18414,6 +18619,7 @@ function bashunit::runner::call_test_functions() {
   local provider_data_count=0
   local -a parsed_data=()
   local parsed_data_count=0
+  local provider_arg_file=""
 
   local _test_ordinal=0
 
@@ -18444,11 +18650,11 @@ function bashunit::runner::call_test_functions() {
 
     bashunit::helper::provider_for_function "$fn_name"
     if [ -z "$_BASHUNIT_PROVIDER_FN_OUT" ]; then
+      _test_ordinal=$((_test_ordinal + 1))
+      _BASHUNIT_RUNNER_RESULT_ORDINAL=$_test_ordinal
       if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
         bashunit::runner::wait_for_job_slot
-        _test_ordinal=$((_test_ordinal + 1))
-        _BASHUNIT_RUNNER_RESULT_ORDINAL=$_test_ordinal
-        bashunit::runner::run_test "$script" "$fn_name" &
+        bashunit::runner::run_test_parallel "$script" "$fn_name" &
         _BASHUNIT_WORKER_TEST_PIDS="$_BASHUNIT_WORKER_TEST_PIDS $!"
       else
         bashunit::runner::run_test "$script" "$fn_name"
@@ -18480,17 +18686,49 @@ function bashunit::runner::call_test_functions() {
     for data in "${provider_data[@]+"${provider_data[@]}"}"; do
       parsed_data=()
       parsed_data_count=0
+      local transport_error=""
+      if ! bashunit::env::ensure_run_output_dir; then
+        transport_error="argument storage could not be created"
+      elif [ -z "$provider_arg_file" ] || [ ! -f "$provider_arg_file" ]; then
+        local provider_arg_dir="$_BASHUNIT_RUN_OUTPUT_DIR"
+        case "$provider_arg_dir" in
+        /*) ;;
+        *) provider_arg_dir="$BASHUNIT_WORKING_DIR/$provider_arg_dir" ;;
+        esac
+        provider_arg_file="$("$MKTEMP" "$provider_arg_dir/provider-args.XXXXXXX")" ||
+          transport_error="argument storage could not be created"
+      fi
       local line
-      while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        parsed_data[parsed_data_count]="$(bashunit::helper::decode_base64 "${line}")"
-        parsed_data_count=$((parsed_data_count + 1))
-      done <<<"$(bashunit::runner::parse_data_provider_args "$data")"
-      if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
-        bashunit::runner::wait_for_job_slot
+
+      if [ -z "$transport_error" ]; then
+
+        if (bashunit::runner::parse_data_provider_args "$data" nul) >"$provider_arg_file"; then
+          if {
+            while IFS= read -r -d '' line; do
+              parsed_data[parsed_data_count]="$line"
+              parsed_data_count=$((parsed_data_count + 1))
+            done
+          } <"$provider_arg_file"; then
+            :
+          else
+            transport_error="arguments could not be read"
+          fi
+        else
+          transport_error="arguments could not be written"
+        fi
+      fi
+      if [ -n "$transport_error" ]; then
         _test_ordinal=$((_test_ordinal + 1))
         _BASHUNIT_RUNNER_RESULT_ORDINAL=$_test_ordinal
-        bashunit::runner::run_test "$script" "$fn_name" ${parsed_data+"${parsed_data[@]}"} &
+        bashunit::runner::report_provider_error \
+          "$script" "$fn_name" "data provider '$_BASHUNIT_PROVIDER_FN_OUT' $transport_error"
+        break
+      fi
+      _test_ordinal=$((_test_ordinal + 1))
+      _BASHUNIT_RUNNER_RESULT_ORDINAL=$_test_ordinal
+      if bashunit::parallel::is_enabled && [ "$allow_test_parallel" = true ]; then
+        bashunit::runner::wait_for_job_slot
+        bashunit::runner::run_test_parallel "$script" "$fn_name" ${parsed_data+"${parsed_data[@]}"} &
         _BASHUNIT_WORKER_TEST_PIDS="$_BASHUNIT_WORKER_TEST_PIDS $!"
       else
         bashunit::runner::run_test "$script" "$fn_name" ${parsed_data+"${parsed_data[@]}"}
@@ -18506,6 +18744,7 @@ function bashunit::runner::call_test_functions() {
 
 _BASHUNIT_RUNNER_EXEC_OUT=""
 _BASHUNIT_RUNNER_TIMED_OUT="false"
+_BASHUNIT_RUNNER_TIMEOUT_MARKER_FILE=""
 
 _BASHUNIT_RUNNER_TIMEOUT_SECS=0
 
@@ -18586,6 +18825,7 @@ function bashunit::runner::run_with_timeout() {
   out_file="$("$MKTEMP" "$tmp_dir/bashunit_timeout_out.XXXXXXX")"
   marker_file="$("$MKTEMP" "$tmp_dir/bashunit_timeout_marker.XXXXXXX")"
   rm -f "$marker_file"
+  local _BASHUNIT_RUNNER_TIMEOUT_MARKER_FILE="$marker_file"
 
   set -m
   (bashunit::runner::execute_test_body "$test_file" "$fn_name" "$@") >"$out_file" 2>&1 &
@@ -18603,6 +18843,8 @@ function bashunit::runner::run_with_timeout() {
     done
 
     kill -0 "$test_pid" 2>/dev/null || exit 0
+
+    trap '' TERM
     : >"$marker_file"
     kill -TERM -"$test_pid" 2>/dev/null
 
@@ -19113,6 +19355,9 @@ function bashunit::runner::load_test_files() {
     export BASHUNIT_CURRENT_SCRIPT_ID="$_BASHUNIT_HELPER_ID_OUT"
     scripts_ids[scripts_ids_count]="${BASHUNIT_CURRENT_SCRIPT_ID}"
     scripts_ids_count=$((scripts_ids_count + 1))
+    _BASHUNIT_REPORTS_FILE_ORDINAL=$((_BASHUNIT_REPORTS_FILE_ORDINAL + 1))
+    _BASHUNIT_REPORTS_CONTROL_RECORD_ORDINAL=0
+    _BASHUNIT_RUNNER_RESULT_ORDINAL=0
     bashunit::internal_log "Loading file" "$test_file"
 
     local source_err_file source_err source_status
@@ -19277,16 +19522,17 @@ function bashunit::runner::load_test_files() {
 
   if bashunit::parallel::is_enabled && ! bashunit::env::is_list_enabled; then
     wait
-    bashunit::runner::spinner &
-    local spinner_pid=$!
-    bashunit::state::aggregate_parallel_results "$TEMP_DIR_PARALLEL_TEST_SUITE"
-
-    disown "$spinner_pid" 2>/dev/null || true
-    kill "$spinner_pid" 2>/dev/null || true
-
+    local spinner_pid=""
     if [ -t 1 ] &&
       ! bashunit::env::is_no_progress_enabled &&
       ! bashunit::env::is_machine_output_enabled; then
+      bashunit::runner::spinner &
+      spinner_pid=$!
+    fi
+    bashunit::state::aggregate_parallel_results "$TEMP_DIR_PARALLEL_TEST_SUITE"
+    if [ -n "$spinner_pid" ]; then
+      disown "$spinner_pid" 2>/dev/null || true
+      kill "$spinner_pid" 2>/dev/null || true
       printf "\r  \r"
     fi
 
@@ -21940,7 +22186,7 @@ function _check_bash_version() {
 
 _check_bash_version
 
-declare -r BASHUNIT_VERSION="0.51.0"
+declare -r BASHUNIT_VERSION="0.52.0"
 
 _bashunit_root="${BASH_SOURCE[0]%/*}"
 
