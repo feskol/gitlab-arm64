@@ -18,6 +18,9 @@ on:
       - '.github/generated-files/**'
       - '**.md'
 
+permissions:
+  contents: read
+
 jobs:
   test-scripts:
     strategy:
