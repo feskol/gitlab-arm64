@@ -26,6 +26,6 @@ for tag in "${tags[@]}"; do
             --tag "$tag" \
             "$OFFICIAL_GITLAB_IMAGE"
     else
-        echo "[TEST] Create manifest for $tag using arm64-image $ARM64_IMAGE_TAG and the official Gitlab tag $OFFICIAL_GITLAB_IMAGE"
+        echo "[TEST] Create manifest for $tag using the official multi-arch Gitlab image $OFFICIAL_GITLAB_IMAGE"
     fi
 done
